@@ -1,10 +1,12 @@
 ﻿using Org.BouncyCastle.Bcpg.OpenPgp;
 using Org.BouncyCastle.Security;
+using System;
+using System.Linq;
 using System.IO;
 
 namespace PasswordManager.Infrastructure.Encryption
 {
-    internal class PgpDecryption
+    public class PgpDecryption
     {
         public static void DecryptFile(string inputFilePath, string outputFilePath, string privateKeyPath, string passphrase)
         {
@@ -12,7 +14,7 @@ namespace PasswordManager.Infrastructure.Encryption
             using (var inputFileStream = File.OpenRead(inputFilePath))
             using (var outputFileStream = File.Create(outputFilePath))
             {
-                var privateKey = ReadPrivateKey(privateKeyStream, passphrase);
+                var privateKey = PgpDecryptionHelper.ReadPrivateKey(privateKeyStream, passphrase);
                 var pgpObjectFactory = new PgpObjectFactory(PgpUtilities.GetDecoderStream(inputFileStream));
                 var encryptedDataList = (PgpEncryptedDataList)pgpObjectFactory.NextPgpObject();
 
@@ -29,22 +31,24 @@ namespace PasswordManager.Infrastructure.Encryption
             }
         }
 
-        private static PgpPrivateKey ReadPrivateKey(Stream inputStream, string passphrase)
+        public static string DecryptString(string encryptedBase64Text, string privateKeyPath, string passphrase)
         {
-            var secretKeyRingBundle = new PgpSecretKeyRingBundle(PgpUtilities.GetDecoderStream(inputStream));
-            foreach (PgpSecretKeyRing keyRing in secretKeyRingBundle.GetKeyRings())
+            using (var privateKeyStream = File.OpenRead(privateKeyPath))
+            using (var inputStream = new MemoryStream(Convert.FromBase64String(encryptedBase64Text)))
             {
-                foreach (PgpSecretKey secretKey in keyRing.GetSecretKeys())
+                var privateKey = PgpDecryptionHelper.ReadPrivateKey(privateKeyStream, passphrase);
+                var pgpObjectFactory = new PgpObjectFactory(PgpUtilities.GetDecoderStream(inputStream));
+                var pgpObject = pgpObjectFactory.NextPgpObject();
+                var encryptedDataList = pgpObject is PgpEncryptedDataList dataList ? dataList : (PgpEncryptedDataList)pgpObjectFactory.NextPgpObject();
+
+                var publicKeyEncryptedData = encryptedDataList.GetEncryptedDataObjects().OfType<PgpPublicKeyEncryptedData>().First();
+
+                using (var clearStream = publicKeyEncryptedData.GetDataStream(privateKey))
+                using (var streamReader = new StreamReader(clearStream))
                 {
-                    var privateKey = secretKey.ExtractPrivateKey(passphrase.ToCharArray());
-                    if (privateKey != null)
-                    {
-                        return privateKey;
-                    }
+                    return streamReader.ReadToEnd();
                 }
             }
-            throw new ArgumentException("No private key found or incorrect passphrase.");
         }
     }
 }
-

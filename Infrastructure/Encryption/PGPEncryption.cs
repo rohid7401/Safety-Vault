@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -6,11 +6,12 @@ using System.Threading.Tasks;
 using System.IO;
 using Org.BouncyCastle.Bcpg.OpenPgp;
 using Org.BouncyCastle.Security;
+using Org.BouncyCastle.Bcpg;
 
 
 namespace PasswordManager.Infrastructure.Encryption
 {
-    internal class PgpEncryption
+    public class PgpEncryption
     {
         public static void EncryptFile(string inputFilePath, string outputFilePath, string publicKeyPath)
         {
@@ -18,8 +19,8 @@ namespace PasswordManager.Infrastructure.Encryption
             using (var inputFileStream = File.OpenRead(inputFilePath))
             using (var outputFileStream = File.Create(outputFilePath))
             {
-                var publicKey = ReadPublicKey(publicKeyStream);
-                var encryptedDataGenerator = new PgpEncryptedDataGenerator(PgpEncryptedData.CipherAes256);
+                var publicKey = PgpEncryptionHelper.ReadPublicKey(publicKeyStream);
+                var encryptedDataGenerator = new PgpEncryptedDataGenerator(SymmetricKeyAlgorithmTag.Aes256);
                 encryptedDataGenerator.AddMethod(publicKey);
 
                 using (var encryptedStream = encryptedDataGenerator.Open(outputFileStream, new byte[4096]))
@@ -29,20 +30,22 @@ namespace PasswordManager.Infrastructure.Encryption
             }
         }
 
-        private static PgpPublicKey ReadPublicKey(Stream inputStream)
+        public static string EncryptString(string plainText, string publicKeyPath)
         {
-            var publicKeyRingBundle = new PgpPublicKeyRingBundle(PgpUtilities.GetDecoderStream(inputStream));
-            foreach (PgpPublicKeyRing keyRing in publicKeyRingBundle.GetKeyRings())
+            using (var publicKeyStream = File.OpenRead(publicKeyPath))
+            using (var memoryStream = new MemoryStream())
             {
-                foreach (PgpPublicKey key in keyRing.GetPublicKeys())
+                var publicKey = PgpEncryptionHelper.ReadPublicKey(publicKeyStream);
+                var encryptedDataGenerator = new PgpEncryptedDataGenerator(SymmetricKeyAlgorithmTag.Aes256);
+                encryptedDataGenerator.AddMethod(publicKey);
+
+                using (var encryptedStream = encryptedDataGenerator.Open(memoryStream, new byte[4096]))
+                using (var streamWriter = new StreamWriter(encryptedStream, Encoding.UTF8))
                 {
-                    if (key.IsEncryptionKey)
-                    {
-                        return key;
-                    }
+                    streamWriter.Write(plainText);
                 }
+                return Convert.ToBase64String(memoryStream.ToArray());
             }
-            throw new ArgumentException("No encryption key found in the public key file.");
         }
     }
 }
