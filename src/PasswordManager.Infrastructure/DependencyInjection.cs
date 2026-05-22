@@ -5,6 +5,7 @@ using PasswordManager.Core.Interfaces;
 using PasswordManager.Core.Services;
 using PasswordManager.Infrastructure.Encryption;
 using PasswordManager.Infrastructure.Persistence;
+using PasswordManager.Infrastructure.Services;
 
 namespace PasswordManager.Infrastructure
 {
@@ -30,6 +31,11 @@ namespace PasswordManager.Infrastructure
                 var pgp = sp.GetRequiredService<IPgpService>();
                 return new PgpVaultRepository(pgp, options);
             });
+
+            services.AddSingleton<IPasswordGenerator, PasswordGenerator>();
+            services.AddSingleton<ITotpService, TotpService>();
+            services.AddSingleton<IImportExportService, ImportExportService>();
+            services.AddSingleton<IVaultAuditor, VaultAuditor>();
 
             return services;
         }

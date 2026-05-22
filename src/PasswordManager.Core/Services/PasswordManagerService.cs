@@ -215,6 +215,92 @@ namespace PasswordManager.Core.Services
 
         public string DecryptPassword(PasswordEntry entry) => DecryptField(entry.Password);
 
+        // ─── TOTP ────────────────────────────────────────────────────────────
+
+        public async Task SetTotpSecretAsync(Guid id, string base32Secret)
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+            var entry = vault.Entries.OfType<PasswordEntry>().FirstOrDefault(e => e.Id == id && !e.IsDeleted);
+            if (entry is null) return;
+
+            entry.TotpSecret = EncryptField(base32Secret);
+            entry.LastUpdateTime = DateTime.UtcNow;
+            await _repository.SaveAsync(vault);
+        }
+
+        public async Task RemoveTotpSecretAsync(Guid id)
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+            var entry = vault.Entries.OfType<PasswordEntry>().FirstOrDefault(e => e.Id == id && !e.IsDeleted);
+            if (entry is null) return;
+
+            entry.TotpSecret = null;
+            entry.LastUpdateTime = DateTime.UtcNow;
+            await _repository.SaveAsync(vault);
+        }
+
+        public string? GetDecryptedTotpSecret(PasswordEntry entry)
+        {
+            ThrowIfDisposed();
+            if (entry.TotpSecret is null) return null;
+            return DecryptField(entry.TotpSecret);
+        }
+
+        // ─── Export / Import ─────────────────────────────────────────────────
+
+        public async Task<List<PortableEntry>> ExportPasswordEntriesAsync()
+        {
+            ThrowIfDisposed();
+            var entries = await GetEntriesAsync<PasswordEntry>();
+            return entries.Select(e => new PortableEntry
+            {
+                Site = e.Site,
+                Username = e.Username,
+                Email = e.Email,
+                Password = DecryptPassword(e),
+                TotpSecret = GetDecryptedTotpSecret(e),
+                Tags = new List<string>(e.Tags),
+            }).ToList();
+        }
+
+        public async Task ImportPasswordEntriesAsync(IReadOnlyList<PortableEntry> portableEntries)
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+
+            foreach (var portable in portableEntries)
+            {
+                var entry = new PasswordEntry
+                {
+                    Site = portable.Site,
+                    Username = portable.Username,
+                    Email = portable.Email,
+                    Password = EncryptField(portable.Password),
+                    Tags = new List<string>(portable.Tags),
+                    CreationTime = DateTime.UtcNow,
+                    LastUpdateTime = DateTime.UtcNow,
+                };
+
+                if (!string.IsNullOrEmpty(portable.TotpSecret))
+                    entry.TotpSecret = EncryptField(portable.TotpSecret);
+
+                vault.Entries.Add(entry);
+            }
+
+            await _repository.SaveAsync(vault);
+        }
+
+        // ─── Audit ───────────────────────────────────────────────────────────
+
+        public async Task<AuditReport> AuditVaultAsync(IVaultAuditor auditor)
+        {
+            ThrowIfDisposed();
+            var entries = await GetEntriesAsync<PasswordEntry>();
+            return auditor.Audit(entries, DecryptPassword);
+        }
+
         // ─── Helpers ─────────────────────────────────────────────────────────
 
         private EncryptedField EncryptField(string plainText)

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet --version)",
+      "Bash(dotnet sln *)",
+      "Bash(dotnet build *)",
+      "PowerShell(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\rohi\\\\Desktop\\\\PasswordManager\\\\tests\\\\PasswordManager.Tests\\\\Encryption\")",
+      "PowerShell(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\rohi\\\\Desktop\\\\PasswordManager\\\\tests\\\\PasswordManager.Tests\\\\Services\")",
+      "PowerShell(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\rohi\\\\Desktop\\\\PasswordManager\\\\tests\\\\PasswordManager.Tests\\\\Helpers\")",
+      "Bash(dotnet test *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}
