@@ -1,5 +1,5 @@
 using System.Security.Cryptography;
-using System.Text.Json;
+using PasswordManager.Core.Configuration;
 using PasswordManager.Core.Interfaces;
 using PasswordManager.Core.Models;
 
@@ -7,194 +7,220 @@ namespace PasswordManager.Core.Services
 {
     public sealed class PasswordManagerService : IDisposable, IAsyncDisposable
     {
-        private readonly IPgpService _pgpService;
+        private readonly IVaultRepository _repository;
         private readonly IAesService _aesService;
-        private readonly string _pgpPublicKeyPath;
-        private readonly string _pgpPrivateKeyPath;
-        private readonly string _pgpPassphrase;
-        private readonly string _dataFolderPath;
+        private readonly IPgpService _pgpService;
+        private readonly VaultOptions _options;
 
         private byte[]? _aesKey;
         private bool _disposed;
 
-        private const string VaultFileName = "vault.data.pgp";
         private const string AesKeyFileName = "vault.key.pgp";
 
-        private static readonly JsonSerializerOptions JsonOptions = new()
-        {
-            WriteIndented = true
-        };
-
         private PasswordManagerService(
-            string dataFolderPath,
-            string pgpPublicKeyPath,
-            string pgpPrivateKeyPath,
-            string pgpPassphrase,
+            IVaultRepository repository,
+            IAesService aesService,
             IPgpService pgpService,
-            IAesService aesService)
+            VaultOptions options)
         {
-            _dataFolderPath = dataFolderPath;
-            _pgpPublicKeyPath = pgpPublicKeyPath;
-            _pgpPrivateKeyPath = pgpPrivateKeyPath;
-            _pgpPassphrase = pgpPassphrase;
-            _pgpService = pgpService;
+            _repository = repository;
             _aesService = aesService;
+            _pgpService = pgpService;
+            _options = options;
         }
 
         public static async Task<PasswordManagerService> CreateAsync(
-            string dataFolderPath,
-            IPgpService pgpService,
+            IVaultRepository repository,
             IAesService aesService,
-            string? pgpPublicKeyPath = null,
-            string? pgpPrivateKeyPath = null,
-            string pgpPassphrase = "")
+            IPgpService pgpService,
+            VaultOptions options)
         {
-            if (string.IsNullOrEmpty(pgpPassphrase))
-                throw new ArgumentException("PGP passphrase cannot be empty.");
+            if (string.IsNullOrEmpty(options.Passphrase))
+                throw new ArgumentException("Passphrase cannot be empty.");
 
-            pgpPublicKeyPath ??= Path.Combine(dataFolderPath, "public_key.asc");
-            pgpPrivateKeyPath ??= Path.Combine(dataFolderPath, "private_key.asc");
+            if (!File.Exists(options.ResolvedPublicKeyPath))
+                throw new FileNotFoundException("Public key not found.", options.ResolvedPublicKeyPath);
+            if (!File.Exists(options.ResolvedPrivateKeyPath))
+                throw new FileNotFoundException("Private key not found.", options.ResolvedPrivateKeyPath);
 
-            if (!File.Exists(pgpPublicKeyPath))
-                throw new FileNotFoundException("Public key not found.", pgpPublicKeyPath);
-            if (!File.Exists(pgpPrivateKeyPath))
-                throw new FileNotFoundException("Private key not found.", pgpPrivateKeyPath);
-
-            var service = new PasswordManagerService(
-                dataFolderPath, pgpPublicKeyPath, pgpPrivateKeyPath,
-                pgpPassphrase, pgpService, aesService);
-
+            var service = new PasswordManagerService(repository, aesService, pgpService, options);
             await service.InitializeAesKeyAsync();
             return service;
         }
 
         private async Task InitializeAesKeyAsync()
         {
-            var aesKeyPath = Path.Combine(_dataFolderPath, AesKeyFileName);
+            var aesKeyPath = Path.Combine(_options.DataFolderPath, AesKeyFileName);
             if (File.Exists(aesKeyPath))
             {
                 var encryptedKey = await File.ReadAllTextAsync(aesKeyPath);
-                var keyBase64 = _pgpService.DecryptString(encryptedKey, _pgpPrivateKeyPath, _pgpPassphrase);
+                var keyBase64 = _pgpService.DecryptString(
+                    encryptedKey, _options.ResolvedPrivateKeyPath, _options.Passphrase);
                 _aesKey = Convert.FromBase64String(keyBase64);
             }
             else
             {
-                _aesKey = RandomNumberGenerator.GetBytes(32); // 256-bit key
+                _aesKey = RandomNumberGenerator.GetBytes(32);
                 var keyBase64 = Convert.ToBase64String(_aesKey);
-                var encryptedKey = _pgpService.EncryptString(keyBase64, _pgpPublicKeyPath);
+                var encryptedKey = _pgpService.EncryptString(keyBase64, _options.ResolvedPublicKeyPath);
                 await File.WriteAllTextAsync(aesKeyPath, encryptedKey);
             }
         }
 
-        // ─── Vault I/O (all in-memory, no temp files) ───────────────────────
+        // ─── Query ───────────────────────────────────────────────────────────
 
-        private async Task<VaultData> LoadVaultAsync()
-        {
-            var vaultPath = Path.Combine(_dataFolderPath, VaultFileName);
-            if (!File.Exists(vaultPath))
-                return new VaultData();
-
-            var encryptedBytes = await File.ReadAllBytesAsync(vaultPath);
-            var jsonBytes = _pgpService.DecryptBytes(encryptedBytes, _pgpPrivateKeyPath, _pgpPassphrase);
-
-            return JsonSerializer.Deserialize<VaultData>(jsonBytes, JsonOptions) ?? new VaultData();
-        }
-
-        private async Task SaveVaultAsync(VaultData vault)
-        {
-            vault.Version = VaultData.CurrentVersion;
-            var vaultPath = Path.Combine(_dataFolderPath, VaultFileName);
-            var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(vault, JsonOptions);
-            var encryptedBytes = _pgpService.EncryptBytes(jsonBytes, _pgpPublicKeyPath);
-            await File.WriteAllBytesAsync(vaultPath, encryptedBytes);
-        }
-
-        // ─── Public API ──────────────────────────────────────────────────────
-
-        public async Task<List<PasswordEntry>> GetAllEntriesAsync()
+        public async Task<List<VaultEntry>> GetAllEntriesAsync()
         {
             ThrowIfDisposed();
-            var vault = await LoadVaultAsync();
-            return vault.Entries;
+            var vault = await _repository.LoadAsync();
+            return vault.Entries.Where(e => !e.IsDeleted).ToList();
         }
 
-        public async Task<PasswordEntry?> GetEntryByIdAsync(Guid id)
+        public async Task<List<T>> GetEntriesAsync<T>() where T : VaultEntry
         {
             ThrowIfDisposed();
-            var vault = await LoadVaultAsync();
-            return vault.Entries.FirstOrDefault(e => e.Id == id);
+            var vault = await _repository.LoadAsync();
+            return vault.Entries.OfType<T>().Where(e => !e.IsDeleted).ToList();
         }
 
-        public async Task<List<PasswordEntry>> FindEntriesAsync(Func<PasswordEntry, bool> predicate)
+        public async Task<VaultEntry?> GetEntryByIdAsync(Guid id)
         {
             ThrowIfDisposed();
-            var vault = await LoadVaultAsync();
-            return vault.Entries.Where(predicate).ToList();
+            var vault = await _repository.LoadAsync();
+            return vault.Entries.FirstOrDefault(e => e.Id == id && !e.IsDeleted);
         }
 
-        public async Task AddEntryAsync(PasswordEntry entry, string plainPassword)
+        public async Task<List<VaultEntry>> FindEntriesAsync(Func<VaultEntry, bool> predicate)
         {
             ThrowIfDisposed();
-            var vault = await LoadVaultAsync();
+            var vault = await _repository.LoadAsync();
+            return vault.Entries.Where(e => !e.IsDeleted && predicate(e)).ToList();
+        }
 
-            var (cipherText, nonce, tag) = _aesService.Encrypt(plainPassword, _aesKey!);
-            entry.EncryptedPassword = cipherText;
-            entry.Nonce = nonce;
-            entry.Tag = tag;
+        // ─── Add entries ─────────────────────────────────────────────────────
+
+        public async Task AddPasswordEntryAsync(PasswordEntry entry, string plainPassword)
+        {
+            ThrowIfDisposed();
+            entry.Password = EncryptField(plainPassword);
+            await AddEntryAsync(entry);
+        }
+
+        public async Task AddSecureNoteAsync(SecureNote note, string plainContent)
+        {
+            ThrowIfDisposed();
+            note.Content = EncryptField(plainContent);
+            await AddEntryAsync(note);
+        }
+
+        public async Task AddCardEntryAsync(CardEntry card, string plainCardNumber, string plainCvv)
+        {
+            ThrowIfDisposed();
+            card.CardNumber = EncryptField(plainCardNumber);
+            card.Cvv = EncryptField(plainCvv);
+            await AddEntryAsync(card);
+        }
+
+        private async Task AddEntryAsync(VaultEntry entry)
+        {
             entry.CreationTime = DateTime.UtcNow;
             entry.LastUpdateTime = DateTime.UtcNow;
-
+            var vault = await _repository.LoadAsync();
             vault.Entries.Add(entry);
-            await SaveVaultAsync(vault);
+            await _repository.SaveAsync(vault);
         }
 
-        public async Task UpdateEntryAsync(Guid id, Action<PasswordEntry> updateAction)
+        // ─── Update ──────────────────────────────────────────────────────────
+
+        public async Task UpdateEntryAsync(Guid id, Action<VaultEntry> updateAction)
         {
             ThrowIfDisposed();
-            var vault = await LoadVaultAsync();
-            var entry = vault.Entries.FirstOrDefault(e => e.Id == id);
+            var vault = await _repository.LoadAsync();
+            var entry = vault.Entries.FirstOrDefault(e => e.Id == id && !e.IsDeleted);
             if (entry is null) return;
 
             updateAction(entry);
             entry.LastUpdateTime = DateTime.UtcNow;
-            await SaveVaultAsync(vault);
+            await _repository.SaveAsync(vault);
         }
 
         public async Task ChangePasswordAsync(Guid id, string newPlainPassword)
         {
             ThrowIfDisposed();
-            var vault = await LoadVaultAsync();
-            var entry = vault.Entries.FirstOrDefault(e => e.Id == id);
+            var vault = await _repository.LoadAsync();
+            var entry = vault.Entries.OfType<PasswordEntry>().FirstOrDefault(e => e.Id == id && !e.IsDeleted);
             if (entry is null) return;
 
-            var (cipherText, nonce, tag) = _aesService.Encrypt(newPlainPassword, _aesKey!);
-            entry.EncryptedPassword = cipherText;
-            entry.Nonce = nonce;
-            entry.Tag = tag;
+            entry.Password = EncryptField(newPlainPassword);
             entry.LastUpdateTime = DateTime.UtcNow;
-            await SaveVaultAsync(vault);
+            await _repository.SaveAsync(vault);
         }
+
+        // ─── Soft delete / Restore / Purge ───────────────────────────────────
 
         public async Task DeleteEntryAsync(Guid id)
         {
             ThrowIfDisposed();
-            var vault = await LoadVaultAsync();
-            vault.Entries.RemoveAll(e => e.Id == id);
-            await SaveVaultAsync(vault);
+            var vault = await _repository.LoadAsync();
+            var entry = vault.Entries.FirstOrDefault(e => e.Id == id && !e.IsDeleted);
+            if (entry is null) return;
+
+            entry.IsDeleted = true;
+            entry.DeletedAt = DateTime.UtcNow;
+            await _repository.SaveAsync(vault);
         }
+
+        public async Task RestoreEntryAsync(Guid id)
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+            var entry = vault.Entries.FirstOrDefault(e => e.Id == id && e.IsDeleted);
+            if (entry is null) return;
+
+            entry.IsDeleted = false;
+            entry.DeletedAt = null;
+            await _repository.SaveAsync(vault);
+        }
+
+        public async Task<List<VaultEntry>> GetDeletedEntriesAsync()
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+            return vault.Entries.Where(e => e.IsDeleted).ToList();
+        }
+
+        public async Task PurgeDeletedAsync()
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+            vault.Entries.RemoveAll(e => e.IsDeleted);
+            await _repository.SaveAsync(vault);
+        }
+
+        // ─── Expiration ──────────────────────────────────────────────────────
 
         public async Task SetExpireTimeAsync(Guid id, DateTime? expireTime)
         {
-            ThrowIfDisposed();
             await UpdateEntryAsync(id, e => e.ExpireTime = expireTime);
         }
 
-        /// <summary>Decrypts and returns the plaintext password. Throws if tampering is detected.</summary>
-        public string DecryptPassword(PasswordEntry entry)
+        // ─── Decrypt ─────────────────────────────────────────────────────────
+
+        public string DecryptField(EncryptedField field)
         {
             ThrowIfDisposed();
-            if (string.IsNullOrEmpty(entry.EncryptedPassword)) return string.Empty;
-            return _aesService.Decrypt(entry.EncryptedPassword, _aesKey!, entry.Nonce, entry.Tag);
+            if (string.IsNullOrEmpty(field.CipherText)) return string.Empty;
+            return _aesService.Decrypt(field.CipherText, _aesKey!, field.Nonce, field.Tag);
+        }
+
+        public string DecryptPassword(PasswordEntry entry) => DecryptField(entry.Password);
+
+        // ─── Helpers ─────────────────────────────────────────────────────────
+
+        private EncryptedField EncryptField(string plainText)
+        {
+            var (cipher, nonce, tag) = _aesService.Encrypt(plainText, _aesKey!);
+            return new EncryptedField { CipherText = cipher, Nonce = nonce, Tag = tag };
         }
 
         // ─── IDisposable ─────────────────────────────────────────────────────

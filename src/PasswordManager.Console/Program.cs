@@ -1,6 +1,8 @@
+using PasswordManager.Core.Configuration;
 using PasswordManager.Core.Models;
 using PasswordManager.Core.Services;
 using PasswordManager.Infrastructure.Encryption;
+using PasswordManager.Infrastructure.Persistence;
 
 namespace PasswordManager.Console
 {
@@ -24,15 +26,15 @@ namespace PasswordManager.Console
             string passphrase = ReadPassword();
             System.Console.WriteLine();
 
+            var options = new VaultOptions { DataFolderPath = dataPath, Passphrase = passphrase };
+            var pgpService = new PgpService();
+            var repository = new PgpVaultRepository(pgpService, options);
+
             PasswordManagerService? service = null;
             try
             {
                 service = await PasswordManagerService.CreateAsync(
-                    dataFolderPath: dataPath,
-                    pgpService: new PgpService(),
-                    aesService: new AesService(),
-                    pgpPassphrase: passphrase);
-
+                    repository, new AesService(), pgpService, options);
                 WriteSuccess("Vault unlocked successfully!");
             }
             catch (Exception ex)
@@ -68,7 +70,7 @@ namespace PasswordManager.Console
         private static async Task ListAllPasswords(PasswordManagerService service)
         {
             System.Console.WriteLine("\n--- Saved Passwords ---");
-            var entries = await service.GetAllEntriesAsync();
+            var entries = await service.GetEntriesAsync<PasswordEntry>();
 
             if (!entries.Any())
             {
@@ -86,6 +88,8 @@ namespace PasswordManager.Console
                 System.Console.ForegroundColor = ConsoleColor.Cyan;
                 System.Console.WriteLine($"Password: {service.DecryptPassword(entry)}");
                 System.Console.ResetColor();
+                if (entry.Tags.Count > 0)
+                    System.Console.WriteLine($"Tags:     {string.Join(", ", entry.Tags)}");
                 System.Console.WriteLine(new string('-', 30));
             }
         }
@@ -109,7 +113,7 @@ namespace PasswordManager.Console
 
             try
             {
-                await service.AddEntryAsync(entry, plain);
+                await service.AddPasswordEntryAsync(entry, plain);
                 WriteSuccess("Entry added successfully!");
             }
             catch (Exception ex)
