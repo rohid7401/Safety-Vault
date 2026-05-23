@@ -1,0 +1,429 @@
+@page "/vault"
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject IPasswordGenerator PasswordGen
+@inject GeneratorPreferences GenPrefs
+@inject ToastService Toast
+@inject ITotpService TotpService
+@implements IDisposable
+
+@if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
+
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+        <h1>Passwords</h1>
+        <p>@_entries.Count entries in your vault</p>
+    </div>
+    <button class="btn btn-primary" @onclick="OpenAddModal">Add password</button>
+</div>
+
+<div class="search-box">
+    <input type="text" class="form-control" placeholder="github.com, jane.doe, work..."
+           @bind="_search" @bind:event="oninput" />
+</div>
+
+@if (FilteredEntries.Count == 0)
+{
+    <div class="empty-state">
+        <IconSlot CssClass="xl" />
+        <h3>No passwords found</h3>
+        <p>Add your first password entry to get started.</p>
+    </div>
+}
+else
+{
+    @foreach (var entry in FilteredEntries)
+    {
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">@entry.Site</div>
+                    <div class="card-subtitle">@entry.Username @(!string.IsNullOrEmpty(entry.Email) ? $"({entry.Email})" : "")</div>
+                </div>
+                <div class="entry-actions">
+                    @if (entry.TotpSecret is not null)
+                    {
+                        <button class="btn btn-secondary btn-sm" title="Show TOTP code"
+                                @onclick="() => ShowTotp(entry)">2FA</button>
+                    }
+                    <button class="btn btn-secondary btn-sm"
+                            @onclick="() => ToggleReveal(entry.Id)">
+                        @(_revealed.Contains(entry.Id) ? "Hide" : "Show")
+                    </button>
+                    <button class="btn btn-secondary btn-sm" @onclick="() => CopyPassword(entry)">Copy</button>
+                    <button class="btn btn-secondary btn-sm" @onclick="() => EditEntry(entry)">Edit</button>
+                    <button class="btn btn-danger btn-sm" @onclick="() => DeleteEntry(entry.Id)">Delete</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="password-field">
+                    @if (_revealed.Contains(entry.Id))
+                    {
+                        <span class="password-value">@AppState.Service!.DecryptPassword(entry)</span>
+                    }
+                    else
+                    {
+                        <span class="password-masked">••••••••••••</span>
+                    }
+                </div>
+                @if (entry.Tags.Count > 0)
+                {
+                    <div class="tag-group" style="margin-top:8px;">
+                        @foreach (var tag in entry.Tags)
+                        {
+                            <span class="tag">@tag</span>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@* ───── Add / Edit Modal ───── *@
+@if (_showAdd || _editEntry is not null)
+{
+    <div class="modal-backdrop" @onclick="CloseModal">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>@(_editEntry is not null ? "Edit password" : "Add password")</h2>
+
+            <div class="form-group">
+                <label>Site / Application</label>
+                <input type="text" class="form-control" @bind="_formSite" placeholder="github.com" />
+            </div>
+
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" class="form-control" @bind="_formUsername" placeholder="jane.doe" />
+            </div>
+
+            <div class="form-group">
+                <label>Email (optional)</label>
+                <input type="text" class="form-control" @bind="_formEmail" placeholder="jane@example.com" />
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <div class="input-group">
+                    <input type="@(_formPwVisible ? "text" : "password")" class="form-control" @bind="_formPassword" />
+                    <button class="btn btn-secondary btn-sm" type="button" @onclick="() => _formPwVisible = !_formPwVisible">
+                        @(_formPwVisible ? "Hide" : "Show")
+                    </button>
+                    <button class="btn btn-secondary btn-sm" type="button" @onclick="GeneratePassword" title="Use your generator preferences">
+                        Generate
+                    </button>
+                </div>
+                @if (!string.IsNullOrEmpty(_formPassword))
+                {
+                    <div class="strength-bar">
+                        @{ var s = PasswordGen.CalculateStrength(_formPassword); }
+                        <div class="strength-fill strength-@s" style="width:@(s * 12.5)%"></div>
+                    </div>
+                }
+            </div>
+
+            <div class="form-group">
+                <label>Tags (comma separated)</label>
+                <input type="text" class="form-control" @bind="_formTags" placeholder="work, social, personal" />
+            </div>
+
+            <div class="form-group">
+                <label>
+                    TOTP secret (optional)
+                    <InfoTooltip>
+                        <strong>What is TOTP?</strong>
+                        <p style="margin:6px 0 0 0;">
+                            Time-based One-Time Password — the rotating 6-digit codes used
+                            for two-factor authentication on sites like GitHub or Google.
+                        </p>
+                        <p style="margin:6px 0 0 0;">
+                            When a site offers 2FA, it shows a QR code or a Base32 secret like
+                            <code>JBSWY3DPEHPK3PXP</code>. Paste that secret here and SecureVault
+                            will generate the codes for you — no separate authenticator app needed.
+                        </p>
+                    </InfoTooltip>
+                </label>
+                <input type="text" class="form-control" @bind="_formTotp" placeholder="JBSWY3DPEHPK3PXP" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(_formError))
+            {
+                <div class="alert alert-danger">@_formError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                <button class="btn btn-primary" @onclick="SaveEntry">
+                    @(_editEntry is not null ? "Update" : "Add")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ───── TOTP viewer ───── *@
+@if (_totpEntry is not null)
+{
+    <div class="modal-backdrop" @onclick="CloseTotp">
+        <div class="modal" style="width:340px;" @onclick:stopPropagation="true">
+            <h2>2FA code for @_totpEntry.Site</h2>
+            <div class="totp-code">@_totpCode</div>
+            <div class="totp-timer">@_totpRemaining s remaining</div>
+            <div class="totp-bar">
+                <div class="totp-bar-fill"
+                     @key="_totpCode"
+                     style="@TotpBarStyle"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" @onclick="CloseTotp">Close</button>
+                <button class="btn btn-primary" @onclick="CopyTotp">Copy code</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .entry-actions {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+    .totp-bar {
+        height: 4px;
+        background: var(--border);
+        border-radius: 2px;
+        margin-top: 8px;
+        overflow: hidden;
+    }
+    .totp-bar-fill {
+        height: 100%;
+        background: var(--accent);
+        transform-origin: left center;
+        animation-name: totp-shrink;
+        animation-timing-function: linear;
+        animation-iteration-count: 1;
+        animation-fill-mode: forwards;
+    }
+    @@keyframes totp-shrink {
+        from { transform: scaleX(1); }
+        to   { transform: scaleX(0); }
+    }
+</style>
+
+@code {
+    private List<PasswordEntry> _entries = new();
+    private string _search = string.Empty;
+    private HashSet<Guid> _revealed = new();
+
+    private bool _showAdd;
+    private PasswordEntry? _editEntry;
+    private string _formSite = string.Empty;
+    private string _formUsername = string.Empty;
+    private string _formEmail = string.Empty;
+    private string _formPassword = string.Empty;
+    private bool _formPwVisible;
+    private string _formTags = string.Empty;
+    private string _formTotp = string.Empty;
+    private string _formError = string.Empty;
+
+    private PasswordEntry? _totpEntry;
+    private string _totpCode = string.Empty;
+    private int _totpRemaining;
+    private double _totpInitialFraction;   // start of the css animation (0..1)
+    private System.Threading.Timer? _totpTimer;
+    private string? _totpSecretCache;
+
+    private string TotpBarStyle =>
+        $"animation-duration: 30s; animation-delay: -{(30 * (1 - _totpInitialFraction)).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}s;";
+
+    private List<PasswordEntry> FilteredEntries => string.IsNullOrWhiteSpace(_search)
+        ? _entries
+        : _entries.Where(e =>
+            e.Site.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            e.Username.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            e.Email.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            e.Tags.Any(t => t.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        ).ToList();
+
+    protected override async Task OnInitializedAsync() => await LoadEntries();
+
+    private async Task LoadEntries()
+    {
+        if (AppState.Service is null) return;
+        _entries = await AppState.Service.GetEntriesAsync<PasswordEntry>();
+    }
+
+    private void OpenAddModal()
+    {
+        _showAdd = true;
+        _formPwVisible = false;
+    }
+
+    private void ToggleReveal(Guid id)
+    {
+        if (!_revealed.Remove(id))
+            _revealed.Add(id);
+    }
+
+    private async Task CopyPassword(PasswordEntry entry)
+    {
+        var pw = AppState.Service!.DecryptPassword(entry);
+        await Clipboard.Default.SetTextAsync(pw);
+        Toast.Success("Password copied to clipboard.");
+    }
+
+    private void EditEntry(PasswordEntry entry)
+    {
+        _editEntry = entry;
+        _formSite = entry.Site;
+        _formUsername = entry.Username;
+        _formEmail = entry.Email;
+        _formPassword = AppState.Service!.DecryptPassword(entry);
+        _formTags = string.Join(", ", entry.Tags);
+        _formTotp = AppState.Service.GetDecryptedTotpSecret(entry) ?? string.Empty;
+        _formError = string.Empty;
+        _formPwVisible = false;
+    }
+
+    private async Task DeleteEntry(Guid id)
+    {
+        try
+        {
+            await AppState.Service!.DeleteEntryAsync(id);
+            await LoadEntries();
+            Toast.Info("Entry moved to trash.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Could not delete: {ex.Message}");
+        }
+    }
+
+    private void GeneratePassword()
+    {
+        try
+        {
+            _formPassword = PasswordGen.Generate(GenPrefs.Options);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Generator: {ex.Message}");
+        }
+    }
+
+    private async Task SaveEntry()
+    {
+        _formError = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(_formSite))
+        { _formError = "Site is required."; return; }
+        if (string.IsNullOrWhiteSpace(_formPassword))
+        { _formError = "Password is required."; return; }
+
+        var tags = _formTags.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
+
+        try
+        {
+            if (_editEntry is not null)
+            {
+                await AppState.Service!.UpdateEntryAsync(_editEntry.Id, e =>
+                {
+                    var pe = (PasswordEntry)e;
+                    pe.Site = _formSite;
+                    pe.Username = _formUsername;
+                    pe.Email = _formEmail;
+                    pe.Tags = tags;
+                });
+
+                var currentPw = AppState.Service.DecryptPassword(_editEntry);
+                if (currentPw != _formPassword)
+                    await AppState.Service.ChangePasswordAsync(_editEntry.Id, _formPassword);
+
+                if (!string.IsNullOrWhiteSpace(_formTotp))
+                    await AppState.Service.SetTotpSecretAsync(_editEntry.Id, _formTotp.Trim());
+                else
+                    await AppState.Service.RemoveTotpSecretAsync(_editEntry.Id);
+            }
+            else
+            {
+                var entry = new PasswordEntry
+                {
+                    Site = _formSite,
+                    Username = _formUsername,
+                    Email = _formEmail,
+                    Tags = tags,
+                };
+
+                await AppState.Service!.AddPasswordEntryAsync(entry, _formPassword);
+
+                if (!string.IsNullOrWhiteSpace(_formTotp))
+                    await AppState.Service.SetTotpSecretAsync(entry.Id, _formTotp.Trim());
+            }
+
+            var wasEdit = _editEntry is not null;
+            CloseModal();
+            await LoadEntries();
+            Toast.Success(wasEdit ? "Entry updated." : "Entry added.");
+        }
+        catch (Exception ex)
+        {
+            _formError = $"Could not save: {ex.Message}";
+        }
+    }
+
+    private void CloseModal()
+    {
+        _showAdd = false;
+        _editEntry = null;
+        _formSite = _formUsername = _formEmail = _formPassword = _formTags = _formTotp = _formError = string.Empty;
+        _formPwVisible = false;
+    }
+
+    // ─── TOTP ────────────────────────────────────────────────────────
+
+    private void ShowTotp(PasswordEntry entry)
+    {
+        _totpEntry = entry;
+        _totpSecretCache = AppState.Service!.GetDecryptedTotpSecret(entry);
+        if (_totpSecretCache is null) { _totpEntry = null; return; }
+
+        RefreshTotpState(initial: true);
+
+        _totpTimer?.Dispose();
+        _totpTimer = new System.Threading.Timer(_ =>
+        {
+            RefreshTotpState();
+            InvokeAsync(StateHasChanged);
+        }, null, 1000, 1000);
+    }
+
+    private void RefreshTotpState(bool initial = false)
+    {
+        if (_totpSecretCache is null) return;
+        var oldCode = _totpCode;
+        _totpRemaining = TotpService.GetRemainingSeconds();
+        _totpCode = TotpService.GenerateCode(_totpSecretCache);
+        if (initial || oldCode != _totpCode)
+            _totpInitialFraction = _totpRemaining / 30.0;
+    }
+
+    private void CloseTotp()
+    {
+        _totpEntry = null;
+        _totpTimer?.Dispose();
+        _totpTimer = null;
+        _totpSecretCache = null;
+    }
+
+    private async Task CopyTotp()
+    {
+        await Clipboard.Default.SetTextAsync(_totpCode);
+        Toast.Success("TOTP code copied!");
+    }
+
+    public void Dispose()
+    {
+        _totpTimer?.Dispose();
+    }
+}

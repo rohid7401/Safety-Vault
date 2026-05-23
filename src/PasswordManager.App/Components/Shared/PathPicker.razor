@@ -1,0 +1,67 @@
+@inject FileSystemPicker Picker
+
+<div class="input-group">
+    <input type="text"
+           class="form-control"
+           value="@Value"
+           @oninput="OnTextChanged"
+           placeholder="@Placeholder" />
+    <button class="btn btn-secondary" type="button" @onclick="PickAsync" title="@ButtonTitle">
+        @ButtonIcon @ButtonLabel
+    </button>
+</div>
+
+@code {
+    public enum PickerMode { File, Folder, SaveFile }
+
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = string.Empty;
+    [Parameter] public PickerMode Mode { get; set; } = PickerMode.File;
+    [Parameter] public string[]? FileExtensions { get; set; }
+    [Parameter] public string? FilterTitle { get; set; }
+    [Parameter] public string SuggestedFileName { get; set; } = "output";
+
+    private string ButtonIcon => Mode switch
+    {
+        PickerMode.Folder => "📁",
+        PickerMode.SaveFile => "💾",
+        _ => "📎",
+    };
+
+    private string ButtonLabel => Mode switch
+    {
+        PickerMode.Folder => "Choose folder",
+        PickerMode.SaveFile => "Save as...",
+        _ => "Attach file",
+    };
+
+    private string ButtonTitle => Mode switch
+    {
+        PickerMode.Folder => "Choose a folder",
+        PickerMode.SaveFile => "Pick where to save the output",
+        _ => "Select an existing file",
+    };
+
+    private async Task OnTextChanged(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString() ?? string.Empty;
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task PickAsync()
+    {
+        string? picked = Mode switch
+        {
+            PickerMode.Folder => await Picker.PickFolderAsync(FilterTitle),
+            PickerMode.SaveFile => await Picker.SaveFileAsync(SuggestedFileName),
+            _ => await Picker.PickFileAsync(FilterTitle, FileExtensions),
+        };
+
+        if (!string.IsNullOrEmpty(picked))
+        {
+            Value = picked;
+            await ValueChanged.InvokeAsync(Value);
+        }
+    }
+}

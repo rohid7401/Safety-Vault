@@ -1,0 +1,18 @@
+@* Reserved space where a real icon will go later (Flaticon, SVG, etc.). *@
+
+<span class="icon-slot @CssClass"></span>
+
+<style>
+    .icon-slot {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+    }
+    .icon-slot.lg { width: 28px; height: 28px; }
+    .icon-slot.xl { width: 40px; height: 40px; }
+</style>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+}

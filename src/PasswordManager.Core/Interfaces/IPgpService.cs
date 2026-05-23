@@ -13,5 +13,8 @@ namespace PasswordManager.Core.Interfaces
 
         /// <summary>Decrypts Base64-encoded PGP data and returns the original string.</summary>
         string DecryptString(string encryptedBase64, string privateKeyPath, string passphrase);
+
+        /// <summary>Generates a new PGP key pair and writes armored files to disk.</summary>
+        void GenerateKeyPair(string publicKeyPath, string privateKeyPath, string passphrase);
     }
 }

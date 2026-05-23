@@ -1,0 +1,258 @@
+@page "/tutorial"
+
+<div class="page-header">
+    <h1>How PGP encryption works</h1>
+    <p>A quick walkthrough of the cryptography behind your vault</p>
+</div>
+
+<div class="tutorial-steps">
+
+    <section class="tutorial-step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+            <h2>You own a key pair</h2>
+            <p>
+                When you create an account, SecureVault generates two keys that
+                belong only to you. They are mathematically linked but never
+                interchangeable.
+            </p>
+            <div class="key-pair">
+                <div class="key-card public">
+                    <div class="key-icon">&#128275;</div>
+                    <h3>Public key</h3>
+                    <p>You can share it with anyone. It is only used to <strong>encrypt</strong> data destined for you.</p>
+                </div>
+                <div class="key-card private">
+                    <div class="key-icon">&#128272;</div>
+                    <h3>Private key</h3>
+                    <p>Keep it secret. Only this key can <strong>decrypt</strong> what was encrypted with your public key.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="tutorial-step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+            <h2>Your private key is protected by your passphrase</h2>
+            <p>
+                The private key file sitting on disk is itself encrypted with
+                your master passphrase. Without the passphrase, the file is
+                useless — even if someone copies it.
+            </p>
+            <div class="flow-diagram">
+                <span class="flow-box">passphrase</span>
+                <span class="arrow">+</span>
+                <span class="flow-box">encrypted private key file</span>
+                <span class="arrow">=</span>
+                <span class="flow-box highlight">unlocked private key</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="tutorial-step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+            <h2>Encryption flow</h2>
+            <p>
+                When someone wants to send you a file (or you want to encrypt one
+                for yourself), they take your <em>public key</em> and use it to
+                encrypt the data. The result is a PGP-armored ciphertext that only
+                your private key can open.
+            </p>
+            <div class="flow-diagram vertical">
+                <div class="flow-row">
+                    <span class="flow-box">plain file</span>
+                    <span class="arrow">&#10148;</span>
+                    <span class="flow-box accent">your public key</span>
+                    <span class="arrow">&#10148;</span>
+                    <span class="flow-box dark">encrypted .pgp</span>
+                </div>
+                <div class="flow-row">
+                    <span class="flow-box dark">encrypted .pgp</span>
+                    <span class="arrow">&#10148;</span>
+                    <span class="flow-box accent">your private key + passphrase</span>
+                    <span class="arrow">&#10148;</span>
+                    <span class="flow-box">plain file</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="tutorial-step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+            <h2>The vault file itself is a PGP-encrypted blob</h2>
+            <p>
+                Every password, note and card you save is part of a single JSON
+                file that lives encrypted on disk. SecureVault uses a hybrid
+                scheme: a strong random AES-256 key (encrypted with your PGP
+                public key) does the bulk symmetric encryption per field, and the
+                vault as a whole is PGP-wrapped on save.
+            </p>
+        </div>
+    </section>
+
+    <section class="tutorial-step">
+        <div class="step-number">5</div>
+        <div class="step-content">
+            <h2>Tips for your master passphrase</h2>
+            <ul class="tip-list">
+                <li><strong>Length wins.</strong> A 4-word passphrase like <code>caballo correcto batería grapa</code> is much stronger than <code>P@ss1!</code> and far easier to remember.</li>
+                <li><strong>Never reuse it.</strong> If a website you use is breached and you share passphrases, attackers get your vault too.</li>
+                <li><strong>Don't write it down digitally.</strong> Especially not in a text file or note inside this app. Pen and paper in a locked drawer is fine.</li>
+                <li><strong>It is not recoverable.</strong> SecureVault stores only a salted PBKDF2 hash. If you forget it, nobody — including us — can decrypt your vault.</li>
+                <li><strong>Back up the private key file.</strong> If you lose the file, the passphrase alone is useless. Copy <code>private_key.asc</code> to an offline drive.</li>
+            </ul>
+        </div>
+    </section>
+
+    <section class="tutorial-step">
+        <div class="step-number">6</div>
+        <div class="step-content">
+            <h2>The key directory</h2>
+            <p>
+                When you want to encrypt a file <strong>for someone else</strong>,
+                you need their public key. The Key Management page lets you import
+                public keys from people you trust into a local "key directory" so
+                you can encrypt files addressed to them.
+            </p>
+            <div class="actions" style="margin-top:14px;">
+                <a class="btn btn-primary" href="/keys">Open Key Management</a>
+                <a class="btn btn-secondary" href="/encrypt-file">Try encrypting a file</a>
+            </div>
+        </div>
+    </section>
+
+</div>
+
+<style>
+    .tutorial-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        max-width: 880px;
+    }
+
+    .tutorial-step {
+        display: flex;
+        gap: 18px;
+        align-items: flex-start;
+    }
+
+    .step-number {
+        flex-shrink: 0;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 0.95rem;
+    }
+
+    .step-content {
+        flex: 1;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px 24px;
+    }
+
+    .step-content h2 {
+        font-size: 1.1rem;
+        margin-bottom: 10px;
+    }
+
+    .step-content p {
+        color: var(--text-secondary);
+        font-size: 0.92rem;
+        line-height: 1.55;
+    }
+
+    .step-content p + p { margin-top: 10px; }
+
+    .key-pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-top: 16px;
+    }
+
+    .key-card {
+        padding: 16px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+    }
+
+    .key-card.public { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.4); }
+    .key-card.private { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.4); }
+
+    .key-icon { font-size: 1.6rem; margin-bottom: 6px; }
+    .key-card h3 { font-size: 0.95rem; margin-bottom: 6px; }
+    .key-card p { font-size: 0.85rem; }
+
+    .flow-diagram {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+    }
+
+    .flow-diagram.vertical {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
+    }
+
+    .flow-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .flow-box {
+        background: var(--bg-input);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 6px 12px;
+        font-size: 0.82rem;
+        color: var(--text-primary);
+    }
+
+    .flow-box.highlight { background: var(--accent); color: white; border-color: var(--accent); }
+    .flow-box.accent { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+    .flow-box.dark { background: var(--bg-primary); }
+
+    .arrow {
+        color: var(--text-muted);
+        font-size: 0.9rem;
+    }
+
+    .actions { display: flex; gap: 10px; }
+
+    .tip-list {
+        margin-top: 8px;
+        padding-left: 18px;
+        color: var(--text-secondary);
+        line-height: 1.6;
+        font-size: 0.9rem;
+    }
+    .tip-list li { margin-bottom: 6px; }
+    .tip-list strong { color: var(--text-primary); }
+    .tip-list code {
+        background: var(--bg-input);
+        padding: 1px 6px;
+        border-radius: 3px;
+        font-size: 0.82rem;
+    }
+
+    @@media (max-width: 600px) {
+        .key-pair { grid-template-columns: 1fr; }
+    }
+</style>

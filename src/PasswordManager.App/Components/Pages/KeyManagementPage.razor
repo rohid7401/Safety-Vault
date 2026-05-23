@@ -1,0 +1,518 @@
+@page "/keys"
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject IKeyDirectoryService KeyDir
+@inject FileSystemPicker Picker
+@inject ToastService Toast
+@inject KeyServerService KeyServer
+
+@if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
+
+<div class="page-header">
+    <h1>Key management</h1>
+    <p>Your PGP keys and the public keys you can encrypt files for</p>
+</div>
+
+<div class="info-card">
+    <div>
+        <strong>Tip:</strong> Your public key is safe to share. Your private key is encrypted with
+        your master passphrase — never give that file <em>plus</em> your passphrase to anyone.
+        Back up <code>private_key.asc</code> somewhere safe (e.g. a USB drive) so you can restore
+        your vault if this computer dies.
+    </div>
+</div>
+
+<h2 class="section-title">Your keys</h2>
+
+<div class="card">
+    <div class="card-header">
+        <div>
+            <div class="card-title">@(AppState.Account?.Username)</div>
+            <div class="card-subtitle">@(AppState.Account?.Email)</div>
+        </div>
+        <span class="badge badge-success">Active</span>
+    </div>
+    <div class="card-body" style="display:flex; flex-direction:column; gap:8px; font-size:0.85rem;">
+        <div>
+            <strong style="color:var(--text-primary);">Public key:</strong><br />
+            <code style="color:var(--text-secondary); font-size:0.78rem;">@OwnPublicKeyPath</code>
+        </div>
+        <div>
+            <strong style="color:var(--text-primary);">Private key:</strong><br />
+            <code style="color:var(--text-secondary); font-size:0.78rem;">@OwnPrivateKeyPath</code>
+        </div>
+    </div>
+    <div class="card-body" style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" @onclick="ExportOwnPublicKey">
+            Export my public key
+        </button>
+        <button class="btn btn-secondary btn-sm" @onclick="PublishOwnKey">
+            Add to my contact directory
+        </button>
+        <button class="btn btn-primary btn-sm" @onclick="OpenPublishToServerModal">
+            Publish to keys.openpgp.org
+        </button>
+    </div>
+</div>
+
+@* ─── Public keyserver ─── *@
+<h2 class="section-title">
+    Public keyservers
+    <InfoTooltip>
+        <strong>What is a keyserver?</strong>
+        <p style="margin:6px 0 0 0;">
+            A directory on the internet where people publish their public PGP keys so others
+            can find them by email. SecureVault uses
+            <code>keys.openpgp.org</code>, the modern verifying keyserver.
+        </p>
+        <p style="margin:6px 0 0 0;">
+            Publishing requires email confirmation (a verification link is sent to the address
+            on your key). Once verified, anyone can fetch your key by email.
+        </p>
+    </InfoTooltip>
+</h2>
+
+<div class="card" style="padding:20px;">
+    <div class="form-group">
+        <label>Search a contact's key by email</label>
+        <div class="input-group">
+            <input type="email" class="form-control" @bind="_searchEmail"
+                   placeholder="alice@example.com" />
+            <button class="btn btn-primary" @onclick="SearchKeyserver" disabled="@_searching">
+                @(_searching ? "Searching..." : "Search")
+            </button>
+        </div>
+    </div>
+
+    @if (_searchResultArmor is not null)
+    {
+        <div class="alert alert-success">
+            Found a public key for <strong>@_searchEmail</strong>.
+            <div style="margin-top:8px;">
+                <input type="text" class="form-control" @bind="_searchImportLabel"
+                       placeholder="Display name for this contact" style="margin-bottom:8px;" />
+                <button class="btn btn-primary btn-sm" @onclick="ImportSearchResult">
+                    Add to my contact directory
+                </button>
+            </div>
+        </div>
+    }
+    else if (_searchAttempted && _searchResultArmor is null && !_searching)
+    {
+        <div class="alert alert-info" style="margin-top:8px;">
+            No published key found for that email on keys.openpgp.org.
+        </div>
+    }
+</div>
+
+<h2 class="section-title">Contact directory @if (_keys is not null) { <text>(@_keys.Count)</text> }</h2>
+
+<div class="info-card subtle">
+    <div>
+        <strong>What is this?</strong> A folder of public keys belonging to people you want to
+        encrypt files <em>for</em>. The "Add to my contact directory" button above copies your own
+        public key here so you appear as a recipient when encrypting files for yourself.
+    </div>
+</div>
+
+<div style="margin-bottom:16px;">
+    <button class="btn btn-primary" @onclick="OpenImportModal">
+        Import contact key from file
+    </button>
+</div>
+
+@if (_keys is null)
+{
+    <p style="color:var(--text-muted);">Loading...</p>
+}
+else if (_keys.Count == 0)
+{
+    <div class="empty-state">
+        <IconSlot CssClass="xl" />
+        <h3>No contact keys yet</h3>
+        <p>Import a public key from someone you trust, or publish your own to encrypt files for yourself.</p>
+    </div>
+}
+else
+{
+    @foreach (var key in _keys)
+    {
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">@key.OwnerLabel</div>
+                    <div class="card-subtitle">Fingerprint: <code>@key.Fingerprint</code></div>
+                </div>
+                <button class="btn btn-danger btn-sm" @onclick="() => RemoveKey(key.FileName)">Delete</button>
+            </div>
+            <div class="card-body" style="font-size:0.78rem;">
+                <code style="color:var(--text-muted);">@key.FullPath</code>
+            </div>
+        </div>
+    }
+}
+
+@* ─── Import modal ─── *@
+@if (_showImport)
+{
+    <div class="modal-backdrop" @onclick="CloseImportModal">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>Import a contact public key</h2>
+
+            <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:14px;">
+                Pick the <code>.asc</code> file your contact gave you and choose a display name.
+            </p>
+
+            <div class="form-group">
+                <label>Display name</label>
+                <input type="text" class="form-control" @bind="_importLabel"
+                       placeholder="Alice Johnson" />
+            </div>
+
+            <div class="form-group">
+                <label>Public key file</label>
+                <PathPicker Value="@_importKeyPath"
+                            ValueChanged="@(v => _importKeyPath = v)"
+                            Mode="PathPicker.PickerMode.File"
+                            FileExtensions="@_ascExtensions"
+                            FilterTitle="Select a public key file"
+                            Placeholder="C:\Users\jane\Downloads\alice_public.asc" />
+                <small style="color:var(--text-muted);">Supported extensions: .asc, .pub, .gpg, .pgp, .key, .txt</small>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_importError))
+            {
+                <div class="alert alert-danger">@_importError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" @onclick="CloseImportModal">Cancel</button>
+                <button class="btn btn-primary" @onclick="ImportKey" disabled="@_importing">
+                    @(_importing ? "Importing..." : "Import")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ─── Publish-to-server modal ─── *@
+@if (_showPublishToServer)
+{
+    <div class="modal-backdrop" @onclick="ClosePublishModal">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>Publish your public key to keys.openpgp.org</h2>
+
+            <p style="color:var(--text-secondary); font-size:0.85rem; line-height:1.55;">
+                Your public key will be uploaded so people can find it by email. After uploading,
+                keys.openpgp.org will send a verification email to <strong>@(AppState.Account?.Email)</strong>.
+                Click the link in that email to make your key searchable.
+            </p>
+            <p style="color:var(--text-secondary); font-size:0.85rem; line-height:1.55; margin-top:8px;">
+                <strong style="color:var(--text-primary);">This action only uploads the PUBLIC key.</strong>
+                Your private key never leaves your device.
+            </p>
+
+            @if (_publishResult is not null)
+            {
+                <div class="alert alert-success">
+                    Upload accepted. Fingerprint: <code>@_publishResult.KeyFingerprint</code>.
+                    Check your email and click the verification link.
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_publishError))
+            {
+                <div class="alert alert-danger">@_publishError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" @onclick="ClosePublishModal">Cancel</button>
+                @if (_publishResult is null)
+                {
+                    <button class="btn btn-primary" @onclick="PublishToServer" disabled="@_publishing">
+                        @(_publishing ? "Uploading..." : "Upload my key")
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="ClosePublishModal">Done</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .section-title {
+        font-size: 0.95rem;
+        color: var(--text-secondary);
+        margin-top: 28px;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        display: flex;
+        align-items: center;
+    }
+
+    .info-card {
+        background: rgba(108, 99, 255, 0.08);
+        border: 1px solid rgba(108, 99, 255, 0.3);
+        border-radius: var(--radius-sm);
+        padding: 14px 16px;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        margin-bottom: 16px;
+        line-height: 1.5;
+    }
+    .info-card.subtle {
+        background: rgba(255,255,255,0.03);
+        border-color: var(--border);
+    }
+    .info-card strong { color: var(--text-primary); }
+</style>
+
+@code {
+    private List<PgpKeyInfo>? _keys;
+
+    // Import modal
+    private bool _showImport;
+    private bool _importing;
+    private string _importLabel = string.Empty;
+    private string _importKeyPath = string.Empty;
+    private string _importError = string.Empty;
+    private readonly string[] _ascExtensions = new[] { ".asc", ".pub", ".gpg", ".pgp", ".key", ".txt" };
+
+    // Keyserver search
+    private string _searchEmail = string.Empty;
+    private string? _searchResultArmor;
+    private string _searchImportLabel = string.Empty;
+    private bool _searching;
+    private bool _searchAttempted;
+
+    // Keyserver publish
+    private bool _showPublishToServer;
+    private bool _publishing;
+    private string _publishError = string.Empty;
+    private KeyServerService.UploadResult? _publishResult;
+
+    private string OwnPublicKeyPath =>
+        AppState.Account is null ? "" : Path.Combine(AppState.Account.VaultPath, "public_key.asc");
+    private string OwnPrivateKeyPath =>
+        AppState.Account is null ? "" : Path.Combine(AppState.Account.VaultPath, "private_key.asc");
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        if (AppState.Account is null) return;
+        try
+        {
+            _keys = await KeyDir.ListKeysAsync(AppState.Account.VaultPath);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Could not load key directory: {ex.Message}");
+            _keys = new List<PgpKeyInfo>();
+        }
+    }
+
+    private async Task PublishOwnKey()
+    {
+        if (AppState.Account is null) return;
+        if (!File.Exists(OwnPublicKeyPath))
+        { Toast.Error("Your public key file is missing on disk."); return; }
+        try
+        {
+            await KeyDir.PublishOwnKeyAsync(AppState.Account.VaultPath, OwnPublicKeyPath,
+                $"{AppState.Account.Username} (me)");
+            Toast.Success("Your public key is now in your contact directory.");
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Could not publish your key: {ex.Message}");
+        }
+    }
+
+    private async Task ExportOwnPublicKey()
+    {
+        if (!File.Exists(OwnPublicKeyPath))
+        { Toast.Error("Your public key file is missing on disk."); return; }
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(OwnPublicKeyPath);
+            var savedTo = await Picker.SaveFileAsync(
+                $"{AppState.Account!.Username}_public_key.asc", bytes);
+            if (!string.IsNullOrEmpty(savedTo))
+                Toast.Success($"Exported public key to {savedTo}");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Export failed: {ex.Message}");
+        }
+    }
+
+    private void OpenImportModal()
+    {
+        _importLabel = _importKeyPath = _importError = string.Empty;
+        _showImport = true;
+    }
+
+    private void CloseImportModal()
+    {
+        _showImport = false;
+        _importError = string.Empty;
+    }
+
+    private async Task ImportKey()
+    {
+        _importError = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(_importLabel))
+        { _importError = "Display name is required."; return; }
+        if (string.IsNullOrWhiteSpace(_importKeyPath))
+        { _importError = "Pick the public key file."; return; }
+        if (!File.Exists(_importKeyPath))
+        { _importError = $"File not found: {_importKeyPath}"; return; }
+
+        _importing = true;
+        StateHasChanged();
+        try
+        {
+            await KeyDir.ImportKeyAsync(AppState.Account!.VaultPath, _importKeyPath, _importLabel);
+            _showImport = false;
+            Toast.Success($"Imported '{_importLabel}' into your contact directory.");
+            await Reload();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            _importError = "Permission denied while reading the file. Check folder access.";
+        }
+        catch (Exception ex)
+        {
+            _importError = $"Import failed: {ex.Message}";
+        }
+        finally
+        {
+            _importing = false;
+        }
+    }
+
+    private async Task RemoveKey(string fileName)
+    {
+        try
+        {
+            await KeyDir.RemoveKeyAsync(AppState.Account!.VaultPath, fileName);
+            Toast.Success("Key removed.");
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Could not remove key: {ex.Message}");
+        }
+    }
+
+    // ─── Keyserver search ────────────────────────────────────────────
+
+    private async Task SearchKeyserver()
+    {
+        _searchAttempted = true;
+        _searchResultArmor = null;
+        _searchImportLabel = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(_searchEmail) || !_searchEmail.Contains('@'))
+        { Toast.Warning("Enter a valid email address."); return; }
+
+        _searching = true;
+        StateHasChanged();
+        try
+        {
+            _searchResultArmor = await KeyServer.SearchByEmailAsync(_searchEmail);
+            if (_searchResultArmor is not null)
+                _searchImportLabel = _searchEmail;
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            _searching = false;
+        }
+    }
+
+    private async Task ImportSearchResult()
+    {
+        if (_searchResultArmor is null || AppState.Account is null) return;
+        if (string.IsNullOrWhiteSpace(_searchImportLabel))
+        { Toast.Warning("Choose a display name for this contact."); return; }
+
+        try
+        {
+            // Save to a temp file, then import
+            var temp = Path.Combine(Path.GetTempPath(), $"keyserver_{Guid.NewGuid():N}.asc");
+            await File.WriteAllTextAsync(temp, _searchResultArmor);
+            await KeyDir.ImportKeyAsync(AppState.Account.VaultPath, temp, _searchImportLabel);
+            File.Delete(temp);
+
+            Toast.Success($"Added {_searchImportLabel} to your contact directory.");
+            _searchResultArmor = null;
+            _searchEmail = _searchImportLabel = string.Empty;
+            _searchAttempted = false;
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Import failed: {ex.Message}");
+        }
+    }
+
+    // ─── Keyserver publish ───────────────────────────────────────────
+
+    private void OpenPublishToServerModal()
+    {
+        _publishResult = null;
+        _publishError = string.Empty;
+        _showPublishToServer = true;
+    }
+
+    private void ClosePublishModal()
+    {
+        _showPublishToServer = false;
+        _publishError = string.Empty;
+    }
+
+    private async Task PublishToServer()
+    {
+        _publishError = string.Empty;
+        if (!File.Exists(OwnPublicKeyPath))
+        { _publishError = "Public key file is missing."; return; }
+
+        _publishing = true;
+        StateHasChanged();
+        try
+        {
+            var armored = await File.ReadAllTextAsync(OwnPublicKeyPath);
+            _publishResult = await KeyServer.UploadAsync(armored);
+
+            // Request verification email for our address
+            if (AppState.Account is not null && !string.IsNullOrEmpty(AppState.Account.Email)
+                && _publishResult.EmailStatuses.Any(e => e.Email.Equals(AppState.Account.Email, StringComparison.OrdinalIgnoreCase)))
+            {
+                try
+                {
+                    await KeyServer.RequestVerifyAsync(_publishResult.Token, new[] { AppState.Account.Email });
+                }
+                catch { /* best effort */ }
+            }
+        }
+        catch (Exception ex)
+        {
+            _publishError = ex.Message;
+        }
+        finally
+        {
+            _publishing = false;
+        }
+    }
+}

@@ -1,0 +1,109 @@
+@page "/dashboard"
+@inject AppState AppState
+@inject NavigationManager Nav
+
+@if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
+
+<div class="page-header">
+    <h1>Welcome back, @(AppState.Account?.Username ?? "user")</h1>
+    <p>What would you like to do today?</p>
+</div>
+
+<div class="dashboard-grid">
+    @foreach (var tile in _tiles)
+    {
+        <a class="dashboard-tile" href="@tile.Route">
+            <div class="tile-icon" style="background:@tile.IconBg;">
+                <IconSlot CssClass="lg" />
+            </div>
+            <div class="tile-title">@tile.Title</div>
+            <div class="tile-desc">@tile.Description</div>
+        </a>
+    }
+</div>
+
+<style>
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 16px;
+        margin-top: 8px;
+    }
+
+    .dashboard-tile {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+        text-decoration: none;
+        color: var(--text-primary);
+        transition: all 0.18s;
+        display: block;
+    }
+
+    .dashboard-tile:hover {
+        border-color: var(--accent);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+
+    .tile-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 14px;
+    }
+
+    .tile-title { font-weight: 600; font-size: 1rem; margin-bottom: 4px; }
+    .tile-desc { font-size: 0.82rem; color: var(--text-secondary); line-height: 1.4; }
+</style>
+
+@code {
+    private record Tile(string Title, string Description, string Route, string IconBg);
+
+    private readonly List<Tile> _tiles = new()
+    {
+        new("How PGP works",
+            "Quick tutorial on public/private keys and how encryption flows.",
+            "/tutorial", "rgba(99,102,241,0.18)"),
+
+        new("Key management",
+            "Generate, import, export and publish public keys.",
+            "/keys", "rgba(245,158,11,0.18)"),
+
+        new("Encrypt files",
+            "Encrypt or decrypt individual files using PGP.",
+            "/encrypt-file", "rgba(34,197,94,0.18)"),
+
+        new("Encrypt directories",
+            "Compress and encrypt an entire folder into a single PGP file.",
+            "/encrypt-directory", "rgba(59,130,246,0.18)"),
+
+        new("Passwords",
+            "Store login credentials with TOTP 2FA support.",
+            "/vault", "rgba(108,99,255,0.18)"),
+
+        new("Secure notes",
+            "Encrypted free-form text for confidential information.",
+            "/vault/notes", "rgba(236,72,153,0.18)"),
+
+        new("Cards",
+            "Save credit and debit card details with encryption.",
+            "/vault/cards", "rgba(20,184,166,0.18)"),
+
+        new("Password generator",
+            "Cryptographically strong passwords with configurable rules.",
+            "/generator", "rgba(168,85,247,0.18)"),
+
+        new("Vault audit",
+            "Detect weak, reused or expired credentials.",
+            "/audit", "rgba(239,68,68,0.18)"),
+
+        new("Import / export",
+            "Migrate from other password managers via CSV or Bitwarden JSON.",
+            "/import-export", "rgba(251,146,60,0.18)"),
+    };
+}

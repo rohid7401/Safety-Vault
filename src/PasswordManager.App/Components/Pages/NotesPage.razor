@@ -1,0 +1,176 @@
+@page "/vault/notes"
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject ToastService Toast
+
+@if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
+
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+        <h1>Secure Notes</h1>
+        <p>@_entries.Count notes stored</p>
+    </div>
+    <button class="btn btn-primary" @onclick="() => _showAdd = true">Add note</button>
+</div>
+
+@if (_entries.Count == 0)
+{
+    <div class="empty-state">
+        <IconSlot CssClass="xl" />
+        <h3>No secure notes</h3>
+        <p>Add encrypted notes to keep sensitive information safe.</p>
+    </div>
+}
+else
+{
+    @foreach (var note in _entries)
+    {
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">@note.Title</div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="btn btn-secondary btn-sm" @onclick="() => ToggleReveal(note.Id)">
+                        @(_revealed.Contains(note.Id) ? "Hide" : "Show")
+                    </button>
+                    <button class="btn btn-secondary btn-sm" @onclick="() => EditNote(note)">Edit</button>
+                    <button class="btn btn-danger btn-sm" @onclick="() => DeleteNote(note.Id)">Delete</button>
+                </div>
+            </div>
+            @if (_revealed.Contains(note.Id))
+            {
+                <div class="card-body">
+                    <pre style="white-space:pre-wrap; font-size:0.85rem; color:var(--text-primary);">@AppState.Service!.DecryptField(note.Content)</pre>
+                </div>
+            }
+            @if (note.Tags.Count > 0)
+            {
+                <div class="tag-group" style="margin-top:8px;">
+                    @foreach (var tag in note.Tags) { <span class="tag">@tag</span> }
+                </div>
+            }
+        </div>
+    }
+}
+
+@if (_showAdd || _editNote is not null)
+{
+    <div class="modal-backdrop" @onclick="CloseModal">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>@(_editNote is not null ? "Edit Note" : "Add Secure Note")</h2>
+
+            <div class="form-group">
+                <label>Title</label>
+                <input type="text" class="form-control" @bind="_formTitle"
+                       placeholder="Recovery codes for Google" />
+            </div>
+
+            <div class="form-group">
+                <label>Content</label>
+                <textarea class="form-control" rows="6" @bind="_formContent"
+                          placeholder="Backup recovery codes:&#10;1234-5678&#10;9012-3456"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Tags (comma separated)</label>
+                <input type="text" class="form-control" @bind="_formTags"
+                       placeholder="2fa, backup" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(_formError))
+            {
+                <div class="alert alert-danger">@_formError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                <button class="btn btn-primary" @onclick="SaveNote">Save</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<SecureNote> _entries = new();
+    private HashSet<Guid> _revealed = new();
+
+    private bool _showAdd;
+    private SecureNote? _editNote;
+    private string _formTitle = string.Empty;
+    private string _formContent = string.Empty;
+    private string _formTags = string.Empty;
+    private string _formError = string.Empty;
+
+    protected override async Task OnInitializedAsync() => await LoadEntries();
+
+    private async Task LoadEntries()
+    {
+        _entries = await AppState.Service!.GetEntriesAsync<SecureNote>();
+    }
+
+    private void ToggleReveal(Guid id) { if (!_revealed.Remove(id)) _revealed.Add(id); }
+
+    private void EditNote(SecureNote note)
+    {
+        _editNote = note;
+        _formTitle = note.Title;
+        _formContent = AppState.Service!.DecryptField(note.Content);
+        _formTags = string.Join(", ", note.Tags);
+    }
+
+    private async Task DeleteNote(Guid id)
+    {
+        try
+        {
+            await AppState.Service!.DeleteEntryAsync(id);
+            await LoadEntries();
+            Toast.Info("Note moved to trash.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Could not delete: {ex.Message}");
+        }
+    }
+
+    private async Task SaveNote()
+    {
+        _formError = string.Empty;
+        if (string.IsNullOrWhiteSpace(_formTitle)) { _formError = "Title is required."; return; }
+
+        var tags = _formTags.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
+
+        try
+        {
+            if (_editNote is not null)
+            {
+                await AppState.Service!.UpdateEntryAsync(_editNote.Id, e =>
+                {
+                    var n = (SecureNote)e;
+                    n.Title = _formTitle;
+                    n.Tags = tags;
+                });
+            }
+            else
+            {
+                var note = new SecureNote { Title = _formTitle, Tags = tags };
+                await AppState.Service!.AddSecureNoteAsync(note, _formContent);
+            }
+
+            var wasEdit = _editNote is not null;
+            CloseModal();
+            await LoadEntries();
+            Toast.Success(wasEdit ? "Note updated." : "Note saved.");
+        }
+        catch (Exception ex)
+        {
+            _formError = $"Could not save: {ex.Message}";
+        }
+    }
+
+    private void CloseModal()
+    {
+        _showAdd = false;
+        _editNote = null;
+        _formTitle = _formContent = _formTags = _formError = string.Empty;
+    }
+}

@@ -1,0 +1,89 @@
+@* Hover-over (i) icon that reveals contextual help. *@
+
+<span class="info-tooltip-wrap" tabindex="0">
+    <span class="info-tooltip-trigger">i</span>
+    <span class="info-tooltip-bubble">
+        @ChildContent
+    </span>
+</span>
+
+<style>
+    .info-tooltip-wrap {
+        position: relative;
+        display: inline-flex;
+        margin-left: 6px;
+        cursor: help;
+        vertical-align: middle;
+        outline: none;
+    }
+
+    .info-tooltip-trigger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: white;
+        font-size: 0.7rem;
+        font-weight: 700;
+        font-style: italic;
+        font-family: Georgia, serif;
+        user-select: none;
+    }
+
+    .info-tooltip-bubble {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        color: var(--text-secondary);
+        width: 280px;
+        max-width: 90vw;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.15s, visibility 0.15s;
+        z-index: 50;
+        white-space: normal;
+        text-align: left;
+        pointer-events: none;
+    }
+
+    .info-tooltip-bubble::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -6px;
+        border: 6px solid transparent;
+        border-top-color: var(--border);
+    }
+
+    .info-tooltip-wrap:hover .info-tooltip-bubble,
+    .info-tooltip-wrap:focus .info-tooltip-bubble {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .info-tooltip-bubble strong { color: var(--text-primary); }
+    .info-tooltip-bubble ul { margin: 4px 0 0 0; padding-left: 16px; }
+    .info-tooltip-bubble li { margin-bottom: 3px; }
+    .info-tooltip-bubble code {
+        background: var(--bg-input);
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-size: 0.78rem;
+    }
+</style>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

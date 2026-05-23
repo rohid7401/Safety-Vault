@@ -1,0 +1,164 @@
+@page "/vault/cards"
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject ToastService Toast
+
+@if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
+
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+        <h1>Cards</h1>
+        <p>@_entries.Count cards stored</p>
+    </div>
+    <button class="btn btn-primary" @onclick="() => _showAdd = true">Add card</button>
+</div>
+
+@if (_entries.Count == 0)
+{
+    <div class="empty-state">
+        <IconSlot CssClass="xl" />
+        <h3>No cards saved</h3>
+        <p>Store your credit and debit card information securely.</p>
+    </div>
+}
+else
+{
+    @foreach (var card in _entries)
+    {
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">@card.CardholderName</div>
+                    <div class="card-subtitle">Expires @card.ExpiryMonth.ToString("D2")/@card.ExpiryYear</div>
+                </div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="btn btn-secondary btn-sm" @onclick="() => ToggleReveal(card.Id)">
+                        @(_revealed.Contains(card.Id) ? "Hide" : "Show")
+                    </button>
+                    <button class="btn btn-danger btn-sm" @onclick="() => DeleteCard(card.Id)">Delete</button>
+                </div>
+            </div>
+            @if (_revealed.Contains(card.Id))
+            {
+                <div class="card-body">
+                    <p>Number: <span class="password-value">@AppState.Service!.DecryptField(card.CardNumber)</span></p>
+                    <p>CVV: <span class="password-value">@AppState.Service!.DecryptField(card.Cvv)</span></p>
+                </div>
+            }
+            else
+            {
+                <div class="card-body">
+                    <p>Number: <span class="password-masked">•••• •••• •••• ••••</span></p>
+                    <p>CVV: <span class="password-masked">•••</span></p>
+                </div>
+            }
+        </div>
+    }
+}
+
+@if (_showAdd)
+{
+    <div class="modal-backdrop" @onclick="() => _showAdd = false">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>Add Card</h2>
+
+            <div class="form-group">
+                <label>Cardholder Name</label>
+                <input type="text" class="form-control" @bind="_formName"
+                       placeholder="JANE M DOE" />
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Card Number</label>
+                    <input type="text" class="form-control" @bind="_formNumber" placeholder="1234 5678 9012 3456" />
+                </div>
+                <div class="form-group">
+                    <label>CVV</label>
+                    <input type="text" class="form-control" @bind="_formCvv" placeholder="123" />
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Expiry Month</label>
+                    <input type="number" class="form-control" @bind="_formMonth" min="1" max="12" />
+                </div>
+                <div class="form-group">
+                    <label>Expiry Year</label>
+                    <input type="number" class="form-control" @bind="_formYear" min="2024" max="2040" />
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_formError))
+            {
+                <div class="alert alert-danger">@_formError</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" @onclick="() => _showAdd = false">Cancel</button>
+                <button class="btn btn-primary" @onclick="SaveCard">Add</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CardEntry> _entries = new();
+    private HashSet<Guid> _revealed = new();
+    private bool _showAdd;
+
+    private string _formName = string.Empty;
+    private string _formNumber = string.Empty;
+    private string _formCvv = string.Empty;
+    private int _formMonth = 1;
+    private int _formYear = 2025;
+    private string _formError = string.Empty;
+
+    protected override async Task OnInitializedAsync() =>
+        _entries = await AppState.Service!.GetEntriesAsync<CardEntry>();
+
+    private void ToggleReveal(Guid id) { if (!_revealed.Remove(id)) _revealed.Add(id); }
+
+    private async Task DeleteCard(Guid id)
+    {
+        try
+        {
+            await AppState.Service!.DeleteEntryAsync(id);
+            _entries = await AppState.Service.GetEntriesAsync<CardEntry>();
+            Toast.Info("Card moved to trash.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Could not delete card: {ex.Message}");
+        }
+    }
+
+    private async Task SaveCard()
+    {
+        _formError = string.Empty;
+        if (string.IsNullOrWhiteSpace(_formName) || string.IsNullOrWhiteSpace(_formNumber))
+        { _formError = "Name and card number are required."; return; }
+
+        try
+        {
+            var card = new CardEntry
+            {
+                CardholderName = _formName,
+                ExpiryMonth = _formMonth,
+                ExpiryYear = _formYear,
+            };
+
+            await AppState.Service!.AddCardEntryAsync(card, _formNumber.Replace(" ", ""), _formCvv);
+
+            _showAdd = false;
+            _formName = _formNumber = _formCvv = _formError = string.Empty;
+            _entries = await AppState.Service.GetEntriesAsync<CardEntry>();
+            Toast.Success("Card saved.");
+        }
+        catch (Exception ex)
+        {
+            _formError = $"Could not save: {ex.Message}";
+        }
+    }
+}

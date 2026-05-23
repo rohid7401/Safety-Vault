@@ -1,0 +1,288 @@
+@page "/"
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject IAesService AesService
+@inject IPgpService PgpService
+@inject IAuthService AuthService
+@inject ToastService Toast
+
+<div class="unlock-container">
+    <div class="unlock-card">
+        <h1>SecureVault</h1>
+        <p class="subtitle">Local-first, PGP-encrypted vault</p>
+
+        <div class="tab-bar">
+            <button class="tab-btn @(_tab == Tab.Login ? "active" : "")"
+                    @onclick="() => SwitchTab(Tab.Login)">
+                Sign in
+            </button>
+            <button class="tab-btn @(_tab == Tab.Register ? "active" : "")"
+                    @onclick="() => SwitchTab(Tab.Register)">
+                Create account
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        @if (!string.IsNullOrEmpty(_info))
+        {
+            <div class="alert alert-info">@_info</div>
+        }
+
+        @if (_tab == Tab.Login)
+        {
+            <div class="form-group">
+                <label>Username or email</label>
+                <input type="text" class="form-control" @bind="_loginIdentity"
+                       placeholder="jane.doe  or  jane@example.com" />
+            </div>
+
+            <div class="form-group">
+                <label>
+                    Master passphrase
+                    <InfoTooltip>
+                        <strong>Your master passphrase</strong>
+                        <ul>
+                            <li>Encrypts your private PGP key on disk.</li>
+                            <li>Can not be recovered — losing it = losing the vault.</li>
+                            <li>Stored only as a salted PBKDF2-SHA256 hash.</li>
+                        </ul>
+                    </InfoTooltip>
+                </label>
+                <PasswordField @bind-Value="_loginPassphrase"
+                               Placeholder="esta_es_mi_frase_maestra"
+                               OnEnter="HandleLogin" />
+            </div>
+
+            <button class="btn btn-primary" style="width:100%; margin-top:8px;"
+                    @onclick="HandleLogin" disabled="@_loading">
+                @(_loading ? "Signing in..." : "Sign in")
+            </button>
+
+            @if (_knownUsers.Count > 0)
+            {
+                <div class="known-users">
+                    Existing accounts on this device: @string.Join(", ", _knownUsers)
+                </div>
+            }
+        }
+        else
+        {
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" class="form-control" @bind="_regUsername"
+                       placeholder="jane.doe" />
+            </div>
+
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" class="form-control" @bind="_regEmail"
+                       placeholder="jane@example.com" />
+            </div>
+
+            <div class="form-group">
+                <label>
+                    Master passphrase
+                    <InfoTooltip>
+                        <strong>Choose carefully — this is the only key to your vault</strong>
+                        <ul>
+                            <li>Use 4+ random words or 16+ mixed characters.</li>
+                            <li>Don't reuse it on websites — if those leak, your vault leaks too.</li>
+                            <li>It is not recoverable. Lose it = lose every password.</li>
+                            <li>Stored only as a salted PBKDF2-SHA256 hash.</li>
+                            <li>It also encrypts your private PGP key — back up <code>private_key.asc</code>.</li>
+                        </ul>
+                    </InfoTooltip>
+                </label>
+                <PasswordField @bind-Value="_regPassphrase"
+                               Placeholder="caballo_correcto_batería_grapa" />
+                <small class="hint">Minimum 8 characters.</small>
+            </div>
+
+            <div class="form-group">
+                <label>Confirm passphrase</label>
+                <PasswordField @bind-Value="_regPassphraseConfirm"
+                               Placeholder="repite_la_frase_anterior" />
+            </div>
+
+            <button class="btn btn-primary" style="width:100%; margin-top:8px;"
+                    @onclick="HandleRegister" disabled="@_loading">
+                @(_loading ? "Creating account..." : "Create account")
+            </button>
+
+            <small class="hint" style="display:block; margin-top:12px; text-align:center;">
+                Your vault is created automatically in this device's app data folder.
+            </small>
+        }
+    </div>
+</div>
+
+<style>
+    .tab-bar {
+        display: flex;
+        gap: 4px;
+        background: var(--bg-input);
+        border-radius: var(--radius-sm);
+        padding: 4px;
+        margin-bottom: 24px;
+    }
+    .tab-btn {
+        flex: 1;
+        padding: 8px 12px;
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 500;
+        transition: all 0.15s;
+    }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active { background: var(--accent); color: white; }
+
+    .hint { color: var(--text-muted); font-size: 0.78rem; display: block; margin-top: 4px; }
+
+    .known-users {
+        margin-top: 16px;
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        text-align: center;
+    }
+
+    .form-group label { display: flex; align-items: center; }
+</style>
+
+@code {
+    private enum Tab { Login, Register }
+
+    private Tab _tab = Tab.Login;
+
+    private string _loginIdentity = string.Empty;
+    private string _loginPassphrase = string.Empty;
+
+    private string _regUsername = string.Empty;
+    private string _regEmail = string.Empty;
+    private string _regPassphrase = string.Empty;
+    private string _regPassphraseConfirm = string.Empty;
+
+    private string _error = string.Empty;
+    private string _info = string.Empty;
+    private bool _loading;
+
+    private List<string> _knownUsers = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AppState.IsUnlocked)
+        {
+            Nav.NavigateTo("dashboard");
+            return;
+        }
+
+        try
+        {
+            _knownUsers = await AuthService.ListUsernamesAsync();
+            if (_knownUsers.Count == 0)
+                _tab = Tab.Register;
+        }
+        catch { }
+    }
+
+    private void SwitchTab(Tab tab)
+    {
+        _tab = tab;
+        _error = string.Empty;
+        _info = string.Empty;
+    }
+
+    private async Task HandleLogin()
+    {
+        _error = string.Empty;
+        _info = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(_loginIdentity))
+        { _error = "Enter your username or email."; return; }
+        if (string.IsNullOrWhiteSpace(_loginPassphrase))
+        { _error = "Enter your master passphrase."; return; }
+
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            var account = await AuthService.LoginAsync(_loginIdentity, _loginPassphrase);
+            await UnlockVaultAsync(account, _loginPassphrase);
+            Nav.NavigateTo("dashboard");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not unlock vault: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task HandleRegister()
+    {
+        _error = string.Empty;
+        _info = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(_regUsername))
+        { _error = "Username is required."; return; }
+        if (string.IsNullOrWhiteSpace(_regEmail) || !_regEmail.Contains('@'))
+        { _error = "A valid email is required."; return; }
+        if (string.IsNullOrWhiteSpace(_regPassphrase) || _regPassphrase.Length < 8)
+        { _error = "Passphrase must be at least 8 characters."; return; }
+        if (_regPassphrase != _regPassphraseConfirm)
+        { _error = "Passphrases do not match."; return; }
+
+        _loading = true;
+        _info = "Generating your PGP key pair... this can take a few seconds.";
+        StateHasChanged();
+        await Task.Yield();
+
+        try
+        {
+            var account = await AuthService.RegisterAsync(_regUsername, _regEmail, _regPassphrase);
+            await UnlockVaultAsync(account, _regPassphrase);
+            Toast.Success("Welcome to SecureVault!");
+            Nav.NavigateTo("dashboard");
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message; _info = string.Empty;
+        }
+        catch (ArgumentException ex)
+        {
+            _error = ex.Message; _info = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Unexpected error: {ex.Message}"; _info = string.Empty;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task UnlockVaultAsync(PasswordManager.Core.Models.UserAccount account, string passphrase)
+    {
+        var options = new VaultOptions
+        {
+            DataFolderPath = account.VaultPath,
+            Passphrase = passphrase,
+        };
+        var repo = new PasswordManager.Infrastructure.Persistence.PgpVaultRepository(PgpService, options);
+        var service = await PasswordManagerService.CreateAsync(repo, AesService, PgpService, options);
+        AppState.Unlock(account, service);
+    }
+}

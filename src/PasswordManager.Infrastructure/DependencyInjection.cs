@@ -12,47 +12,29 @@ namespace PasswordManager.Infrastructure
     public static class DependencyInjection
     {
         /// <summary>
-        /// Registers all password manager services. Call Configure&lt;VaultOptions&gt; before this,
-        /// or pass an Action to configure inline.
+        /// Registers all password manager services. Pass an action to configure AuthOptions
+        /// (typically the app data path).
         /// </summary>
         public static IServiceCollection AddPasswordManager(
             this IServiceCollection services,
-            Action<VaultOptions>? configure = null)
+            Action<AuthOptions>? configureAuth = null)
         {
-            if (configure is not null)
-                services.Configure(configure);
+            var authOptions = new AuthOptions();
+            configureAuth?.Invoke(authOptions);
+            services.AddSingleton(authOptions);
 
             services.AddSingleton<IAesService, AesService>();
             services.AddSingleton<IPgpService, PgpService>();
-
-            services.AddSingleton<IVaultRepository>(sp =>
-            {
-                var options = sp.GetRequiredService<IOptions<VaultOptions>>().Value;
-                var pgp = sp.GetRequiredService<IPgpService>();
-                return new PgpVaultRepository(pgp, options);
-            });
 
             services.AddSingleton<IPasswordGenerator, PasswordGenerator>();
             services.AddSingleton<ITotpService, TotpService>();
             services.AddSingleton<IImportExportService, ImportExportService>();
             services.AddSingleton<IVaultAuditor, VaultAuditor>();
+            services.AddSingleton<IAuthService, AuthService>();
+            services.AddSingleton<IFileEncryptionService, FileEncryptionService>();
+            services.AddSingleton<IKeyDirectoryService, KeyDirectoryService>();
 
             return services;
-        }
-
-        /// <summary>
-        /// Creates and initializes a PasswordManagerService from the DI container.
-        /// Call this during app startup after building the ServiceProvider.
-        /// </summary>
-        public static async Task<PasswordManagerService> CreatePasswordManagerAsync(
-            this IServiceProvider sp)
-        {
-            var options = sp.GetRequiredService<IOptions<VaultOptions>>().Value;
-            return await PasswordManagerService.CreateAsync(
-                sp.GetRequiredService<IVaultRepository>(),
-                sp.GetRequiredService<IAesService>(),
-                sp.GetRequiredService<IPgpService>(),
-                options);
         }
     }
 }

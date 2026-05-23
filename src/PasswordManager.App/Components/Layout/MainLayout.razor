@@ -1,0 +1,141 @@
+@inherits LayoutComponentBase
+@inject AppState AppState
+@inject NavigationManager Nav
+@implements IDisposable
+
+<ToastHost />
+
+@if (!AppState.IsUnlocked)
+{
+    <ErrorBoundary>
+        <ChildContent>@Body</ChildContent>
+        <ErrorContent Context="ex">
+            <div class="unlock-container">
+                <div class="unlock-card">
+                    <h1 style="color: var(--danger);">Something went wrong</h1>
+                    <div class="alert alert-danger" style="margin-top:14px;">@ex.Message</div>
+                    <button class="btn btn-primary" style="width:100%; margin-top:12px;" @onclick="Reload">
+                        Reload
+                    </button>
+                </div>
+            </div>
+        </ErrorContent>
+    </ErrorBoundary>
+}
+else
+{
+    <div class="app-shell">
+        <nav class="sidebar">
+            <div class="sidebar-brand">
+                <h2>SecureVault</h2>
+                <small>@(AppState.Account?.Username) &middot; @(AppState.Account?.Email)</small>
+            </div>
+
+            <div class="sidebar-nav">
+                <div class="nav-section">
+                    <NavLink class="nav-link" href="dashboard" Match="NavLinkMatch.All">
+                        <IconSlot />
+                        <span>Dashboard</span>
+                    </NavLink>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">Learn</div>
+                    <NavLink class="nav-link" href="tutorial">
+                        <IconSlot />
+                        <span>PGP Tutorial</span>
+                    </NavLink>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">Keys &amp; Files</div>
+                    <NavLink class="nav-link" href="keys">
+                        <IconSlot />
+                        <span>Key Management</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="encrypt-file">
+                        <IconSlot />
+                        <span>Encrypt Files</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="encrypt-directory">
+                        <IconSlot />
+                        <span>Encrypt Directories</span>
+                    </NavLink>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">Vault</div>
+                    <NavLink class="nav-link" href="vault">
+                        <IconSlot />
+                        <span>Passwords</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="vault/notes">
+                        <IconSlot />
+                        <span>Secure Notes</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="vault/cards">
+                        <IconSlot />
+                        <span>Cards</span>
+                    </NavLink>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">Tools</div>
+                    <NavLink class="nav-link" href="generator">
+                        <IconSlot />
+                        <span>Generator</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="audit">
+                        <IconSlot />
+                        <span>Audit</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="import-export">
+                        <IconSlot />
+                        <span>Import/Export</span>
+                    </NavLink>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <button class="btn-lock" @onclick="LockVault">
+                    Lock vault
+                </button>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <ErrorBoundary @ref="_boundary">
+                <ChildContent>@Body</ChildContent>
+                <ErrorContent Context="ex">
+                    <div class="alert alert-danger" style="margin-bottom:14px;">
+                        <strong>Something went wrong on this page:</strong><br />
+                        @ex.Message
+                    </div>
+                    <button class="btn btn-secondary btn-sm" @onclick="ResetBoundary">Try again</button>
+                </ErrorContent>
+            </ErrorBoundary>
+        </main>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        AppState.OnStateChanged += StateHasChanged;
+    }
+
+    private void LockVault()
+    {
+        AppState.Lock();
+        Nav.NavigateTo("/");
+    }
+
+    public void Dispose()
+    {
+        AppState.OnStateChanged -= StateHasChanged;
+    }
+
+    private ErrorBoundary? _boundary;
+    private void ResetBoundary() => _boundary?.Recover();
+    private void Reload() => Nav.NavigateTo(Nav.Uri, forceLoad: true);
+}

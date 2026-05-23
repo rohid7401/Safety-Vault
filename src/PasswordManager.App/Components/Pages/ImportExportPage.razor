@@ -1,0 +1,151 @@
+@page "/import-export"
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject IImportExportService ImportExport
+
+@if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
+
+<div class="page-header">
+    <h1>Import / Export</h1>
+    <p>Transfer passwords between vaults and password managers</p>
+</div>
+
+<div class="grid-2">
+    @* ─── Export ─── *@
+    <div class="card" style="padding:24px;">
+        <h2 style="font-size:1.1rem; margin-bottom:12px;">Export</h2>
+        <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:16px;">
+            Export your passwords to CSV format. The exported file contains plaintext passwords.
+        </p>
+
+        <button class="btn btn-primary" @onclick="ExportCsv" disabled="@_exporting">
+            @(_exporting ? "Exporting..." : "Export to CSV")
+        </button>
+
+        @if (!string.IsNullOrEmpty(_exportResult))
+        {
+            <div class="alert alert-success" style="margin-top:12px;">@_exportResult</div>
+        }
+    </div>
+
+    @* ─── Import ─── *@
+    <div class="card" style="padding:24px;">
+        <h2 style="font-size:1.1rem; margin-bottom:12px;">Import</h2>
+        <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:16px;">
+            Import from CSV or Bitwarden JSON export.
+        </p>
+
+        <div class="form-group">
+            <label>Format</label>
+            <select class="form-control" @bind="_importFormat">
+                <option value="csv">CSV</option>
+                <option value="bitwarden">Bitwarden JSON</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>File Path</label>
+            <PathPicker Value="@_importFilePath"
+                        ValueChanged="@(v => _importFilePath = v)"
+                        Mode="PathPicker.PickerMode.File"
+                        FileExtensions="@_importExtensions"
+                        Placeholder="C:\Users\jane\Downloads\bitwarden_export.json" />
+        </div>
+
+        <button class="btn btn-primary" @onclick="ImportFile" disabled="@_importing">
+            @(_importing ? "Importing..." : "Import")
+        </button>
+
+        @if (!string.IsNullOrEmpty(_importResult))
+        {
+            <div class="alert @(_importError ? "alert-danger" : "alert-success")" style="margin-top:12px;">
+                @_importResult
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool _exporting;
+    private string _exportResult = string.Empty;
+
+    private bool _importing;
+    private string _importFormat = "csv";
+    private string _importFilePath = string.Empty;
+    private string _importResult = string.Empty;
+    private bool _importError;
+    private readonly string[] _importExtensions = new[] { ".csv", ".json", ".txt" };
+
+    private async Task ExportCsv()
+    {
+        _exporting = true;
+        _exportResult = string.Empty;
+        StateHasChanged();
+
+        try
+        {
+            var portable = await AppState.Service!.ExportPasswordEntriesAsync();
+            var csv = ImportExport.ExportToCsv(portable);
+
+            var exportPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                $"vault_export_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+
+            await File.WriteAllTextAsync(exportPath, csv);
+            _exportResult = $"Exported {portable.Count} entries to {exportPath}";
+        }
+        catch (Exception ex)
+        {
+            _exportResult = $"Export failed: {ex.Message}";
+        }
+        finally
+        {
+            _exporting = false;
+        }
+    }
+
+    private async Task ImportFile()
+    {
+        _importing = true;
+        _importResult = string.Empty;
+        _importError = false;
+        StateHasChanged();
+
+        try
+        {
+            if (!File.Exists(_importFilePath))
+            {
+                _importResult = "File not found.";
+                _importError = true;
+                return;
+            }
+
+            var content = await File.ReadAllTextAsync(_importFilePath);
+            List<PortableEntry> entries;
+
+            if (_importFormat == "bitwarden")
+                entries = ImportExport.ImportFromBitwardenJson(content);
+            else
+                entries = ImportExport.ImportFromCsv(content);
+
+            if (entries.Count == 0)
+            {
+                _importResult = "No entries found in the file.";
+                _importError = true;
+                return;
+            }
+
+            await AppState.Service!.ImportPasswordEntriesAsync(entries);
+            _importResult = $"Successfully imported {entries.Count} entries.";
+        }
+        catch (Exception ex)
+        {
+            _importResult = $"Import failed: {ex.Message}";
+            _importError = true;
+        }
+        finally
+        {
+            _importing = false;
+        }
+    }
+}
