@@ -1,7 +1,14 @@
-@* Interim glyph slot. Swap the emoji for a real icon set (Flaticon, SVG) later
-   without touching call sites. *@
+@* Legacy glyph slot: now delegates to the SVG Icon set. Unmapped glyphs
+   fall back to rendering the raw emoji so old call sites never break. *@
 
-<span class="icon-slot @CssClass" aria-hidden="true">@Glyph</span>
+@if (_iconName is not null)
+{
+    <span class="icon-slot @CssClass" aria-hidden="true"><Icon Name="@_iconName" Size="@_size" StrokeWidth="1.8" /></span>
+}
+else
+{
+    <span class="icon-slot @CssClass" aria-hidden="true">@Glyph</span>
+}
 
 <style>
     .icon-slot {
@@ -13,6 +20,7 @@
         flex-shrink: 0;
         font-size: 1.15rem;
         line-height: 1;
+        color: var(--a-400);
     }
     .icon-slot.lg { width: 28px; height: 28px; font-size: 1.6rem; }
     .icon-slot.xl { width: 40px; height: 40px; font-size: 2.2rem; }
@@ -21,4 +29,33 @@
 @code {
     [Parameter] public string CssClass { get; set; } = string.Empty;
     [Parameter] public string Glyph { get; set; } = string.Empty;
+
+    private string? _iconName;
+    private int _size = 18;
+
+    private static readonly Dictionary<string, string> GlyphMap = new()
+    {
+        ["🏠"] = "home",
+        ["📘"] = "book",
+        ["🔐"] = "lock-keyhole",
+        ["🔑"] = "key",
+        ["💳"] = "card",
+        ["📝"] = "note",
+        ["🔒"] = "lock",
+        ["🎲"] = "refresh",
+        ["🛡️"] = "shield",
+        ["🔄"] = "swap",
+        ["📄"] = "file",
+        ["📁"] = "folder",
+        ["🔍"] = "search",
+        ["📋"] = "copy",
+        ["👤"] = "user",
+        ["👥"] = "users",
+    };
+
+    protected override void OnParametersSet()
+    {
+        _iconName = GlyphMap.TryGetValue(Glyph, out var n) ? n : null;
+        _size = CssClass.Contains("xl") ? 40 : CssClass.Contains("lg") ? 28 : 18;
+    }
 }

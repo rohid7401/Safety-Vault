@@ -8,15 +8,20 @@
 
 <div class="unlock-container">
     <div class="unlock-card">
-        <h1>SecureVault</h1>
-        <p class="subtitle">Local-first, PGP-encrypted vault</p>
+        <div class="unlock-hero">
+            <div class="unlock-hero-icon">
+                <Icon Name="lock-keyhole" Size="30" StrokeWidth="1.8" />
+            </div>
+            <h1>SecureVault</h1>
+            <p class="subtitle">Your private vault. It lives only on this device — nobody else can read it.</p>
+        </div>
 
-        <div class="tab-bar">
-            <button class="tab-btn @(_tab == Tab.Login ? "active" : "")"
+        <div class="seg" style="margin-bottom:22px;">
+            <button class="seg-opt @(_tab == Tab.Login ? "active" : "")" type="button"
                     @onclick="() => SwitchTab(Tab.Login)">
                 Sign in
             </button>
-            <button class="tab-btn @(_tab == Tab.Register ? "active" : "")"
+            <button class="seg-opt @(_tab == Tab.Register ? "active" : "")" type="button"
                     @onclick="() => SwitchTab(Tab.Register)">
                 Create account
             </button>
@@ -33,30 +38,31 @@
 
         @if (_tab == Tab.Login)
         {
-            <div class="form-group">
+            <div class="field">
                 <label>Username or email</label>
-                <input type="text" class="form-control" @bind="_loginIdentity"
-                       placeholder="jane.doe  or  jane@example.com" />
+                <input type="text" class="input" @bind="_loginIdentity"
+                       placeholder="jane.doe  ·  jane@example.com" />
             </div>
 
-            <div class="form-group">
-                <label>
+            <div class="field" style="margin-bottom:8px;">
+                <label style="display:flex; align-items:center; gap:8px;">
                     Master passphrase
-                    <InfoTooltip>
-                        <strong>Your master passphrase</strong>
-                        <ul>
-                            <li>Encrypts your private PGP key on disk.</li>
-                            <li>Can not be recovered — losing it = losing the vault.</li>
-                            <li>Stored only as a salted PBKDF2-SHA256 hash.</li>
-                        </ul>
-                    </InfoTooltip>
+                    <button class="info-dot" type="button" aria-label="What is this"
+                            @onclick="() => _showWhatIs = !_showWhatIs">i</button>
                 </label>
                 <PasswordField @bind-Value="_loginPassphrase"
-                               Placeholder="esta_es_mi_frase_maestra"
+                               Placeholder="the-one-phrase-you-remember"
                                OnEnter="HandleLogin" />
             </div>
+            @if (_showWhatIs)
+            {
+                <div class="explainer-box" style="margin-bottom:8px;">
+                    This is the one phrase that unlocks everything. We never store it and
+                    it can't be recovered — so pick something you'll remember.
+                </div>
+            }
 
-            <button class="btn btn-primary" style="width:100%; margin-top:8px;"
+            <button class="btn btn-primary btn-block btn-lg" style="margin-top:14px;"
                     @onclick="HandleLogin" disabled="@_loading">
                 @(_loading ? "Signing in..." : "Sign in")
             </button>
@@ -70,44 +76,44 @@
         }
         else
         {
-            <div class="form-group">
+            <div class="field">
                 <label>Username</label>
-                <input type="text" class="form-control" @bind="_regUsername"
+                <input type="text" class="input" @bind="_regUsername"
                        placeholder="jane.doe" />
             </div>
 
-            <div class="form-group">
+            <div class="field">
                 <label>Email</label>
-                <input type="email" class="form-control" @bind="_regEmail"
+                <input type="email" class="input" @bind="_regEmail"
                        placeholder="jane@example.com" />
             </div>
 
-            <div class="form-group">
-                <label>
+            <div class="field" style="margin-bottom:8px;">
+                <label style="display:flex; align-items:center; gap:8px;">
                     Master passphrase
-                    <InfoTooltip>
-                        <strong>Choose carefully — this is the only key to your vault</strong>
-                        <ul>
-                            <li>Use 4+ random words or 16+ mixed characters.</li>
-                            <li>Don't reuse it on websites — if those leak, your vault leaks too.</li>
-                            <li>It is not recoverable. Lose it = lose every password.</li>
-                            <li>Stored only as a salted PBKDF2-SHA256 hash.</li>
-                            <li>It also encrypts your private PGP key — back up <code>private_key.asc</code>.</li>
-                        </ul>
-                    </InfoTooltip>
+                    <button class="info-dot" type="button" aria-label="What is this"
+                            @onclick="() => _showWhatIs = !_showWhatIs">i</button>
                 </label>
                 <PasswordField @bind-Value="_regPassphrase"
-                               Placeholder="caballo_correcto_batería_grapa" />
-                <small class="hint">Minimum 8 characters.</small>
+                               Placeholder="the-one-phrase-you-remember" />
+                <small class="hint">Minimum 8 characters — use 4+ random words or 16+ mixed characters.</small>
             </div>
+            @if (_showWhatIs)
+            {
+                <div class="explainer-box" style="margin-bottom:8px;">
+                    This is the one phrase that unlocks everything. It also encrypts your
+                    private PGP key. It can't be recovered — losing it means losing the
+                    vault — so pick something strong you'll remember.
+                </div>
+            }
 
-            <div class="form-group">
+            <div class="field">
                 <label>Confirm passphrase</label>
                 <PasswordField @bind-Value="_regPassphraseConfirm"
-                               Placeholder="repite_la_frase_anterior" />
+                               Placeholder="repeat-the-phrase-above" />
             </div>
 
-            <button class="btn btn-primary" style="width:100%; margin-top:8px;"
+            <button class="btn btn-primary btn-block btn-lg" style="margin-top:14px;"
                     @onclick="HandleRegister" disabled="@_loading">
                 @(_loading ? "Creating account..." : "Create account")
             </button>
@@ -116,68 +122,44 @@
                 Your vault is created automatically in this device's app data folder.
             </small>
         }
+
+        <div class="unlock-footer">
+            <Icon Name="lock" Size="13" />
+            <span>Offline · end-to-end encrypted · stays on your device</span>
+        </div>
     </div>
 </div>
 
-@if (_showRestore)
-{
-    <div class="modal-backdrop">
-        <div class="modal" style="width:440px;">
-            <h2 style="color:var(--warning);">Vault integrity check failed</h2>
-            <div class="alert alert-warning">@_restoreError</div>
-            <p style="color:var(--text-secondary); font-size:0.88rem; line-height:1.55;">
-                The current vault could not be verified — it may have been modified or
-                corrupted. A known-good backup from your previous save is available.
-                Restoring will replace the current vault with that backup.
-            </p>
-            @if (!string.IsNullOrEmpty(_restoreFailure))
-            {
-                <div class="alert alert-danger">@_restoreFailure</div>
-            }
-            <div class="modal-actions">
-                <button class="btn btn-secondary" @onclick="CancelRestore">Cancel</button>
-                <button class="btn btn-primary" @onclick="ConfirmRestore" disabled="@_restoring">
-                    @(_restoring ? "Restoring..." : "Restore from backup")
-                </button>
-            </div>
-        </div>
-    </div>
-}
+<SheetModal Visible="_showRestore" Title="Vault integrity check failed" OnClose="CancelRestore">
+    <ChildContent>
+        <div class="alert alert-warning">@_restoreError</div>
+        <p style="color:var(--n-400); font-size:13px; line-height:1.55;">
+            The current vault could not be verified — it may have been modified or
+            corrupted. A known-good backup from your previous save is available.
+            Restoring will replace the current vault with that backup.
+        </p>
+        @if (!string.IsNullOrEmpty(_restoreFailure))
+        {
+            <div class="alert alert-danger">@_restoreFailure</div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="CancelRestore">Cancel</button>
+        <button class="btn btn-primary" @onclick="ConfirmRestore" disabled="@_restoring">
+            @(_restoring ? "Restoring..." : "Restore from backup")
+        </button>
+    </FooterContent>
+</SheetModal>
 
 <style>
-    .tab-bar {
-        display: flex;
-        gap: 4px;
-        background: var(--bg-input);
-        border-radius: var(--radius-sm);
-        padding: 4px;
-        margin-bottom: 24px;
-    }
-    .tab-btn {
-        flex: 1;
-        padding: 8px 12px;
-        background: transparent;
-        border: none;
-        color: var(--text-secondary);
-        border-radius: var(--radius-sm);
-        cursor: pointer;
-        font-size: 0.85rem;
-        font-weight: 500;
-        transition: all 0.15s;
-    }
-    .tab-btn:hover { color: var(--text-primary); }
-    .tab-btn.active { background: var(--accent); color: white; }
-
-    .hint { color: var(--text-muted); font-size: 0.78rem; display: block; margin-top: 4px; }
+    .hint { color: var(--n-500); font-size: 12px; display: block; margin-top: 4px; }
 
     .known-users {
         margin-top: 16px;
-        font-size: 0.78rem;
-        color: var(--text-muted);
+        font-size: 12px;
+        color: var(--n-500);
         text-align: center;
     }
-
-    .form-group label { display: flex; align-items: center; }
 </style>
 
 @code {
@@ -196,6 +178,7 @@
     private string _error = string.Empty;
     private string _info = string.Empty;
     private bool _loading;
+    private bool _showWhatIs;
 
     private List<string> _knownUsers = new();
 

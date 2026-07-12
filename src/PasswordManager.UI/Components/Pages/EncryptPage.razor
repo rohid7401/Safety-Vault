@@ -4,54 +4,30 @@
 
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
-<div class="page-header">
-    <h1>Encrypt / decrypt</h1>
-    <p>Protect files with PGP — for yourself or to share with a contact</p>
+<div style="margin-bottom:14px;">
+    <WhatsThisPill FeatureKey="encrypt" />
 </div>
 
-<div class="grid-2">
-    <div class="choice-card" @onclick='() => Nav.NavigateTo("/encrypt-file")' role="button" tabindex="0">
-        <IconSlot CssClass="xl" Glyph="📄" />
-        <h2>Files</h2>
-        <p>Encrypt or decrypt individual files with PGP. Works on every platform, phones included.</p>
-        <span class="choice-go">Open →</span>
-    </div>
-
-    <div class="choice-card" @onclick='() => Nav.NavigateTo("/encrypt-directory")' role="button" tabindex="0">
-        <div class="choice-head">
-            <IconSlot CssClass="xl" Glyph="📁" />
-            <span class="badge badge-muted">Desktop</span>
+<div class="dash-list">
+    <button class="dash-row" type="button" @onclick='() => Nav.NavigateTo("/encrypt-file")'>
+        <div class="entry-icon lg">
+            <Icon Name="file" Size="17" StrokeWidth="1.8" />
         </div>
-        <h2>Directories</h2>
-        <p>Zip and encrypt a whole folder into a single file. Desktop only — phones don't grant apps
-           full folder access.</p>
-        <span class="choice-go">Open →</span>
-    </div>
-</div>
+        <div class="dash-row-text">
+            <div class="dash-row-label">Encrypt files</div>
+            <div class="dash-row-desc">Lock or unlock individual files with PGP. Works on every platform, phones included.</div>
+        </div>
+        <span class="dash-row-chevron"><Icon Name="chevron-right" Size="18" /></span>
+    </button>
 
-<style>
-    .choice-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 24px;
-        cursor: pointer;
-        transition: border-color .15s, transform .15s;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-    .choice-card:hover { border-color: var(--accent); transform: translateY(-2px); }
-    .choice-card h2 { font-size: 1.15rem; margin: 4px 0 0 0; }
-    .choice-card p { color: var(--text-secondary); font-size: 0.85rem; line-height: 1.5; flex: 1; }
-    .choice-head { display: flex; align-items: center; justify-content: space-between; }
-    .choice-go { color: var(--accent); font-weight: 600; font-size: 0.9rem; }
-    .badge-muted {
-        background: rgba(255,255,255,0.08);
-        color: var(--text-secondary);
-        border: 1px solid var(--border);
-        font-size: 0.7rem;
-        padding: 2px 8px;
-        border-radius: 999px;
-    }
-</style>
+    <button class="dash-row" type="button" @onclick='() => Nav.NavigateTo("/encrypt-directory")'>
+        <div class="entry-icon lg">
+            <Icon Name="folder" Size="17" StrokeWidth="1.8" />
+        </div>
+        <div class="dash-row-text">
+            <div class="dash-row-label">Encrypt directories <span class="tag" style="margin-left:6px;">Desktop</span></div>
+            <div class="dash-row-desc">Zip and lock a whole folder into a single file. Desktop only — phones don't grant apps full folder access.</div>
+        </div>
+        <span class="dash-row-chevron"><Icon Name="chevron-right" Size="18" /></span>
+    </button>
+</div>

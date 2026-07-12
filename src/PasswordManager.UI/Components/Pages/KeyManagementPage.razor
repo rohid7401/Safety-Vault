@@ -8,23 +8,22 @@
 
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
-<div class="page-header">
-    <h1>Key management</h1>
-    <p>Your PGP keys and the public keys you can encrypt files for</p>
+<div style="margin-bottom:14px;">
+    <WhatsThisPill FeatureKey="keys" />
 </div>
 
-<div class="info-card">
-    <div>
-        <strong>Tip:</strong> Your public key is safe to share. Your private key is encrypted with
-        your master passphrase — never give that file <em>plus</em> your passphrase to anyone.
-        Back up <code>private_key.asc</code> somewhere safe (e.g. a USB drive) so you can restore
-        your vault if this computer dies.
-    </div>
+<div class="hint-row" style="margin-top:0; margin-bottom:16px;">
+    <Icon Name="info" Size="15" />
+    <span>
+        Your public key is safe to share. Your private key is encrypted with your master
+        passphrase — never give that file <em>plus</em> your passphrase to anyone. Back up
+        <code>private_key.asc</code> somewhere safe.
+    </span>
 </div>
 
-<h2 class="section-title">Your keys</h2>
+<div class="dash-group-title" style="margin:0 2px 8px;">Your keys</div>
 
-<div class="card">
+<div class="card" style="gap:12px;">
     <div class="card-header">
         <div>
             <div class="card-title">@(AppState.Account?.Username)</div>
@@ -32,31 +31,29 @@
         </div>
         <span class="badge badge-success">Active</span>
     </div>
-    <div class="card-body" style="display:flex; flex-direction:column; gap:8px; font-size:0.85rem;">
-        <div>
-            <strong style="color:var(--text-primary);">Public key:</strong><br />
-            <code style="color:var(--text-secondary); font-size:0.78rem;">@OwnPublicKeyPath</code>
-        </div>
-        <div>
-            <strong style="color:var(--text-primary);">Private key:</strong><br />
-            <code style="color:var(--text-secondary); font-size:0.78rem;">@OwnPrivateKeyPath</code>
-        </div>
+    <div class="key-row">
+        <span class="pill pill-public">Public</span>
+        <span class="key-name">@OwnPublicKeyPath</span>
     </div>
-    <div class="card-body" style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button class="btn btn-secondary btn-sm" @onclick="ExportOwnPublicKey">
-            Export my public key
-        </button>
-        <button class="btn btn-secondary btn-sm" @onclick="PublishOwnKey">
+    <div class="key-row">
+        <span class="pill pill-private">Private</span>
+        <span class="key-name">@OwnPrivateKeyPath · kept secret</span>
+    </div>
+    <button class="btn btn-primary btn-block" @onclick="ExportOwnPublicKey">
+        Share my public key
+    </button>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" style="flex:1;" @onclick="PublishOwnKey">
             Add to my contact directory
         </button>
-        <button class="btn btn-primary btn-sm" @onclick="OpenPublishToServerModal">
+        <button class="btn btn-secondary btn-sm" style="flex:1;" @onclick="OpenPublishToServerModal">
             Publish to keys.openpgp.org
         </button>
     </div>
 </div>
 
 @* ─── Public keyserver ─── *@
-<h2 class="section-title">
+<div class="dash-group-title" style="margin:22px 2px 8px; display:flex; align-items:center; gap:6px;">
     Public keyservers
     <InfoTooltip>
         <strong>What is a keyserver?</strong>
@@ -70,13 +67,13 @@
             on your key). Once verified, anyone can fetch your key by email.
         </p>
     </InfoTooltip>
-</h2>
+</div>
 
-<div class="card" style="padding:20px;">
-    <div class="form-group">
+<div class="card" style="gap:10px;">
+    <div class="field" style="margin-bottom:0;">
         <label>Search a contact's key by email</label>
         <div class="input-group">
-            <input type="email" class="form-control" @bind="_searchEmail"
+            <input type="email" class="input" @bind="_searchEmail"
                    placeholder="alice@example.com" />
             <button class="btn btn-primary" @onclick="SearchKeyserver" disabled="@_searching">
                 @(_searching ? "Searching..." : "Search")
@@ -86,10 +83,10 @@
 
     @if (_searchResultArmor is not null)
     {
-        <div class="alert alert-success">
+        <div class="alert alert-success" style="margin-bottom:0;">
             Found a public key for <strong>@_searchEmail</strong>.
             <div style="margin-top:8px;">
-                <input type="text" class="form-control" @bind="_searchImportLabel"
+                <input type="text" class="input" @bind="_searchImportLabel"
                        placeholder="Display name for this contact" style="margin-bottom:8px;" />
                 <button class="btn btn-primary btn-sm" @onclick="ImportSearchResult">
                     Add to my contact directory
@@ -99,36 +96,34 @@
     }
     else if (_searchAttempted && _searchResultArmor is null && !_searching)
     {
-        <div class="alert alert-info" style="margin-top:8px;">
+        <div class="alert alert-info" style="margin-bottom:0;">
             No published key found for that email on keys.openpgp.org.
         </div>
     }
 </div>
 
-<h2 class="section-title">Contact directory @if (_keys is not null) { <text>(@_keys.Count)</text> }</h2>
-
-<div class="info-card subtle">
-    <div>
-        <strong>What is this?</strong> A folder of public keys belonging to people you want to
-        encrypt files <em>for</em>. The "Add to my contact directory" button above copies your own
-        public key here so you appear as a recipient when encrypting files for yourself.
-    </div>
+<div class="dash-group-title" style="margin:22px 2px 8px;">
+    Contact directory @if (_keys is not null) { <text>(@_keys.Count)</text> }
 </div>
 
-<div style="margin-bottom:16px;">
-    <button class="btn btn-primary" @onclick="OpenImportModal">
-        Import contact key from file
+<div class="card" style="gap:10px;">
+    <p style="margin:0; font-size:13px; color:var(--n-300); line-height:1.5;">
+        Public keys of people you can send locked files to. "Add to my contact directory"
+        above copies your own public key here so you can encrypt files for yourself.
+    </p>
+    <button class="btn btn-secondary btn-block" @onclick="OpenImportModal">
+        Import a contact's key
     </button>
 </div>
 
 @if (_keys is null)
 {
-    <p style="color:var(--text-muted);">Loading...</p>
+    <p style="color:var(--n-500);">Loading...</p>
 }
 else if (_keys.Count == 0)
 {
     <div class="empty-state">
-        <IconSlot CssClass="xl" />
+        <div class="icon-circle"><Icon Name="users" Size="30" StrokeWidth="1.8" /></div>
         <h3>No contact keys yet</h3>
         <p>Import a public key from someone you trust, or publish your own to encrypt files for yourself.</p>
     </div>
@@ -138,138 +133,105 @@ else
     @foreach (var key in _keys)
     {
         <div class="card">
-            <div class="card-header">
-                <div>
-                    <div class="card-title">@key.OwnerLabel</div>
-                    <div class="card-subtitle">Fingerprint: <code>@key.Fingerprint</code></div>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div class="entry-icon">
+                    <Icon Name="key" Size="15" StrokeWidth="1.8" />
                 </div>
-                <button class="btn btn-danger btn-sm" @onclick="() => RemoveKey(key.FileName)">Delete</button>
-            </div>
-            <div class="card-body" style="font-size:0.78rem;">
-                <code style="color:var(--text-muted);">@key.FullPath</code>
-            </div>
-        </div>
-    }
-}
-
-@* ─── Import modal ─── *@
-@if (_showImport)
-{
-    <div class="modal-backdrop" @onclick="CloseImportModal">
-        <div class="modal" @onclick:stopPropagation="true">
-            <h2>Import a contact public key</h2>
-
-            <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:14px;">
-                Pick the <code>.asc</code> file your contact gave you and choose a display name.
-            </p>
-
-            <div class="form-group">
-                <label>Display name</label>
-                <input type="text" class="form-control" @bind="_importLabel"
-                       placeholder="Alice Johnson" />
-            </div>
-
-            <div class="form-group">
-                <label>Public key file</label>
-                <PathPicker Value="@_importKeyPath"
-                            ValueChanged="@(v => _importKeyPath = v)"
-                            Mode="PathPicker.PickerMode.File"
-                            FileExtensions="@_ascExtensions"
-                            FilterTitle="Select a public key file"
-                            Placeholder="C:\Users\jane\Downloads\alice_public.asc" />
-                <small style="color:var(--text-muted);">Supported extensions: .asc, .pub, .gpg, .pgp, .key, .txt</small>
-            </div>
-
-            @if (!string.IsNullOrEmpty(_importError))
-            {
-                <div class="alert alert-danger">@_importError</div>
-            }
-
-            <div class="modal-actions">
-                <button class="btn btn-secondary" @onclick="CloseImportModal">Cancel</button>
-                <button class="btn btn-primary" @onclick="ImportKey" disabled="@_importing">
-                    @(_importing ? "Importing..." : "Import")
+                <div style="flex:1; min-width:0;">
+                    <div class="card-title">@key.OwnerLabel</div>
+                    <div class="card-subtitle" style="word-break:break-all;">Fingerprint: <code>@key.Fingerprint</code></div>
+                </div>
+                <button class="btn-icon" type="button" aria-label="Delete" style="color:var(--danger);"
+                        @onclick="() => RemoveKey(key.FileName)">
+                    <Icon Name="trash" Size="16" StrokeWidth="1.8" />
                 </button>
             </div>
-        </div>
-    </div>
-}
-
-@* ─── Publish-to-server modal ─── *@
-@if (_showPublishToServer)
-{
-    <div class="modal-backdrop" @onclick="ClosePublishModal">
-        <div class="modal" @onclick:stopPropagation="true">
-            <h2>Publish your public key to keys.openpgp.org</h2>
-
-            <p style="color:var(--text-secondary); font-size:0.85rem; line-height:1.55;">
-                Your public key will be uploaded so people can find it by email. After uploading,
-                keys.openpgp.org will send a verification email to <strong>@(AppState.Account?.Email)</strong>.
-                Click the link in that email to make your key searchable.
-            </p>
-            <p style="color:var(--text-secondary); font-size:0.85rem; line-height:1.55; margin-top:8px;">
-                <strong style="color:var(--text-primary);">This action only uploads the PUBLIC key.</strong>
-                Your private key never leaves your device.
-            </p>
-
-            @if (_publishResult is not null)
-            {
-                <div class="alert alert-success">
-                    Upload accepted. Fingerprint: <code>@_publishResult.KeyFingerprint</code>.
-                    Check your email and click the verification link.
-                </div>
-            }
-
-            @if (!string.IsNullOrEmpty(_publishError))
-            {
-                <div class="alert alert-danger">@_publishError</div>
-            }
-
-            <div class="modal-actions">
-                <button class="btn btn-secondary" @onclick="ClosePublishModal">Cancel</button>
-                @if (_publishResult is null)
-                {
-                    <button class="btn btn-primary" @onclick="PublishToServer" disabled="@_publishing">
-                        @(_publishing ? "Uploading..." : "Upload my key")
-                    </button>
-                }
-                else
-                {
-                    <button class="btn btn-primary" @onclick="ClosePublishModal">Done</button>
-                }
+            <div class="key-row">
+                <span class="key-name">@key.FullPath</span>
             </div>
         </div>
-    </div>
+    }
 }
 
+@* ─── Import sheet ─── *@
+<SheetModal Visible="_showImport" Title="Import a contact public key" OnClose="CloseImportModal">
+    <ChildContent>
+        <p style="color:var(--n-400); font-size:13px; margin-bottom:14px;">
+            Pick the <code>.asc</code> file your contact gave you and choose a display name.
+        </p>
+
+        <div class="field">
+            <label>Display name</label>
+            <input type="text" class="input" @bind="_importLabel"
+                   placeholder="Alice Johnson" />
+        </div>
+
+        <div class="field">
+            <label>Public key file</label>
+            <PathPicker Value="@_importKeyPath"
+                        ValueChanged="@(v => _importKeyPath = v)"
+                        Mode="PathPicker.PickerMode.File"
+                        FileExtensions="@_ascExtensions"
+                        FilterTitle="Select a public key file"
+                        Placeholder="C:\Users\jane\Downloads\alice_public.asc" />
+            <small style="color:var(--n-500); font-size:12px;">Supported extensions: .asc, .pub, .gpg, .pgp, .key, .txt</small>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_importError))
+        {
+            <div class="alert alert-danger">@_importError</div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="CloseImportModal">Cancel</button>
+        <button class="btn btn-primary" @onclick="ImportKey" disabled="@_importing">
+            @(_importing ? "Importing..." : "Import")
+        </button>
+    </FooterContent>
+</SheetModal>
+
+@* ─── Publish-to-server sheet ─── *@
+<SheetModal Visible="_showPublishToServer" Title="Publish to keys.openpgp.org" OnClose="ClosePublishModal">
+    <ChildContent>
+        <p style="color:var(--n-400); font-size:13px; line-height:1.55;">
+            Your public key will be uploaded so people can find it by email. After uploading,
+            keys.openpgp.org will send a verification email to <strong>@(AppState.Account?.Email)</strong>.
+            Click the link in that email to make your key searchable.
+        </p>
+        <p style="color:var(--n-400); font-size:13px; line-height:1.55; margin-top:8px;">
+            <strong style="color:var(--color-text);">This action only uploads the PUBLIC key.</strong>
+            Your private key never leaves your device.
+        </p>
+
+        @if (_publishResult is not null)
+        {
+            <div class="alert alert-success" style="margin-top:10px;">
+                Upload accepted. Fingerprint: <code style="word-break:break-all;">@_publishResult.KeyFingerprint</code>.
+                Check your email and click the verification link.
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(_publishError))
+        {
+            <div class="alert alert-danger" style="margin-top:10px;">@_publishError</div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="ClosePublishModal">Cancel</button>
+        @if (_publishResult is null)
+        {
+            <button class="btn btn-primary" @onclick="PublishToServer" disabled="@_publishing">
+                @(_publishing ? "Uploading..." : "Upload my key")
+            </button>
+        }
+        else
+        {
+            <button class="btn btn-primary" @onclick="ClosePublishModal">Done</button>
+        }
+    </FooterContent>
+</SheetModal>
+
 <style>
-    .section-title {
-        font-size: 0.95rem;
-        color: var(--text-secondary);
-        margin-top: 28px;
-        margin-bottom: 12px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        display: flex;
-        align-items: center;
-    }
-
-    .info-card {
-        background: rgba(108, 99, 255, 0.08);
-        border: 1px solid rgba(108, 99, 255, 0.3);
-        border-radius: var(--radius-sm);
-        padding: 14px 16px;
-        font-size: 0.85rem;
-        color: var(--text-secondary);
-        margin-bottom: 16px;
-        line-height: 1.5;
-    }
-    .info-card.subtle {
-        background: rgba(255,255,255,0.03);
-        border-color: var(--border);
-    }
-    .info-card strong { color: var(--text-primary); }
-
     /* Long file paths / fingerprints must wrap inside the card in portrait,
        instead of overflowing horizontally. */
     .card code { word-break: break-all; overflow-wrap: anywhere; }

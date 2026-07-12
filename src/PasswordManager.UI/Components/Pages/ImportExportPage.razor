@@ -7,91 +7,88 @@
 
 @if (AppState.Service is null || AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
-<div class="page-header">
-    <h1>Import / Export</h1>
-    <p>Back up your vault, or transfer passwords between password managers</p>
+<div style="margin-bottom:14px;">
+    <WhatsThisPill FeatureKey="import-export" />
 </div>
 
-<div class="grid-2">
-    @* ─── Export ─── *@
-    <div class="card" style="padding:24px;">
-        <h2 style="font-size:1.1rem; margin-bottom:12px;">Export</h2>
-        <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:16px;">
-            An <strong>encrypted backup</strong> can only be opened by you, with your master passphrase.
-            <strong>Plaintext CSV</strong> exposes every password in the clear — use it only to migrate
-            into another password manager.
-        </p>
+@* ─── Import ─── *@
+<div class="card" style="gap:10px;">
+    <div class="card-title">Bring passwords in</div>
+    <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.5;">
+        Move from another password app using a CSV, an encrypted backup, or a Bitwarden JSON export.
+    </p>
 
-        <div class="form-group">
-            <label>Format</label>
-            <select class="form-control" @bind="_exportMode">
-                <option value="encrypted">Encrypted backup (.csv.pgp) — recommended</option>
-                <option value="plaintext">Plaintext CSV — for other apps</option>
-            </select>
-        </div>
-
-        @if (_exportMode == "plaintext")
-        {
-            <div class="alert alert-danger" style="margin-bottom:12px;">
-                ⚠ This file will contain all your passwords in plaintext. Store it somewhere safe and
-                delete it right after importing elsewhere.
-            </div>
-        }
-
-        <button class="btn btn-primary" @onclick="ExportVault" disabled="@_exporting">
-            @(_exporting ? "Exporting..." : "Export")
-        </button>
-
-        @if (!string.IsNullOrEmpty(_exportResult))
-        {
-            <div class="alert @(_exportError ? "alert-danger" : "alert-success")" style="margin-top:12px;">@_exportResult</div>
-        }
+    <div class="field" style="margin-bottom:0;">
+        <label>Format</label>
+        <select class="input" @bind="_importFormat">
+            <option value="csv">CSV / encrypted backup</option>
+            <option value="bitwarden">Bitwarden JSON</option>
+        </select>
     </div>
 
-    @* ─── Import ─── *@
-    <div class="card" style="padding:24px;">
-        <h2 style="font-size:1.1rem; margin-bottom:12px;">Import</h2>
-        <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:16px;">
-            Import an encrypted backup, a plaintext CSV, or a Bitwarden JSON export.
-        </p>
-
-        <div class="form-group">
-            <label>Format</label>
-            <select class="form-control" @bind="_importFormat">
-                <option value="csv">CSV / encrypted backup</option>
-                <option value="bitwarden">Bitwarden JSON</option>
-            </select>
+    <div class="field" style="margin-bottom:0;">
+        <label>File</label>
+        <div class="input-group">
+            <input type="text" class="input" value="@_importName" placeholder="No file chosen" readonly />
+            <button class="btn btn-secondary" type="button" @onclick="PickImport">Choose</button>
         </div>
-
-        <div class="form-group">
-            <label>File</label>
-            <div class="input-group">
-                <input type="text" class="form-control" value="@_importName" placeholder="No file chosen" readonly />
-                <button class="btn btn-secondary" type="button" @onclick="PickImport">Choose file</button>
-            </div>
-        </div>
-
-        @if (_importIsEncrypted)
-        {
-            <div class="form-group">
-                <label>Master passphrase</label>
-                <input type="password" class="form-control" @bind="_importPassphrase"
-                       placeholder="Needed to decrypt this backup" />
-                <small style="color:var(--text-muted);">This file is encrypted with your PGP key.</small>
-            </div>
-        }
-
-        <button class="btn btn-primary" @onclick="ImportFile" disabled="@_importing">
-            @(_importing ? "Importing..." : "Import")
-        </button>
-
-        @if (!string.IsNullOrEmpty(_importResult))
-        {
-            <div class="alert @(_importError ? "alert-danger" : "alert-success")" style="margin-top:12px;">
-                @_importResult
-            </div>
-        }
     </div>
+
+    @if (_importIsEncrypted)
+    {
+        <div class="field" style="margin-bottom:0;">
+            <label>Master passphrase</label>
+            <input type="password" class="input" @bind="_importPassphrase"
+                   placeholder="Needed to decrypt this backup" />
+            <small style="color:var(--n-500); font-size:12px;">This file is encrypted with your PGP key.</small>
+        </div>
+    }
+
+    <button class="btn btn-primary btn-block" style="height:44px;" @onclick="ImportFile" disabled="@_importing">
+        @(_importing ? "Importing..." : "Import")
+    </button>
+
+    @if (!string.IsNullOrEmpty(_importResult))
+    {
+        <div class="alert @(_importError ? "alert-danger" : "alert-success")" style="margin-bottom:0;">
+            @_importResult
+        </div>
+    }
+</div>
+
+@* ─── Export ─── *@
+<div class="card" style="gap:10px; margin-top:12px;">
+    <div class="card-title">Save a copy out</div>
+    <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.5;">
+        An <strong>encrypted backup</strong> can only be opened by you, with your master passphrase.
+        <strong>Plaintext CSV</strong> holds your passwords in the clear — use it only to migrate
+        into another password manager.
+    </p>
+
+    <div class="field" style="margin-bottom:0;">
+        <label>Format</label>
+        <select class="input" @bind="_exportMode">
+            <option value="encrypted">Encrypted backup (.csv.pgp) — recommended</option>
+            <option value="plaintext">Plaintext CSV — for other apps</option>
+        </select>
+    </div>
+
+    @if (_exportMode == "plaintext")
+    {
+        <div class="alert alert-danger" style="margin-bottom:0;">
+            ⚠ This file will contain all your passwords in plain text. Store it somewhere safe and
+            delete it right after importing elsewhere.
+        </div>
+    }
+
+    <button class="btn btn-secondary btn-block" style="height:44px;" @onclick="ExportVault" disabled="@_exporting">
+        @(_exporting ? "Exporting..." : "Export")
+    </button>
+
+    @if (!string.IsNullOrEmpty(_exportResult))
+    {
+        <div class="alert @(_exportError ? "alert-danger" : "alert-success")" style="margin-bottom:0;">@_exportResult</div>
+    }
 </div>
 
 @code {

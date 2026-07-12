@@ -7,34 +7,33 @@
 
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
-<div class="page-header">
-    <h1>Encrypt / decrypt files</h1>
-    <p>Use PGP to encrypt a single file for yourself or for a contact</p>
+<div style="margin-bottom:14px;">
+    <WhatsThisPill FeatureKey="encrypt-file" />
 </div>
 
-<div class="tab-bar">
-    <button class="tab-btn @(_mode == Mode.Encrypt ? "active" : "")" @onclick="() => SwitchMode(Mode.Encrypt)">
-        Encrypt
+<div class="seg" style="margin-bottom:16px;">
+    <button class="seg-opt @(_mode == Mode.Encrypt ? "active" : "")" type="button" @onclick="() => SwitchMode(Mode.Encrypt)">
+        Lock (encrypt)
     </button>
-    <button class="tab-btn @(_mode == Mode.Decrypt ? "active" : "")" @onclick="() => SwitchMode(Mode.Decrypt)">
-        Decrypt
+    <button class="seg-opt @(_mode == Mode.Decrypt ? "active" : "")" type="button" @onclick="() => SwitchMode(Mode.Decrypt)">
+        Unlock (decrypt)
     </button>
 </div>
 
 @if (_mode == Mode.Encrypt)
 {
-    <div class="card" style="padding:24px;">
-        <div class="form-group">
-            <label>File to encrypt</label>
+    <div class="card" style="gap:14px;">
+        <div class="field" style="margin-bottom:0;">
+            <label>File to lock</label>
             <div class="input-group">
-                <input type="text" class="form-control" value="@_inputName" placeholder="No file chosen" readonly />
-                <button class="btn btn-secondary" type="button" @onclick="PickInput">Choose file</button>
+                <input type="text" class="input" value="@_inputName" placeholder="photo.jpg" readonly />
+                <button class="btn btn-secondary" type="button" @onclick="PickInput">Choose</button>
             </div>
         </div>
 
-        <div class="form-group">
-            <label>Recipient (whose public key to use)</label>
-            <select class="form-control" @bind="_recipientPath">
+        <div class="field" style="margin-bottom:0;">
+            <label>Who can open it?</label>
+            <select class="input" @bind="_recipientPath">
                 <option value="">— Select a recipient —</option>
                 <option value="@OwnPublicKeyPath">Myself (@AppState.Account!.Username)</option>
                 @if (_keys is not null)
@@ -49,72 +48,51 @@
 
         @if (!string.IsNullOrEmpty(_result))
         {
-            <div class="alert alert-@(_isError ? "danger" : "success")">@_result</div>
+            <div class="alert alert-@(_isError ? "danger" : "success")" style="margin-bottom:0;">@_result</div>
         }
 
-        <button class="btn btn-primary" @onclick="RunEncrypt" disabled="@_running">
-            @(_running ? "Encrypting..." : "Encrypt file")
+        <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunEncrypt" disabled="@_running">
+            @(_running ? "Locking..." : "Lock file")
         </button>
-        <small style="display:block; margin-top:8px; color:var(--text-muted);">
-            After encrypting you'll choose where to save the <code>.pgp</code> file.
-        </small>
+    </div>
+
+    <div class="hint-row">
+        <Icon Name="info" Size="15" />
+        <span>The locked file can only be opened by the person you choose above. After locking you'll choose where to save the <code>.pgp</code> file.</span>
     </div>
 }
 else
 {
-    <div class="card" style="padding:24px;">
-        <div class="form-group">
-            <label>Encrypted file (.pgp)</label>
+    <div class="card" style="gap:14px;">
+        <div class="field" style="margin-bottom:0;">
+            <label>Locked file to open</label>
             <div class="input-group">
-                <input type="text" class="form-control" value="@_inputName" placeholder="No file chosen" readonly />
-                <button class="btn btn-secondary" type="button" @onclick="PickInput">Choose file</button>
+                <input type="text" class="input" value="@_inputName" placeholder="secret.pgp" readonly />
+                <button class="btn btn-secondary" type="button" @onclick="PickInput">Choose</button>
             </div>
         </div>
 
-        <div class="form-group">
+        <div class="field" style="margin-bottom:0;">
             <label>Master passphrase</label>
-            <input type="password" class="form-control" @bind="_passphrase"
-                   placeholder="esta_es_mi_frase_maestra" />
-            <small style="color:var(--text-muted);">Needed to unlock your private key</small>
+            <input type="password" class="input" @bind="_passphrase"
+                   placeholder="the-one-phrase-you-remember" />
         </div>
 
         @if (!string.IsNullOrEmpty(_result))
         {
-            <div class="alert alert-@(_isError ? "danger" : "success")">@_result</div>
+            <div class="alert alert-@(_isError ? "danger" : "success")" style="margin-bottom:0;">@_result</div>
         }
 
-        <button class="btn btn-primary" @onclick="RunDecrypt" disabled="@_running">
-            @(_running ? "Decrypting..." : "Decrypt file")
+        <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunDecrypt" disabled="@_running">
+            @(_running ? "Unlocking..." : "Unlock file")
         </button>
-        <small style="display:block; margin-top:8px; color:var(--text-muted);">
-            After decrypting you'll choose where to save the recovered file.
-        </small>
+    </div>
+
+    <div class="hint-row">
+        <Icon Name="info" Size="15" />
+        <span>You'll need your master passphrase to open a file locked for you. After unlocking you'll choose where to save the recovered file.</span>
     </div>
 }
-
-<style>
-    .tab-bar {
-        display: flex;
-        gap: 4px;
-        background: var(--bg-input);
-        border-radius: var(--radius-sm);
-        padding: 4px;
-        margin-bottom: 16px;
-        max-width: 260px;
-    }
-    .tab-btn {
-        flex: 1;
-        padding: 8px 12px;
-        background: transparent;
-        border: none;
-        color: var(--text-secondary);
-        border-radius: var(--radius-sm);
-        cursor: pointer;
-        font-size: 0.85rem;
-        font-weight: 500;
-    }
-    .tab-btn.active { background: var(--accent); color: white; }
-</style>
 
 @code {
     private enum Mode { Encrypt, Decrypt }

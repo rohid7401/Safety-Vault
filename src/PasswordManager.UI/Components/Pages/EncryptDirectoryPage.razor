@@ -6,41 +6,40 @@
 
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
-<div class="page-header">
-    <h1>Encrypt / decrypt directories</h1>
-    <p>Zip and PGP-encrypt an entire folder into a single file</p>
+<div style="margin-bottom:14px;">
+    <WhatsThisPill FeatureKey="encrypt-directory" />
 </div>
 
 <div class="alert alert-info">
     Directory encryption is a <strong>desktop feature</strong>. On mobile, the OS does not
     grant apps full folder access, so pick individual files on the
-    <a href="/encrypt-file" style="color:inherit; text-decoration:underline;">Encrypt Files</a>
+    <a href="/encrypt-file" style="color:inherit; text-decoration:underline;">Encrypt files</a>
     page instead.
 </div>
 
-<div class="tab-bar">
-    <button class="tab-btn @(_mode == Mode.Encrypt ? "active" : "")" @onclick="() => _mode = Mode.Encrypt">
-        Encrypt directory
+<div class="seg" style="margin-bottom:16px;">
+    <button class="seg-opt @(_mode == Mode.Encrypt ? "active" : "")" type="button" @onclick="() => _mode = Mode.Encrypt">
+        Lock (encrypt)
     </button>
-    <button class="tab-btn @(_mode == Mode.Decrypt ? "active" : "")" @onclick="() => _mode = Mode.Decrypt">
-        Decrypt directory
+    <button class="seg-opt @(_mode == Mode.Decrypt ? "active" : "")" type="button" @onclick="() => _mode = Mode.Decrypt">
+        Unlock (decrypt)
     </button>
 </div>
 
 @if (_mode == Mode.Encrypt)
 {
-    <div class="card" style="padding:24px;">
-        <div class="form-group">
-            <label>Directory to encrypt</label>
+    <div class="card" style="gap:14px;">
+        <div class="field" style="margin-bottom:0;">
+            <label>Folder to lock</label>
             <PathPicker Value="@_inputPath"
                         ValueChanged="@(v => _inputPath = v)"
                         Mode="PathPicker.PickerMode.Folder"
                         Placeholder="C:\Users\jane\Documents\Project_Confidential" />
         </div>
 
-        <div class="form-group">
-            <label>Recipient (whose public key to use)</label>
-            <select class="form-control" @bind="_recipientPath">
+        <div class="field" style="margin-bottom:0;">
+            <label>Who can open it?</label>
+            <select class="input" @bind="_recipientPath">
                 <option value="">— Select a recipient —</option>
                 <option value="@OwnPublicKeyPath">Myself (@AppState.Account!.Username)</option>
                 @if (_keys is not null)
@@ -53,7 +52,7 @@
             </select>
         </div>
 
-        <div class="form-group">
+        <div class="field" style="margin-bottom:0;">
             <label>Output file (optional — leave blank to save next to the folder)</label>
             <PathPicker Value="@_outputPath"
                         ValueChanged="@(v => _outputPath = v)"
@@ -64,19 +63,24 @@
 
         @if (!string.IsNullOrEmpty(_result))
         {
-            <div class="alert alert-@(_isError ? "danger" : "success")">@_result</div>
+            <div class="alert alert-@(_isError ? "danger" : "success")" style="margin-bottom:0;">@_result</div>
         }
 
-        <button class="btn btn-primary" @onclick="RunEncrypt" disabled="@_running">
-            @(_running ? "Encrypting directory..." : "Encrypt directory")
+        <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunEncrypt" disabled="@_running">
+            @(_running ? "Locking folder..." : "Lock folder")
         </button>
+    </div>
+
+    <div class="hint-row">
+        <Icon Name="info" Size="15" />
+        <span>Everything in the folder is bundled and locked into one protected file only the chosen person can open.</span>
     </div>
 }
 else
 {
-    <div class="card" style="padding:24px;">
-        <div class="form-group">
-            <label>Encrypted archive (.pgp)</label>
+    <div class="card" style="gap:14px;">
+        <div class="field" style="margin-bottom:0;">
+            <label>Locked archive (.pgp)</label>
             <PathPicker Value="@_inputPath"
                         ValueChanged="@(v => _inputPath = v)"
                         Mode="PathPicker.PickerMode.File"
@@ -84,13 +88,13 @@ else
                         Placeholder="C:\Users\jane\Documents\Project_Confidential.zip.pgp" />
         </div>
 
-        <div class="form-group">
+        <div class="field" style="margin-bottom:0;">
             <label>Master passphrase</label>
-            <input type="password" class="form-control" @bind="_passphrase"
-                   placeholder="esta_es_mi_frase_maestra" />
+            <input type="password" class="input" @bind="_passphrase"
+                   placeholder="the-one-phrase-you-remember" />
         </div>
 
-        <div class="form-group">
+        <div class="field" style="margin-bottom:0;">
             <label>Extract to (optional)</label>
             <PathPicker Value="@_outputPath"
                         ValueChanged="@(v => _outputPath = v)"
@@ -100,38 +104,19 @@ else
 
         @if (!string.IsNullOrEmpty(_result))
         {
-            <div class="alert alert-@(_isError ? "danger" : "success")">@_result</div>
+            <div class="alert alert-@(_isError ? "danger" : "success")" style="margin-bottom:0;">@_result</div>
         }
 
-        <button class="btn btn-primary" @onclick="RunDecrypt" disabled="@_running">
-            @(_running ? "Extracting..." : "Decrypt directory")
+        <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunDecrypt" disabled="@_running">
+            @(_running ? "Unlocking..." : "Unlock folder")
         </button>
     </div>
-}
 
-<style>
-    .tab-bar {
-        display: flex;
-        gap: 4px;
-        background: var(--bg-input);
-        border-radius: var(--radius-sm);
-        padding: 4px;
-        margin-bottom: 16px;
-        max-width: 360px;
-    }
-    .tab-btn {
-        flex: 1;
-        padding: 8px 12px;
-        background: transparent;
-        border: none;
-        color: var(--text-secondary);
-        border-radius: var(--radius-sm);
-        cursor: pointer;
-        font-size: 0.85rem;
-        font-weight: 500;
-    }
-    .tab-btn.active { background: var(--accent); color: white; }
-</style>
+    <div class="hint-row">
+        <Icon Name="info" Size="15" />
+        <span>You'll need your master passphrase to open an archive locked for you.</span>
+    </div>
+}
 
 @code {
     private enum Mode { Encrypt, Decrypt }

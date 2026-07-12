@@ -13,13 +13,13 @@ namespace PasswordManager.UI.Components.Shared
             _ => "info",
         };
 
+        // Names into the Icons dictionary consumed by <Icon>.
         private static string KindIcon(ToastKind kind) => kind switch
         {
-            ToastKind.Success => "✓",
-            ToastKind.Error => "✕",
-            ToastKind.Info => "ℹ",
-            ToastKind.Warning => "⚠",
-            _ => "•",
+            ToastKind.Success => "check",
+            ToastKind.Error => "x",
+            ToastKind.Warning => "alert",
+            _ => "info",
         };
     }
 }

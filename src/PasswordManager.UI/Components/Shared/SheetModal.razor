@@ -1,0 +1,31 @@
+@* Bottom sheet on mobile, centered dialog on desktop (CSS decides).
+   Centered=true forces the small centered dialog everywhere (e.g. TOTP). *@
+
+@if (Visible)
+{
+    <div class="sheet-backdrop @(Centered ? "centered" : "")" @onclick="HandleBackdrop">
+        <div class="sheet" @onclick:stopPropagation="true">
+            <div class="sheet-handle"></div>
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <h3>@Title</h3>
+            }
+            @ChildContent
+            @if (FooterContent is not null)
+            {
+                <div class="sheet-actions">@FooterContent</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public bool Centered { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? FooterContent { get; set; }
+
+    private Task HandleBackdrop() => OnClose.InvokeAsync();
+}

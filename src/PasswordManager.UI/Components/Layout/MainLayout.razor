@@ -14,7 +14,7 @@
                 <div class="unlock-card">
                     <h1 style="color: var(--danger);">Something went wrong</h1>
                     <div class="alert alert-danger" style="margin-top:14px;">@ex.Message</div>
-                    <button class="btn btn-primary" style="width:100%; margin-top:12px;" @onclick="Reload">
+                    <button class="btn btn-primary btn-block btn-lg" style="margin-top:12px;" @onclick="Reload">
                         Reload
                     </button>
                 </div>
@@ -25,99 +25,177 @@
 else
 {
     <div class="app-shell">
-        <nav class="sidebar">
-            <div class="sidebar-brand">
-                <h2>SecureVault</h2>
-                <small>@(AppState.Account?.Username) &middot; @(AppState.Account?.Email)</small>
-            </div>
-
-            <div class="sidebar-nav">
-                <div class="nav-section">
-                    <NavLink class="nav-link" href="dashboard" Match="NavLinkMatch.All">
-                        <IconSlot Glyph="🏠" />
-                        <span>Dashboard</span>
-                    </NavLink>
-                </div>
-
-                <div class="nav-section">
-                    <div class="nav-section-title">Learn</div>
-                    <NavLink class="nav-link" href="tutorial">
-                        <IconSlot Glyph="📘" />
-                        <span>PGP Tutorial</span>
-                    </NavLink>
-                </div>
-
-                <div class="nav-section">
-                    <div class="nav-section-title">Vault &amp; Keys</div>
-                    <NavLink class="nav-link" href="vault" Match="NavLinkMatch.All">
-                        <IconSlot Glyph="🔐" />
-                        <span>Passwords</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="keys">
-                        <IconSlot Glyph="🔑" />
-                        <span>Key Management</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="vault/cards">
-                        <IconSlot Glyph="💳" />
-                        <span>Cards</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="vault/notes">
-                        <IconSlot Glyph="📝" />
-                        <span>Secure Notes</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="encrypt">
-                        <IconSlot Glyph="🔒" />
-                        <span>Encrypt</span>
-                    </NavLink>
-                </div>
-
-                <div class="nav-section">
-                    <div class="nav-section-title">Tools</div>
-                    <NavLink class="nav-link" href="generator">
-                        <IconSlot Glyph="🎲" />
-                        <span>Generator</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="audit">
-                        <IconSlot Glyph="🛡️" />
-                        <span>Audit</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="import-export">
-                        <IconSlot Glyph="🔄" />
-                        <span>Import/Export</span>
-                    </NavLink>
-                </div>
-            </div>
-
-            <div class="sidebar-footer">
-                <button class="btn-lock" @onclick="LockVault">
-                    Lock vault
+        <header class="appbar">
+            @if (ShowBack)
+            {
+                <button class="appbar-btn" aria-label="Back" @onclick="GoHome">
+                    <Icon Name="arrow-left" Size="24" />
                 </button>
-            </div>
-        </nav>
+            }
+            else
+            {
+                <div class="appbar-brand">
+                    <Icon Name="lock" Size="22" />
+                </div>
+            }
+            <span class="appbar-title @(ShowBack ? "" : "brand")">@Title</span>
+            <button class="appbar-btn appbar-menu-btn" aria-label="Menu" @onclick="OpenDrawer">
+                <Icon Name="menu" Size="24" />
+            </button>
+        </header>
 
-        <main class="main-content">
-            <ErrorBoundary @ref="_boundary">
-                <ChildContent>@Body</ChildContent>
-                <ErrorContent Context="ex">
-                    <div class="alert alert-danger" style="margin-bottom:14px;">
-                        <strong>Something went wrong on this page:</strong><br />
-                        @ex.Message
+        <div class="app-body">
+            @if (_drawerOpen)
+            {
+                <div class="drawer-overlay" @onclick="CloseDrawer"></div>
+            }
+
+            <nav class="drawer @(_drawerOpen ? "open" : "")">
+                <div class="drawer-account">
+                    <div class="drawer-avatar">@Initials</div>
+                    <div class="drawer-account-info">
+                        <div class="drawer-account-name">@(AppState.Account?.Username)</div>
+                        <div class="drawer-account-email">@(AppState.Account?.Email)</div>
                     </div>
-                    <button class="btn btn-secondary btn-sm" @onclick="ResetBoundary">Try again</button>
-                </ErrorContent>
-            </ErrorBoundary>
-        </main>
+                    <button class="drawer-close" aria-label="Close" @onclick="CloseDrawer">
+                        <Icon Name="x" Size="20" />
+                    </button>
+                </div>
+
+                <div class="drawer-nav">
+                    <NavLink class="nav-item" href="dashboard" Match="NavLinkMatch.All">
+                        <span class="nav-item-icon"><Icon Name="home" Size="14" StrokeWidth="1.8" /></span>
+                        Home
+                    </NavLink>
+
+                    @foreach (var group in NavGroups)
+                    {
+                        <div class="nav-group">
+                            <div class="nav-group-title">@group.Title</div>
+                            @foreach (var item in group.Items)
+                            {
+                                <NavLink class="nav-item" href="@item.Href" Match="NavLinkMatch.All">
+                                    <span class="nav-item-icon"><Icon Name="@item.Icon" Size="14" StrokeWidth="1.8" /></span>
+                                    @item.Label
+                                </NavLink>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="drawer-footer">
+                    <button class="btn btn-secondary btn-block btn-lock" @onclick="LockVault">
+                        <Icon Name="lock" Size="16" />
+                        Lock vault
+                    </button>
+                </div>
+            </nav>
+
+            <main class="page">
+                <div class="page-inner">
+                    <ErrorBoundary @ref="_boundary">
+                        <ChildContent>@Body</ChildContent>
+                        <ErrorContent Context="ex">
+                            <div class="alert alert-danger" style="margin-bottom:14px;">
+                                <strong>Something went wrong on this page:</strong><br />
+                                @ex.Message
+                            </div>
+                            <button class="btn btn-secondary btn-sm" @onclick="ResetBoundary">Try again</button>
+                        </ErrorContent>
+                    </ErrorBoundary>
+                </div>
+            </main>
+        </div>
     </div>
 }
 
 @code {
+    private bool _drawerOpen;
+    private ErrorBoundary? _boundary;
+
+    private sealed record NavItem(string Label, string Href, string Icon);
+    private sealed record NavGroup(string Title, NavItem[] Items);
+
+    private static readonly NavGroup[] NavGroups =
+    [
+        new("Vault",
+        [
+            new NavItem("Passwords", "vault", "lock"),
+            new NavItem("Secure notes", "vault/notes", "note"),
+            new NavItem("Cards", "vault/cards", "card"),
+        ]),
+        new("Tools",
+        [
+            new NavItem("Password generator", "generator", "refresh"),
+            new NavItem("Vault audit", "audit", "shield"),
+            new NavItem("Import / export", "import-export", "swap"),
+        ]),
+        new("Keys & files",
+        [
+            new NavItem("Key management", "keys", "key"),
+            new NavItem("Encrypt", "encrypt", "lock-keyhole"),
+            new NavItem("Encrypt files", "encrypt-file", "file"),
+            new NavItem("Encrypt directories", "encrypt-directory", "folder"),
+        ]),
+        new("Learn",
+        [
+            new NavItem("How PGP works", "tutorial", "book"),
+        ]),
+    ];
+
+    private static readonly Dictionary<string, string> Titles = new()
+    {
+        [""] = "SecureVault",
+        ["dashboard"] = "SecureVault",
+        ["vault"] = "Passwords",
+        ["vault/notes"] = "Secure notes",
+        ["vault/cards"] = "Cards",
+        ["generator"] = "Generator",
+        ["audit"] = "Vault audit",
+        ["import-export"] = "Import / export",
+        ["keys"] = "Key management",
+        ["encrypt"] = "Encrypt",
+        ["encrypt-file"] = "Encrypt files",
+        ["encrypt-directory"] = "Encrypt directories",
+        ["tutorial"] = "How PGP works",
+    };
+
+    private string CurrentRoute => Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].TrimEnd('/');
+    private string Title => Titles.TryGetValue(CurrentRoute, out var t) ? t : "SecureVault";
+    private bool ShowBack => CurrentRoute is not ("" or "dashboard");
+
+    private string Initials
+    {
+        get
+        {
+            var name = AppState.Account?.Username;
+            if (string.IsNullOrWhiteSpace(name)) return "?";
+            var parts = name.Split(new[] { ' ', '.', '_', '-' }, StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length >= 2
+                ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}"
+                : char.ToUpperInvariant(name[0]).ToString();
+        }
+    }
+
     protected override void OnInitialized()
     {
         AppState.OnStateChanged += StateHasChanged;
+        Nav.LocationChanged += OnLocationChanged;
     }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        _drawerOpen = false;
+        StateHasChanged();
+    }
+
+    private void OpenDrawer() => _drawerOpen = true;
+    private void CloseDrawer() => _drawerOpen = false;
+    private void GoHome() => Nav.NavigateTo("dashboard");
 
     private void LockVault()
     {
+        _drawerOpen = false;
         AppState.Lock();
         Nav.NavigateTo("/");
     }
@@ -125,9 +203,9 @@ else
     public void Dispose()
     {
         AppState.OnStateChanged -= StateHasChanged;
+        Nav.LocationChanged -= OnLocationChanged;
     }
 
-    private ErrorBoundary? _boundary;
     private void ResetBoundary() => _boundary?.Recover();
     private void Reload() => Nav.NavigateTo(Nav.Uri, forceLoad: true);
 }

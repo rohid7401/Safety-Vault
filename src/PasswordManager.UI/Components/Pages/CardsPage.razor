@@ -5,18 +5,22 @@
 
 @if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
 
-<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
-    <div>
-        <h1>Cards</h1>
-        <p>@_entries.Count cards stored</p>
+<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;">
+    <div style="flex:1;">
+        <p style="margin:0; font-size:13px; color:var(--n-400);">@_entries.Count cards in your vault</p>
+        <div style="margin-top:6px;">
+            <WhatsThisPill FeatureKey="cards" />
+        </div>
     </div>
-    <button class="btn btn-primary" @onclick="() => _showAdd = true">Add card</button>
+    <button class="btn btn-primary" style="flex:none;" @onclick="() => _showAdd = true">
+        <Icon Name="plus" Size="16" StrokeWidth="2.2" />Add
+    </button>
 </div>
 
 @if (_entries.Count == 0)
 {
     <div class="empty-state">
-        <IconSlot CssClass="xl" />
+        <div class="icon-circle"><Icon Name="card" Size="30" StrokeWidth="1.8" /></div>
         <h3>No cards saved</h3>
         <p>Store your credit and debit card information securely.</p>
     </div>
@@ -25,83 +29,101 @@ else
 {
     @foreach (var card in _entries)
     {
-        <div class="card">
-            <div class="card-header">
-                <div>
-                    <div class="card-title">@card.CardholderName</div>
-                    <div class="card-subtitle">Expires @card.ExpiryMonth.ToString("D2")/@card.ExpiryYear</div>
-                </div>
-                <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                    <button class="btn btn-secondary btn-sm" @onclick="() => ToggleReveal(card.Id)">
-                        @(_revealed.Contains(card.Id) ? "Hide" : "Show")
+        <div class="credit-card">
+            <div class="credit-card-top">
+                <span class="credit-card-brand">@card.CardholderName</span>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <button class="reveal-btn" type="button" style="color:var(--a-100);"
+                            @onclick="() => ToggleReveal(card.Id)">
+                        @(_revealed.Contains(card.Id) ? "Hide" : "Reveal")
                     </button>
-                    <button class="btn btn-danger btn-sm" @onclick="() => DeleteCard(card.Id)">Delete</button>
+                    <button class="reveal-btn" type="button" style="color:var(--danger);" title="Move to trash"
+                            @onclick="() => DeleteCard(card.Id)">
+                        Delete
+                    </button>
                 </div>
             </div>
             @if (_revealed.Contains(card.Id))
             {
-                <div class="card-body">
-                    <p>Number: <span class="password-value">@AppState.Service!.DecryptField(card.CardNumber)</span></p>
-                    <p>CVV: <span class="password-value">@AppState.Service!.DecryptField(card.Cvv)</span></p>
+                <div class="credit-card-number">@AppState.Service!.DecryptField(card.CardNumber)</div>
+                <div class="credit-card-meta">
+                    <div>
+                        <div class="credit-card-meta-label">Holder</div>
+                        <div class="credit-card-meta-value">@card.CardholderName</div>
+                    </div>
+                    <div>
+                        <div class="credit-card-meta-label">Expires</div>
+                        <div class="credit-card-meta-value mono">@card.ExpiryMonth.ToString("D2")/@card.ExpiryYear</div>
+                    </div>
+                    <div>
+                        <div class="credit-card-meta-label">CVV</div>
+                        <div class="credit-card-meta-value mono">@AppState.Service!.DecryptField(card.Cvv)</div>
+                    </div>
                 </div>
             }
             else
             {
-                <div class="card-body">
-                    <p>Number: <span class="password-masked">•••• •••• •••• @(_last4.GetValueOrDefault(card.Id, "••••"))</span></p>
-                    <p>CVV: <span class="password-masked">•••</span></p>
+                <div class="credit-card-number">•••• •••• •••• @(_last4.GetValueOrDefault(card.Id, "••••"))</div>
+                <div class="credit-card-meta">
+                    <div>
+                        <div class="credit-card-meta-label">Holder</div>
+                        <div class="credit-card-meta-value">@card.CardholderName</div>
+                    </div>
+                    <div>
+                        <div class="credit-card-meta-label">Expires</div>
+                        <div class="credit-card-meta-value mono">@card.ExpiryMonth.ToString("D2")/@card.ExpiryYear</div>
+                    </div>
+                    <div>
+                        <div class="credit-card-meta-label">CVV</div>
+                        <div class="credit-card-meta-value mono">•••</div>
+                    </div>
                 </div>
             }
         </div>
     }
 }
 
-@if (_showAdd)
-{
-    <div class="modal-backdrop" @onclick="() => _showAdd = false">
-        <div class="modal" @onclick:stopPropagation="true">
-            <h2>Add Card</h2>
+<SheetModal Visible="_showAdd" Title="Add card" OnClose="() => _showAdd = false">
+    <ChildContent>
+        <div class="field">
+            <label>Cardholder name</label>
+            <input type="text" class="input" @bind="_formName"
+                   placeholder="JANE M DOE" />
+        </div>
 
-            <div class="form-group">
-                <label>Cardholder Name</label>
-                <input type="text" class="form-control" @bind="_formName"
-                       placeholder="JANE M DOE" />
+        <div class="field">
+            <label>Card number</label>
+            <input type="text" class="input" style="font-family:var(--font-mono);"
+                   @bind="_formNumber" placeholder="4242 4242 4242 4242" />
+        </div>
+
+        <div class="grid-2">
+            <div class="field">
+                <label>Expiry month</label>
+                <input type="number" class="input" @bind="_formMonth" min="1" max="12" />
             </div>
-
-            <div class="grid-2">
-                <div class="form-group">
-                    <label>Card Number</label>
-                    <input type="text" class="form-control" @bind="_formNumber" placeholder="1234 5678 9012 3456" />
-                </div>
-                <div class="form-group">
-                    <label>CVV</label>
-                    <input type="text" class="form-control" @bind="_formCvv" placeholder="123" />
-                </div>
-            </div>
-
-            <div class="grid-2">
-                <div class="form-group">
-                    <label>Expiry Month</label>
-                    <input type="number" class="form-control" @bind="_formMonth" min="1" max="12" />
-                </div>
-                <div class="form-group">
-                    <label>Expiry Year</label>
-                    <input type="number" class="form-control" @bind="_formYear" min="2024" max="2040" />
-                </div>
-            </div>
-
-            @if (!string.IsNullOrEmpty(_formError))
-            {
-                <div class="alert alert-danger">@_formError</div>
-            }
-
-            <div class="modal-actions">
-                <button class="btn btn-secondary" @onclick="() => _showAdd = false">Cancel</button>
-                <button class="btn btn-primary" @onclick="SaveCard">Add</button>
+            <div class="field">
+                <label>Expiry year</label>
+                <input type="number" class="input" @bind="_formYear" min="2024" max="2040" />
             </div>
         </div>
-    </div>
-}
+
+        <div class="field">
+            <label>CVV</label>
+            <input type="text" class="input" style="font-family:var(--font-mono); max-width:120px;"
+                   @bind="_formCvv" placeholder="•••" />
+        </div>
+
+        @if (!string.IsNullOrEmpty(_formError))
+        {
+            <div class="alert alert-danger">@_formError</div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="() => _showAdd = false">Cancel</button>
+        <button class="btn btn-primary" @onclick="SaveCard">Add</button>
+    </FooterContent>
+</SheetModal>
 
 @code {
     private List<CardEntry> _entries = new();

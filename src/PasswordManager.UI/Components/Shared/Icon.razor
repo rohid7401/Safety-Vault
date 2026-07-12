@@ -1,0 +1,16 @@
+@* Stroke SVG icon from the Icons dictionary. Color follows currentColor. *@
+<svg width="@Size" height="@Size" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="@StrokeWidth" stroke-linecap="round" stroke-linejoin="round"
+     style="@Style" aria-hidden="true">@_content</svg>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter] public int Size { get; set; } = 20;
+    [Parameter] public double StrokeWidth { get; set; } = 2;
+    [Parameter] public string? Style { get; set; }
+
+    private MarkupString _content;
+
+    protected override void OnParametersSet()
+        => _content = new MarkupString(Icons.Paths.TryGetValue(Name, out var p) ? p : Icons.Paths["info"]);
+}

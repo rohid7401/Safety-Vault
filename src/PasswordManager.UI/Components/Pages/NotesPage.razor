@@ -5,18 +5,22 @@
 
 @if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
 
-<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
-    <div>
-        <h1>Secure Notes</h1>
-        <p>@_entries.Count notes stored</p>
+<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;">
+    <div style="flex:1;">
+        <p style="margin:0; font-size:13px; color:var(--n-400);">@_entries.Count notes in your vault</p>
+        <div style="margin-top:6px;">
+            <WhatsThisPill FeatureKey="notes" />
+        </div>
     </div>
-    <button class="btn btn-primary" @onclick="() => _showAdd = true">Add note</button>
+    <button class="btn btn-primary" style="flex:none;" @onclick="() => _showAdd = true">
+        <Icon Name="plus" Size="16" StrokeWidth="2.2" />Add
+    </button>
 </div>
 
 @if (_entries.Count == 0)
 {
     <div class="empty-state">
-        <IconSlot CssClass="xl" />
+        <div class="icon-circle"><Icon Name="note" Size="30" StrokeWidth="1.8" /></div>
         <h3>No secure notes</h3>
         <p>Add encrypted notes to keep sensitive information safe.</p>
     </div>
@@ -26,25 +30,34 @@ else
     @foreach (var note in _entries)
     {
         <div class="card">
-            <div class="card-header">
-                <div class="card-title">@note.Title</div>
-                <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                    <button class="btn btn-secondary btn-sm" @onclick="() => ToggleReveal(note.Id)">
-                        @(_revealed.Contains(note.Id) ? "Hide" : "Show")
-                    </button>
-                    <button class="btn btn-secondary btn-sm" @onclick="() => EditNote(note)">Edit</button>
-                    <button class="btn btn-danger btn-sm" @onclick="() => DeleteNote(note.Id)">Delete</button>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div class="entry-icon">
+                    <Icon Name="note" Size="15" StrokeWidth="1.8" />
                 </div>
+                <div class="card-title" style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@note.Title</div>
+                <button class="btn-icon" type="button" aria-label="Edit" title="Edit"
+                        @onclick="() => EditNote(note)">
+                    <Icon Name="edit" Size="16" StrokeWidth="1.8" />
+                </button>
+                <button class="btn-icon" type="button" aria-label="Delete" title="Move to trash"
+                        style="color:var(--danger);" @onclick="() => DeleteNote(note.Id)">
+                    <Icon Name="trash" Size="16" StrokeWidth="1.8" />
+                </button>
+                <button class="reveal-btn" type="button" @onclick="() => ToggleReveal(note.Id)">
+                    @(_revealed.Contains(note.Id) ? "Hide" : "Show")
+                </button>
             </div>
             @if (_revealed.Contains(note.Id))
             {
-                <div class="card-body">
-                    <pre style="white-space:pre-wrap; font-size:0.85rem; color:var(--text-primary);">@AppState.Service!.DecryptField(note.Content)</pre>
-                </div>
+                <pre style="margin:0; background:var(--color-bg); border-radius:var(--radius-md); padding:11px 13px; font-family:var(--font-mono); font-size:12.5px; color:var(--color-text); white-space:pre-wrap; line-height:1.5;">@AppState.Service!.DecryptField(note.Content)</pre>
+            }
+            else
+            {
+                <div style="background:var(--color-bg); border-radius:var(--radius-md); padding:11px 13px; color:var(--n-500); font-size:13px; letter-spacing:2px;">•••••••••••••••••</div>
             }
             @if (note.Tags.Count > 0)
             {
-                <div class="tag-group" style="margin-top:8px;">
+                <div class="tag-group">
                     @foreach (var tag in note.Tags) { <span class="tag">@tag</span> }
                 </div>
             }
@@ -52,42 +65,38 @@ else
     }
 }
 
-@if (_showAdd || _editNote is not null)
-{
-    <div class="modal-backdrop" @onclick="CloseModal">
-        <div class="modal" @onclick:stopPropagation="true">
-            <h2>@(_editNote is not null ? "Edit Note" : "Add Secure Note")</h2>
-
-            <div class="form-group">
-                <label>Title</label>
-                <input type="text" class="form-control" @bind="_formTitle"
-                       placeholder="Recovery codes for Google" />
-            </div>
-
-            <div class="form-group">
-                <label>Content</label>
-                <textarea class="form-control" rows="6" @bind="_formContent"
-                          placeholder="Backup recovery codes:&#10;1234-5678&#10;9012-3456"></textarea>
-            </div>
-
-            <div class="form-group">
-                <label>Tags (comma separated)</label>
-                <input type="text" class="form-control" @bind="_formTags"
-                       placeholder="2fa, backup" />
-            </div>
-
-            @if (!string.IsNullOrEmpty(_formError))
-            {
-                <div class="alert alert-danger">@_formError</div>
-            }
-
-            <div class="modal-actions">
-                <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
-                <button class="btn btn-primary" @onclick="SaveNote">Save</button>
-            </div>
+<SheetModal Visible="@(_showAdd || _editNote is not null)"
+            Title="@(_editNote is not null ? "Edit note" : "Add secure note")"
+            OnClose="CloseModal">
+    <ChildContent>
+        <div class="field">
+            <label>Title</label>
+            <input type="text" class="input" @bind="_formTitle"
+                   placeholder="Recovery codes for Google" />
         </div>
-    </div>
-}
+
+        <div class="field">
+            <label>Content</label>
+            <textarea class="input" rows="6" @bind="_formContent"
+                      placeholder="Backup recovery codes:&#10;1234-5678&#10;9012-3456"></textarea>
+        </div>
+
+        <div class="field">
+            <label>Tags (comma separated)</label>
+            <input type="text" class="input" @bind="_formTags"
+                   placeholder="2fa, backup" />
+        </div>
+
+        @if (!string.IsNullOrEmpty(_formError))
+        {
+            <div class="alert alert-danger">@_formError</div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+        <button class="btn btn-primary" @onclick="SaveNote">@(_editNote is not null ? "Update" : "Add")</button>
+    </FooterContent>
+</SheetModal>
 
 @code {
     private List<SecureNote> _entries = new();

@@ -4,57 +4,66 @@
 @inject ToastService Toast
 @inject IClipboardService Clipboard
 
-<div class="page-header">
-    <h1>Password generator</h1>
-    <p>Generate strong passwords. These preferences are used whenever you press "Generate" in the vault.</p>
+<div style="margin-bottom:14px;">
+    <WhatsThisPill FeatureKey="generator" />
 </div>
 
-<div class="card" style="padding:24px;">
+<div class="card" style="gap:14px;">
     <div class="generated-box">@_password</div>
 
     @if (!string.IsNullOrEmpty(_password))
     {
-        <div class="strength-bar">
-            @{ var s = Generator.CalculateStrength(_password); }
-            <div class="strength-fill strength-@s" style="width:@(s * 12.5)%"></div>
+        var s = Generator.CalculateStrength(_password);
+        <div>
+            <div class="strength-bar" style="margin-top:0;">
+                <div class="strength-fill strength-@s" style="width:@(s * 12.5)%"></div>
+            </div>
+            <div class="strength-row">
+                <span>Strength</span>
+                <span style="font-weight:600;">@StrengthLabel(s)</span>
+            </div>
         </div>
-        <small style="color:var(--text-muted);">Strength score: @s / 8</small>
     }
 
-    <div class="actions">
-        <button class="btn btn-primary" @onclick="Regenerate">Generate new</button>
-        <button class="btn btn-secondary" @onclick="CopyPassword">Copy</button>
+    <div style="display:flex; gap:10px;">
+        <button class="btn btn-primary" style="flex:1; height:42px;" @onclick="Regenerate">
+            <Icon Name="refresh" Size="16" />New
+        </button>
+        <button class="btn btn-secondary" style="flex:1; height:42px;" @onclick="CopyPassword">
+            <Icon Name="copy" Size="16" StrokeWidth="1.8" />Copy
+        </button>
+    </div>
+</div>
+
+<div class="card" style="gap:16px; margin-top:14px;">
+    <div>
+        <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px;">
+            <span style="color:var(--n-300);">Length</span>
+            <span style="font-weight:600; color:var(--color-accent); font-family:var(--font-heading);">@Prefs.Options.Length</span>
+        </div>
+        <input type="range" min="8" max="64" @bind="Prefs.Options.Length" @bind:event="oninput"
+               @bind:after="OnPrefsChanged" />
     </div>
 
-    <div class="grid-2">
-        <div class="form-group">
-            <label>Length: <strong>@Prefs.Options.Length</strong></label>
-            <input type="range" min="8" max="64" @bind="Prefs.Options.Length" @bind:event="oninput"
-                   @bind:after="OnPrefsChanged" style="width:100%; accent-color:var(--accent);" />
-        </div>
+    <label class="form-check" style="margin-bottom:0;">
+        <span>Uppercase (A–Z)</span>
+        <input type="checkbox" @bind="Prefs.Options.IncludeUppercase" @bind:after="OnPrefsChanged" />
+    </label>
+    <label class="form-check" style="margin-bottom:0;">
+        <span>Lowercase (a–z)</span>
+        <input type="checkbox" @bind="Prefs.Options.IncludeLowercase" @bind:after="OnPrefsChanged" />
+    </label>
+    <label class="form-check" style="margin-bottom:0;">
+        <span>Digits (0–9)</span>
+        <input type="checkbox" @bind="Prefs.Options.IncludeDigits" @bind:after="OnPrefsChanged" />
+    </label>
+    <label class="form-check" style="margin-bottom:0;">
+        <span>Special characters</span>
+        <input type="checkbox" @bind="Prefs.Options.IncludeSpecial" @bind:after="OnPrefsChanged" />
+    </label>
 
-        <div>
-            <div class="form-check">
-                <input type="checkbox" @bind="Prefs.Options.IncludeUppercase" @bind:after="OnPrefsChanged" id="upper" />
-                <label for="upper">Uppercase (A-Z)</label>
-            </div>
-            <div class="form-check">
-                <input type="checkbox" @bind="Prefs.Options.IncludeLowercase" @bind:after="OnPrefsChanged" id="lower" />
-                <label for="lower">Lowercase (a-z)</label>
-            </div>
-            <div class="form-check">
-                <input type="checkbox" @bind="Prefs.Options.IncludeDigits" @bind:after="OnPrefsChanged" id="digits" />
-                <label for="digits">Digits (0-9)</label>
-            </div>
-            <div class="form-check">
-                <input type="checkbox" @bind="Prefs.Options.IncludeSpecial" @bind:after="OnPrefsChanged" id="special" />
-                <label for="special">Special characters</label>
-            </div>
-        </div>
-    </div>
-
-    <div class="form-group">
-        <label>
+    <div class="field" style="margin-bottom:0;">
+        <label style="display:flex; align-items:center; gap:8px;">
             Exclude characters
             <InfoTooltip>
                 <strong>Why exclude characters?</strong>
@@ -64,7 +73,7 @@
                 </p>
             </InfoTooltip>
         </label>
-        <input type="text" class="form-control" @bind="Prefs.Options.ExcludeChars"
+        <input type="text" class="input" @bind="Prefs.Options.ExcludeChars"
                @bind:event="oninput" @bind:after="OnPrefsChanged"
                placeholder="0Ol1I" />
     </div>
@@ -72,27 +81,30 @@
 
 <style>
     .generated-box {
-        font-family: 'Consolas', 'Courier New', monospace;
-        font-size: 1.3rem;
+        font-family: var(--font-mono);
+        font-size: 20px;
+        letter-spacing: 1px;
         word-break: break-all;
-        padding: 16px;
-        background: var(--bg-input);
-        border-radius: var(--radius);
-        border: 1px solid var(--border);
-        color: var(--accent);
+        line-height: 1.4;
+        padding: 18px 16px;
+        background: var(--color-bg);
+        border-radius: var(--radius-md);
+        color: var(--color-accent);
         text-align: center;
         min-height: 56px;
-    }
-    .actions {
-        display: flex;
-        gap: 10px;
-        justify-content: center;
-        margin: 18px 0 22px;
     }
 </style>
 
 @code {
     private string _password = string.Empty;
+
+    private static string StrengthLabel(int s) => s switch
+    {
+        <= 2 => "Weak",
+        <= 4 => "Fair",
+        <= 6 => "Good",
+        _ => "Strong",
+    };
 
     protected override void OnInitialized()
     {
