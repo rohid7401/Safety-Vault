@@ -88,13 +88,17 @@ namespace PasswordManager.App.Platform
 
             if (extensions is { Length: > 0 })
             {
+                // Windows/macOS filter by file extension. iOS wants UTTypes and Android
+                // wants MIME types — and .pgp/.asc/.gpg have no reliable mapping there, so
+                // on mobile we allow all files (otherwise the OS greys out every file and
+                // nothing can be selected).
                 options.FileTypes = new FilePickerFileType(
                     new Dictionary<DevicePlatform, IEnumerable<string>>
                     {
                         { DevicePlatform.WinUI, extensions },
                         { DevicePlatform.macOS, extensions },
-                        { DevicePlatform.iOS, extensions },
-                        { DevicePlatform.Android, extensions },
+                        { DevicePlatform.iOS, new[] { "public.item" } },
+                        { DevicePlatform.Android, new[] { "*/*" } },
                     });
             }
 

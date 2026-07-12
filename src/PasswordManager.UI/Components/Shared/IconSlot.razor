@@ -1,18 +1,24 @@
-@* Reserved space where a real icon will go later (Flaticon, SVG, etc.). *@
+@* Interim glyph slot. Swap the emoji for a real icon set (Flaticon, SVG) later
+   without touching call sites. *@
 
-<span class="icon-slot @CssClass"></span>
+<span class="icon-slot @CssClass" aria-hidden="true">@Glyph</span>
 
 <style>
     .icon-slot {
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         width: 18px;
         height: 18px;
         flex-shrink: 0;
+        font-size: 1.15rem;
+        line-height: 1;
     }
-    .icon-slot.lg { width: 28px; height: 28px; }
-    .icon-slot.xl { width: 40px; height: 40px; }
+    .icon-slot.lg { width: 28px; height: 28px; font-size: 1.6rem; }
+    .icon-slot.xl { width: 40px; height: 40px; font-size: 2.2rem; }
 </style>
 
 @code {
     [Parameter] public string CssClass { get; set; } = string.Empty;
+    [Parameter] public string Glyph { get; set; } = string.Empty;
 }

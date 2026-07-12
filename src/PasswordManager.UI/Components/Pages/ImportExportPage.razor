@@ -2,13 +2,14 @@
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject IImportExportService ImportExport
+@inject IFileEncryptionService FileEnc
 @inject IFilePickerService Picker
 
-@if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
+@if (AppState.Service is null || AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
 <div class="page-header">
     <h1>Import / Export</h1>
-    <p>Transfer passwords between vaults and password managers</p>
+    <p>Back up your vault, or transfer passwords between password managers</p>
 </div>
 
 <div class="grid-2">
@@ -16,11 +17,29 @@
     <div class="card" style="padding:24px;">
         <h2 style="font-size:1.1rem; margin-bottom:12px;">Export</h2>
         <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:16px;">
-            Export your passwords to CSV format. The exported file contains plaintext passwords.
+            An <strong>encrypted backup</strong> can only be opened by you, with your master passphrase.
+            <strong>Plaintext CSV</strong> exposes every password in the clear — use it only to migrate
+            into another password manager.
         </p>
 
-        <button class="btn btn-primary" @onclick="ExportCsv" disabled="@_exporting">
-            @(_exporting ? "Exporting..." : "Export to CSV")
+        <div class="form-group">
+            <label>Format</label>
+            <select class="form-control" @bind="_exportMode">
+                <option value="encrypted">Encrypted backup (.csv.pgp) — recommended</option>
+                <option value="plaintext">Plaintext CSV — for other apps</option>
+            </select>
+        </div>
+
+        @if (_exportMode == "plaintext")
+        {
+            <div class="alert alert-danger" style="margin-bottom:12px;">
+                ⚠ This file will contain all your passwords in plaintext. Store it somewhere safe and
+                delete it right after importing elsewhere.
+            </div>
+        }
+
+        <button class="btn btn-primary" @onclick="ExportVault" disabled="@_exporting">
+            @(_exporting ? "Exporting..." : "Export")
         </button>
 
         @if (!string.IsNullOrEmpty(_exportResult))
@@ -33,13 +52,13 @@
     <div class="card" style="padding:24px;">
         <h2 style="font-size:1.1rem; margin-bottom:12px;">Import</h2>
         <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:16px;">
-            Import from CSV or Bitwarden JSON export.
+            Import an encrypted backup, a plaintext CSV, or a Bitwarden JSON export.
         </p>
 
         <div class="form-group">
             <label>Format</label>
             <select class="form-control" @bind="_importFormat">
-                <option value="csv">CSV</option>
+                <option value="csv">CSV / encrypted backup</option>
                 <option value="bitwarden">Bitwarden JSON</option>
             </select>
         </div>
@@ -51,6 +70,16 @@
                 <button class="btn btn-secondary" type="button" @onclick="PickImport">Choose file</button>
             </div>
         </div>
+
+        @if (_importIsEncrypted)
+        {
+            <div class="form-group">
+                <label>Master passphrase</label>
+                <input type="password" class="form-control" @bind="_importPassphrase"
+                       placeholder="Needed to decrypt this backup" />
+                <small style="color:var(--text-muted);">This file is encrypted with your PGP key.</small>
+            </div>
+        }
 
         <button class="btn btn-primary" @onclick="ImportFile" disabled="@_importing">
             @(_importing ? "Importing..." : "Import")
@@ -67,6 +96,7 @@
 
 @code {
     private bool _exporting;
+    private string _exportMode = "encrypted";
     private string _exportResult = string.Empty;
     private bool _exportError;
 
@@ -74,11 +104,15 @@
     private string _importFormat = "csv";
     private byte[]? _importData;
     private string _importName = string.Empty;
+    private bool _importIsEncrypted;
+    private string _importPassphrase = string.Empty;
     private string _importResult = string.Empty;
     private bool _importError;
-    private readonly string[] _importExtensions = new[] { ".csv", ".json", ".txt" };
 
-    private async Task ExportCsv()
+    private string OwnPublicKeyPath => Path.Combine(AppState.Account!.VaultPath, "public_key.asc");
+    private string OwnPrivateKeyPath => Path.Combine(AppState.Account!.VaultPath, "private_key.asc");
+
+    private async Task ExportVault()
     {
         _exporting = true;
         _exportResult = string.Empty;
@@ -89,10 +123,24 @@
         {
             var portable = await AppState.Service!.ExportPasswordEntriesAsync();
             var csv = ImportExport.ExportToCsv(portable);
-            var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+            var plaintext = System.Text.Encoding.UTF8.GetBytes(csv);
 
-            using var ms = new MemoryStream(bytes);
-            var saved = await Picker.SaveStreamAsync($"vault_export_{DateTime.Now:yyyyMMdd_HHmmss}.csv", ms);
+            var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            string? saved;
+
+            if (_exportMode == "encrypted")
+            {
+                using var input = new MemoryStream(plaintext);
+                using var encrypted = new MemoryStream();
+                await FileEnc.EncryptAsync(input, OwnPublicKeyPath, encrypted);
+                encrypted.Position = 0;
+                saved = await Picker.SaveStreamAsync($"vault_backup_{stamp}.csv.pgp", encrypted);
+            }
+            else
+            {
+                using var input = new MemoryStream(plaintext);
+                saved = await Picker.SaveStreamAsync($"vault_export_{stamp}.csv", input);
+            }
 
             if (saved is null) { _exportResult = "Export cancelled."; _exportError = true; }
             else { _exportResult = $"Exported {portable.Count} entries to {saved}"; }
@@ -110,7 +158,8 @@
 
     private async Task PickImport()
     {
-        var picked = await Picker.PickFileForReadAsync("Select an export file", _importExtensions);
+        var picked = await Picker.PickFileForReadAsync("Select a backup or export file",
+            new[] { ".csv", ".json", ".txt", ".pgp", ".gpg", ".asc" });
         if (picked is null) return;
 
         using (picked)
@@ -119,6 +168,8 @@
             await picked.Stream.CopyToAsync(ms);
             _importData = ms.ToArray();
             _importName = picked.FileName;
+            _importIsEncrypted = LooksEncrypted(_importName, _importData);
+            _importPassphrase = string.Empty;
             _importResult = string.Empty;
             _importError = false;
         }
@@ -140,7 +191,26 @@
                 return;
             }
 
-            var content = System.Text.Encoding.UTF8.GetString(_importData);
+            string content;
+            if (_importIsEncrypted)
+            {
+                if (string.IsNullOrWhiteSpace(_importPassphrase))
+                {
+                    _importResult = "Passphrase is required to decrypt this backup.";
+                    _importError = true;
+                    return;
+                }
+
+                using var input = new MemoryStream(_importData);
+                using var decrypted = new MemoryStream();
+                await FileEnc.DecryptAsync(input, OwnPrivateKeyPath, _importPassphrase, decrypted);
+                content = System.Text.Encoding.UTF8.GetString(decrypted.ToArray());
+            }
+            else
+            {
+                content = System.Text.Encoding.UTF8.GetString(_importData);
+            }
+
             List<PortableEntry> entries = _importFormat == "bitwarden"
                 ? ImportExport.ImportFromBitwardenJson(content)
                 : ImportExport.ImportFromCsv(content);
@@ -157,12 +227,29 @@
         }
         catch (Exception ex)
         {
-            _importResult = $"Import failed: {ex.Message}";
+            _importResult = _importIsEncrypted
+                ? $"Import failed (wrong passphrase or corrupt file): {ex.Message}"
+                : $"Import failed: {ex.Message}";
             _importError = true;
         }
         finally
         {
             _importing = false;
         }
+    }
+
+    private static bool LooksEncrypted(string name, byte[] data)
+    {
+        if (name.EndsWith(".pgp", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".gpg", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // ASCII-armored PGP message
+        if (data.Length > 0)
+        {
+            var head = System.Text.Encoding.ASCII.GetString(data, 0, Math.Min(data.Length, 64));
+            if (head.Contains("BEGIN PGP MESSAGE")) return true;
+        }
+        return false;
     }
 }

@@ -269,6 +269,10 @@ else
         border-color: var(--border);
     }
     .info-card strong { color: var(--text-primary); }
+
+    /* Long file paths / fingerprints must wrap inside the card in portrait,
+       instead of overflowing horizontally. */
+    .card code { word-break: break-all; overflow-wrap: anywhere; }
 </style>
 
 @code {

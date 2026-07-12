@@ -81,6 +81,35 @@ else
     }
 }
 
+<div class="generator-cta" @onclick='() => Nav.NavigateTo("/generator")' role="button" tabindex="0">
+    <IconSlot Glyph="🎲" />
+    <div class="generator-cta-text">
+        <strong>Need a custom password?</strong>
+        <span>Open the generator to tune length and rules (e.g. no digits), then copy it into a new entry.</span>
+    </div>
+    <span class="generator-cta-go">Open →</span>
+</div>
+
+<style>
+    .generator-cta {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 20px;
+        padding: 14px 16px;
+        background: var(--bg-card);
+        border: 1px dashed var(--border);
+        border-radius: var(--radius);
+        cursor: pointer;
+        transition: border-color .15s;
+    }
+    .generator-cta:hover { border-color: var(--accent); }
+    .generator-cta-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+    .generator-cta-text strong { font-size: 0.9rem; }
+    .generator-cta-text span { color: var(--text-secondary); font-size: 0.8rem; line-height: 1.4; }
+    .generator-cta-go { color: var(--accent); font-weight: 600; font-size: 0.85rem; white-space: nowrap; }
+</style>
+
 @* ───── Add / Edit Modal ───── *@
 @if (_showAdd || _editEntry is not null)
 {

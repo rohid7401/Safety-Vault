@@ -34,7 +34,7 @@ else
             <div class="sidebar-nav">
                 <div class="nav-section">
                     <NavLink class="nav-link" href="dashboard" Match="NavLinkMatch.All">
-                        <IconSlot />
+                        <IconSlot Glyph="🏠" />
                         <span>Dashboard</span>
                     </NavLink>
                 </div>
@@ -42,55 +42,47 @@ else
                 <div class="nav-section">
                     <div class="nav-section-title">Learn</div>
                     <NavLink class="nav-link" href="tutorial">
-                        <IconSlot />
+                        <IconSlot Glyph="📘" />
                         <span>PGP Tutorial</span>
                     </NavLink>
                 </div>
 
                 <div class="nav-section">
-                    <div class="nav-section-title">Keys &amp; Files</div>
-                    <NavLink class="nav-link" href="keys">
-                        <IconSlot />
-                        <span>Key Management</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="encrypt-file">
-                        <IconSlot />
-                        <span>Encrypt Files</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="encrypt-directory">
-                        <IconSlot />
-                        <span>Encrypt Directories</span>
-                    </NavLink>
-                </div>
-
-                <div class="nav-section">
-                    <div class="nav-section-title">Vault</div>
-                    <NavLink class="nav-link" href="vault">
-                        <IconSlot />
+                    <div class="nav-section-title">Vault &amp; Keys</div>
+                    <NavLink class="nav-link" href="vault" Match="NavLinkMatch.All">
+                        <IconSlot Glyph="🔐" />
                         <span>Passwords</span>
                     </NavLink>
-                    <NavLink class="nav-link" href="vault/notes">
-                        <IconSlot />
-                        <span>Secure Notes</span>
+                    <NavLink class="nav-link" href="keys">
+                        <IconSlot Glyph="🔑" />
+                        <span>Key Management</span>
                     </NavLink>
                     <NavLink class="nav-link" href="vault/cards">
-                        <IconSlot />
+                        <IconSlot Glyph="💳" />
                         <span>Cards</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="vault/notes">
+                        <IconSlot Glyph="📝" />
+                        <span>Secure Notes</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="encrypt">
+                        <IconSlot Glyph="🔒" />
+                        <span>Encrypt</span>
                     </NavLink>
                 </div>
 
                 <div class="nav-section">
                     <div class="nav-section-title">Tools</div>
                     <NavLink class="nav-link" href="generator">
-                        <IconSlot />
+                        <IconSlot Glyph="🎲" />
                         <span>Generator</span>
                     </NavLink>
                     <NavLink class="nav-link" href="audit">
-                        <IconSlot />
+                        <IconSlot Glyph="🛡️" />
                         <span>Audit</span>
                     </NavLink>
                     <NavLink class="nav-link" href="import-export">
-                        <IconSlot />
+                        <IconSlot Glyph="🔄" />
                         <span>Import/Export</span>
                     </NavLink>
                 </div>

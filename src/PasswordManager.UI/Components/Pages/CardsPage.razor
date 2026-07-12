@@ -48,7 +48,7 @@ else
             else
             {
                 <div class="card-body">
-                    <p>Number: <span class="password-masked">•••• •••• •••• ••••</span></p>
+                    <p>Number: <span class="password-masked">•••• •••• •••• @(_last4.GetValueOrDefault(card.Id, "••••"))</span></p>
                     <p>CVV: <span class="password-masked">•••</span></p>
                 </div>
             }
@@ -105,6 +105,7 @@ else
 
 @code {
     private List<CardEntry> _entries = new();
+    private readonly Dictionary<Guid, string> _last4 = new();
     private HashSet<Guid> _revealed = new();
     private bool _showAdd;
 
@@ -115,8 +116,25 @@ else
     private int _formYear = 2025;
     private string _formError = string.Empty;
 
-    protected override async Task OnInitializedAsync() =>
+    protected override async Task OnInitializedAsync() => await LoadEntries();
+
+    private async Task LoadEntries()
+    {
         _entries = await AppState.Service!.GetEntriesAsync<CardEntry>();
+        _last4.Clear();
+        foreach (var c in _entries)
+        {
+            try
+            {
+                var digits = new string(AppState.Service!.DecryptField(c.CardNumber).Where(char.IsDigit).ToArray());
+                _last4[c.Id] = digits.Length >= 4 ? digits[^4..] : (digits.Length == 0 ? "••••" : digits);
+            }
+            catch
+            {
+                _last4[c.Id] = "••••";
+            }
+        }
+    }
 
     private void ToggleReveal(Guid id) { if (!_revealed.Remove(id)) _revealed.Add(id); }
 
@@ -125,7 +143,7 @@ else
         try
         {
             await AppState.Service!.DeleteEntryAsync(id);
-            _entries = await AppState.Service.GetEntriesAsync<CardEntry>();
+            await LoadEntries();
             Toast.Info("Card moved to trash.");
         }
         catch (Exception ex)
@@ -153,7 +171,7 @@ else
 
             _showAdd = false;
             _formName = _formNumber = _formCvv = _formError = string.Empty;
-            _entries = await AppState.Service.GetEntriesAsync<CardEntry>();
+            await LoadEntries();
             Toast.Success("Card saved.");
         }
         catch (Exception ex)

@@ -137,6 +137,7 @@ Estado: `abierto` · `Fase 0 ✅` · `planificado`
 | M5 | Sin rate limiting en intentos de passphrase | `AuthService.cs` | Fase 3 |
 | M6 | `accounts.json` sin integridad (email/VaultPath manipulables) | `AuthService.cs` | Fase 4 |
 | M7 | CSV/formula injection en export | `ImportExportService.cs` | **Fase 0 ✅** |
+| M8 | Export dejaba las contraseñas en texto plano en disco | `ImportExportPage.razor` | **✅ Export cifrado por defecto** (CSV→PGP con la llave pública propia; plano solo opción explícita con advertencia; import detecta y descifra) |
 
 ### Bajo / hardening
 
