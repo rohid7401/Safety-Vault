@@ -119,6 +119,31 @@
     </div>
 </div>
 
+@if (_showRestore)
+{
+    <div class="modal-backdrop">
+        <div class="modal" style="width:440px;">
+            <h2 style="color:var(--warning);">Vault integrity check failed</h2>
+            <div class="alert alert-warning">@_restoreError</div>
+            <p style="color:var(--text-secondary); font-size:0.88rem; line-height:1.55;">
+                The current vault could not be verified — it may have been modified or
+                corrupted. A known-good backup from your previous save is available.
+                Restoring will replace the current vault with that backup.
+            </p>
+            @if (!string.IsNullOrEmpty(_restoreFailure))
+            {
+                <div class="alert alert-danger">@_restoreFailure</div>
+            }
+            <div class="modal-actions">
+                <button class="btn btn-secondary" @onclick="CancelRestore">Cancel</button>
+                <button class="btn btn-primary" @onclick="ConfirmRestore" disabled="@_restoring">
+                    @(_restoring ? "Restoring..." : "Restore from backup")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 <style>
     .tab-bar {
         display: flex;
@@ -174,6 +199,14 @@
 
     private List<string> _knownUsers = new();
 
+    // Vault integrity / restore flow
+    private bool _showRestore;
+    private bool _restoring;
+    private string _restoreError = string.Empty;
+    private string _restoreFailure = string.Empty;
+    private PasswordManagerService? _pendingService;
+    private PasswordManager.Core.Models.UserAccount? _pendingAccount;
+
     protected override async Task OnInitializedAsync()
     {
         if (AppState.IsUnlocked)
@@ -213,8 +246,8 @@
         try
         {
             var account = await AuthService.LoginAsync(_loginIdentity, _loginPassphrase);
-            await UnlockVaultAsync(account, _loginPassphrase);
-            Nav.NavigateTo("dashboard");
+            if (await UnlockVaultAsync(account, _loginPassphrase))
+                Nav.NavigateTo("dashboard");
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -252,9 +285,11 @@
         try
         {
             var account = await AuthService.RegisterAsync(_regUsername, _regEmail, _regPassphrase);
-            await UnlockVaultAsync(account, _regPassphrase);
-            Toast.Success("Welcome to SecureVault!");
-            Nav.NavigateTo("dashboard");
+            if (await UnlockVaultAsync(account, _regPassphrase))
+            {
+                Toast.Success("Welcome to SecureVault!");
+                Nav.NavigateTo("dashboard");
+            }
         }
         catch (InvalidOperationException ex)
         {
@@ -274,7 +309,12 @@
         }
     }
 
-    private async Task UnlockVaultAsync(PasswordManager.Core.Models.UserAccount account, string passphrase)
+    /// <summary>
+    /// Creates the vault service and verifies vault integrity. Returns true if the vault
+    /// was unlocked; false if a restore prompt was shown instead (integrity failure with
+    /// a backup available). Re-throws integrity failures that have no backup.
+    /// </summary>
+    private async Task<bool> UnlockVaultAsync(PasswordManager.Core.Models.UserAccount account, string passphrase)
     {
         var options = new VaultOptions
         {
@@ -283,6 +323,64 @@
         };
         var repo = new PasswordManager.Infrastructure.Persistence.PgpVaultRepository(PgpService, options);
         var service = await PasswordManagerService.CreateAsync(repo, AesService, PgpService, options);
+
+        try
+        {
+            await service.ValidateVaultAsync();
+        }
+        catch (VaultIntegrityException ex)
+        {
+            if (ex.BackupAvailable)
+            {
+                _pendingService = service;
+                _pendingAccount = account;
+                _restoreError = ex.Message;
+                _restoreFailure = string.Empty;
+                _showRestore = true;
+                return false;
+            }
+            service.Dispose();
+            throw;
+        }
+
         AppState.Unlock(account, service);
+        return true;
+    }
+
+    private async Task ConfirmRestore()
+    {
+        if (_pendingService is null || _pendingAccount is null) return;
+
+        _restoring = true;
+        _restoreFailure = string.Empty;
+        StateHasChanged();
+        try
+        {
+            await _pendingService.RestoreVaultFromBackupAsync();
+            await _pendingService.ValidateVaultAsync();
+            AppState.Unlock(_pendingAccount, _pendingService);
+            _showRestore = false;
+            _pendingService = null;
+            _pendingAccount = null;
+            Toast.Success("Vault restored from backup.");
+            Nav.NavigateTo("dashboard");
+        }
+        catch (Exception ex)
+        {
+            _restoreFailure = $"Restore failed: {ex.Message}";
+        }
+        finally
+        {
+            _restoring = false;
+        }
+    }
+
+    private void CancelRestore()
+    {
+        _pendingService?.Dispose();
+        _pendingService = null;
+        _pendingAccount = null;
+        _showRestore = false;
+        _error = "Vault could not be verified and was not opened. Restore was cancelled.";
     }
 }

@@ -5,6 +5,7 @@
 @inject GeneratorPreferences GenPrefs
 @inject ToastService Toast
 @inject ITotpService TotpService
+@inject IClipboardService Clipboard
 @implements IDisposable
 
 @if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
@@ -268,7 +269,7 @@ else
     private async Task CopyPassword(PasswordEntry entry)
     {
         var pw = AppState.Service!.DecryptPassword(entry);
-        await Clipboard.Default.SetTextAsync(pw);
+        await Clipboard.SetTextAsync(pw);
         Toast.Success("Password copied to clipboard.");
     }
 
@@ -418,7 +419,7 @@ else
 
     private async Task CopyTotp()
     {
-        await Clipboard.Default.SetTextAsync(_totpCode);
+        await Clipboard.SetTextAsync(_totpCode);
         Toast.Success("TOTP code copied!");
     }
 

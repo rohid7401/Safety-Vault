@@ -2,7 +2,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 
-namespace PasswordManager.App.Services
+namespace PasswordManager.UI.Services
 {
     /// <summary>
     /// Talks to keys.openpgp.org via the Hagrid Verifying Keyserver (VKS) API.

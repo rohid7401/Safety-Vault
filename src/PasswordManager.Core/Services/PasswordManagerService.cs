@@ -301,6 +301,33 @@ namespace PasswordManager.Core.Services
             return auditor.Audit(entries, DecryptPassword);
         }
 
+        // ─── Vault integrity / recovery ──────────────────────────────────────
+
+        /// <summary>
+        /// Forces a verified load of the vault. Throws
+        /// <see cref="Exceptions.VaultIntegrityException"/> if the vault has been
+        /// tampered with or is corrupt. Call this right after unlocking.
+        /// </summary>
+        public async Task ValidateVaultAsync()
+        {
+            ThrowIfDisposed();
+            await _repository.LoadAsync();
+        }
+
+        /// <summary>True if a known-good backup exists to restore from.</summary>
+        public bool HasVaultBackup()
+        {
+            ThrowIfDisposed();
+            return _repository.HasBackup();
+        }
+
+        /// <summary>Restores the vault from the last known-good backup and verifies it.</summary>
+        public async Task RestoreVaultFromBackupAsync()
+        {
+            ThrowIfDisposed();
+            await _repository.RestoreFromBackupAsync();
+        }
+
         // ─── Helpers ─────────────────────────────────────────────────────────
 
         private EncryptedField EncryptField(string plainText)
@@ -319,6 +346,8 @@ namespace PasswordManager.Core.Services
                 CryptographicOperations.ZeroMemory(_aesKey);
                 _aesKey = null;
             }
+            // Zeroize any derived key material held by the repository (e.g. the MAC key).
+            (_repository as IDisposable)?.Dispose();
             _disposed = true;
         }
 

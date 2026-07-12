@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.Json;
 using PasswordManager.Core.Configuration;
 using PasswordManager.Core.Interfaces;
@@ -8,10 +7,6 @@ namespace PasswordManager.Infrastructure.Services
 {
     public class AuthService : IAuthService
     {
-        private const int SaltBytes = 16;
-        private const int HashBytes = 32;
-        private const int Pbkdf2Iterations = 200_000;
-
         private readonly IPgpService _pgpService;
         private readonly AuthOptions _options;
 
@@ -63,22 +58,16 @@ namespace PasswordManager.Infrastructure.Services
                     "A vault folder already exists for this username. Please choose a different username.");
             Directory.CreateDirectory(vaultPath);
 
-            // 1. Hash passphrase
-            var salt = RandomNumberGenerator.GetBytes(SaltBytes);
-            var hash = HashPassphrase(passphrase, salt);
-
-            // 2. Generate PGP key pair into the vault
+            // Generate the PGP key pair into the vault. The passphrase protects the private
+            // key; there is deliberately no separate password hash (see UserAccount).
             var publicKeyPath = Path.Combine(vaultPath, "public_key.asc");
             var privateKeyPath = Path.Combine(vaultPath, "private_key.asc");
             _pgpService.GenerateKeyPair(publicKeyPath, privateKeyPath, passphrase);
 
-            // 3. Persist account
             var account = new UserAccount
             {
                 Username = username,
                 Email = email,
-                Salt = Convert.ToBase64String(salt),
-                PassphraseHash = Convert.ToBase64String(hash),
                 CreatedAt = DateTime.UtcNow,
                 LastLogin = DateTime.UtcNow,
                 VaultPath = vaultPath,
@@ -95,16 +84,11 @@ namespace PasswordManager.Infrastructure.Services
             var account = all.FirstOrDefault(a => Matches(a, usernameOrEmail))
                 ?? throw new UnauthorizedAccessException("No account found with that username or email.");
 
-            var salt = Convert.FromBase64String(account.Salt);
-            var expectedHash = Convert.FromBase64String(account.PassphraseHash);
-            var actualHash = HashPassphrase(passphrase, salt);
-
-            if (!CryptographicOperations.FixedTimeEquals(expectedHash, actualHash))
+            // The passphrase is verified cryptographically: it must unlock the PGP private key
+            // that protects the vault. No separate password hash is consulted.
+            var privateKeyPath = Path.Combine(account.VaultPath, "private_key.asc");
+            if (!_pgpService.CanUnlockPrivateKey(privateKeyPath, passphrase))
                 throw new UnauthorizedAccessException("Incorrect passphrase.");
-
-            // Heal vault folder if missing (defensive)
-            if (!Directory.Exists(account.VaultPath))
-                Directory.CreateDirectory(account.VaultPath);
 
             account.LastLogin = DateTime.UtcNow;
             await SaveAllAsync(all);
@@ -112,9 +96,6 @@ namespace PasswordManager.Infrastructure.Services
         }
 
         // ─── Internals ───────────────────────────────────────────────────────
-
-        private static byte[] HashPassphrase(string passphrase, byte[] salt) =>
-            Rfc2898DeriveBytes.Pbkdf2(passphrase, salt, Pbkdf2Iterations, HashAlgorithmName.SHA256, HashBytes);
 
         private static bool Matches(UserAccount account, string identity) =>
             string.Equals(account.Username, identity, StringComparison.OrdinalIgnoreCase) ||

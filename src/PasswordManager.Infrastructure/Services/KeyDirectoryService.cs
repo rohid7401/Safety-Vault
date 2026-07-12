@@ -69,7 +69,7 @@ namespace PasswordManager.Infrastructure.Services
         public Task RemoveKeyAsync(string vaultPath, string fileName)
         {
             var dir = GetKeyDirectoryPath(vaultPath);
-            var path = Path.Combine(dir, fileName);
+            var path = ResolveWithin(dir, fileName);
             if (File.Exists(path))
                 File.Delete(path);
             return Task.CompletedTask;
@@ -78,6 +78,24 @@ namespace PasswordManager.Infrastructure.Services
         public async Task<PgpKeyInfo> PublishOwnKeyAsync(string vaultPath, string ownPublicKeyPath, string ownerLabel)
         {
             return await ImportKeyAsync(vaultPath, ownPublicKeyPath, ownerLabel);
+        }
+
+        /// <summary>
+        /// Resolves <paramref name="fileName"/> against <paramref name="dir"/> and guarantees
+        /// the result stays inside that directory, blocking path-traversal (e.g. "..\..\file").
+        /// </summary>
+        private static string ResolveWithin(string dir, string fileName)
+        {
+            var root = Path.GetFullPath(dir);
+            var full = Path.GetFullPath(Path.Combine(root, fileName));
+            var rootWithSep = root.EndsWith(Path.DirectorySeparatorChar)
+                ? root
+                : root + Path.DirectorySeparatorChar;
+
+            if (!full.StartsWith(rootWithSep, StringComparison.Ordinal))
+                throw new UnauthorizedAccessException("Resolved path escapes the key directory.");
+
+            return full;
         }
 
         private static string SanitizeLabel(string label)

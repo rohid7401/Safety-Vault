@@ -2,7 +2,7 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:PasswordManager.App"
-             xmlns:components="clr-namespace:PasswordManager.App.Components"
+             xmlns:components="clr-namespace:PasswordManager.UI.Components;assembly=PasswordManager.UI"
              x:Class="PasswordManager.App.MainPage">
 
     <BlazorWebView x:Name="blazorWebView" HostPage="wwwroot/index.html">

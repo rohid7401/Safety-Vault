@@ -16,5 +16,12 @@ namespace PasswordManager.Core.Interfaces
 
         /// <summary>Generates a new PGP key pair and writes armored files to disk.</summary>
         void GenerateKeyPair(string publicKeyPath, string privateKeyPath, string passphrase);
+
+        /// <summary>
+        /// True if the passphrase can unlock the private key at the given path. This is the
+        /// authoritative passphrase check — it proves the passphrase can derive the keys that
+        /// protect the vault, without any separate (weaker) password hash.
+        /// </summary>
+        bool CanUnlockPrivateKey(string privateKeyPath, string passphrase);
     }
 }

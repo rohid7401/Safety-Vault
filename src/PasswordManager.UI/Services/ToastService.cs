@@ -1,4 +1,4 @@
-namespace PasswordManager.App.Services
+namespace PasswordManager.UI.Services
 {
     /// <summary>
     /// App-wide toast/notification service. Components subscribe to OnShow,

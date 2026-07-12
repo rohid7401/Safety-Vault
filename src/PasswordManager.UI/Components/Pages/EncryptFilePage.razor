@@ -1,0 +1,268 @@
+@page "/encrypt-file"
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject IFileEncryptionService FileEnc
+@inject IKeyDirectoryService KeyDir
+@inject IFilePickerService Picker
+
+@if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
+
+<div class="page-header">
+    <h1>Encrypt / decrypt files</h1>
+    <p>Use PGP to encrypt a single file for yourself or for a contact</p>
+</div>
+
+<div class="tab-bar">
+    <button class="tab-btn @(_mode == Mode.Encrypt ? "active" : "")" @onclick="() => SwitchMode(Mode.Encrypt)">
+        Encrypt
+    </button>
+    <button class="tab-btn @(_mode == Mode.Decrypt ? "active" : "")" @onclick="() => SwitchMode(Mode.Decrypt)">
+        Decrypt
+    </button>
+</div>
+
+@if (_mode == Mode.Encrypt)
+{
+    <div class="card" style="padding:24px;">
+        <div class="form-group">
+            <label>File to encrypt</label>
+            <div class="input-group">
+                <input type="text" class="form-control" value="@_inputName" placeholder="No file chosen" readonly />
+                <button class="btn btn-secondary" type="button" @onclick="PickInput">Choose file</button>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Recipient (whose public key to use)</label>
+            <select class="form-control" @bind="_recipientPath">
+                <option value="">— Select a recipient —</option>
+                <option value="@OwnPublicKeyPath">Myself (@AppState.Account!.Username)</option>
+                @if (_keys is not null)
+                {
+                    foreach (var k in _keys)
+                    {
+                        <option value="@k.FullPath">@k.OwnerLabel</option>
+                    }
+                }
+            </select>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_result))
+        {
+            <div class="alert alert-@(_isError ? "danger" : "success")">@_result</div>
+        }
+
+        <button class="btn btn-primary" @onclick="RunEncrypt" disabled="@_running">
+            @(_running ? "Encrypting..." : "Encrypt file")
+        </button>
+        <small style="display:block; margin-top:8px; color:var(--text-muted);">
+            After encrypting you'll choose where to save the <code>.pgp</code> file.
+        </small>
+    </div>
+}
+else
+{
+    <div class="card" style="padding:24px;">
+        <div class="form-group">
+            <label>Encrypted file (.pgp)</label>
+            <div class="input-group">
+                <input type="text" class="form-control" value="@_inputName" placeholder="No file chosen" readonly />
+                <button class="btn btn-secondary" type="button" @onclick="PickInput">Choose file</button>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Master passphrase</label>
+            <input type="password" class="form-control" @bind="_passphrase"
+                   placeholder="esta_es_mi_frase_maestra" />
+            <small style="color:var(--text-muted);">Needed to unlock your private key</small>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_result))
+        {
+            <div class="alert alert-@(_isError ? "danger" : "success")">@_result</div>
+        }
+
+        <button class="btn btn-primary" @onclick="RunDecrypt" disabled="@_running">
+            @(_running ? "Decrypting..." : "Decrypt file")
+        </button>
+        <small style="display:block; margin-top:8px; color:var(--text-muted);">
+            After decrypting you'll choose where to save the recovered file.
+        </small>
+    </div>
+}
+
+<style>
+    .tab-bar {
+        display: flex;
+        gap: 4px;
+        background: var(--bg-input);
+        border-radius: var(--radius-sm);
+        padding: 4px;
+        margin-bottom: 16px;
+        max-width: 260px;
+    }
+    .tab-btn {
+        flex: 1;
+        padding: 8px 12px;
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    .tab-btn.active { background: var(--accent); color: white; }
+</style>
+
+@code {
+    private enum Mode { Encrypt, Decrypt }
+    private Mode _mode = Mode.Encrypt;
+
+    private const long MaxBytes = 200L * 1024 * 1024; // mirrors FileEncryptionService
+
+    private byte[]? _inputData;
+    private string _inputName = string.Empty;
+    private string _recipientPath = string.Empty;
+    private string _passphrase = string.Empty;
+    private string _result = string.Empty;
+    private bool _isError;
+    private bool _running;
+
+    private List<PgpKeyInfo>? _keys;
+    private readonly string[] _pgpExtensions = new[] { ".pgp", ".asc", ".gpg" };
+
+    private string OwnPublicKeyPath => Path.Combine(AppState.Account!.VaultPath, "public_key.asc");
+    private string OwnPrivateKeyPath => Path.Combine(AppState.Account!.VaultPath, "private_key.asc");
+
+    protected override async Task OnInitializedAsync()
+    {
+        _keys = await KeyDir.ListKeysAsync(AppState.Account!.VaultPath);
+    }
+
+    private void SwitchMode(Mode mode)
+    {
+        _mode = mode;
+        _inputData = null;
+        _inputName = string.Empty;
+        _result = string.Empty;
+        _isError = false;
+    }
+
+    private async Task PickInput()
+    {
+        var picked = _mode == Mode.Decrypt
+            ? await Picker.PickFileForReadAsync("Select an encrypted file", _pgpExtensions)
+            : await Picker.PickFileForReadAsync("Select a file");
+
+        if (picked is null) return;
+
+        using (picked)
+        {
+            try
+            {
+                _inputData = await ReadCappedAsync(picked.Stream, MaxBytes);
+                _inputName = picked.FileName;
+                _result = string.Empty;
+                _isError = false;
+            }
+            catch (Exception ex)
+            {
+                _inputData = null;
+                _inputName = string.Empty;
+                ShowError(ex.Message);
+            }
+        }
+    }
+
+    private async Task RunEncrypt()
+    {
+        _result = string.Empty;
+        _isError = false;
+
+        if (_inputData is null) { ShowError("Choose a file first."); return; }
+        if (string.IsNullOrWhiteSpace(_recipientPath)) { ShowError("Select a recipient."); return; }
+        if (!File.Exists(_recipientPath)) { ShowError("Recipient public key not found."); return; }
+
+        _running = true;
+        StateHasChanged();
+        try
+        {
+            using var input = new MemoryStream(_inputData);
+            using var output = new MemoryStream();
+            await FileEnc.EncryptAsync(input, _recipientPath, output);
+            output.Position = 0;
+
+            var saved = await Picker.SaveStreamAsync(_inputName + ".pgp", output);
+            if (saved is null) { ShowError("Save cancelled."); }
+            else { _result = $"File encrypted and saved: {saved}"; }
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private async Task RunDecrypt()
+    {
+        _result = string.Empty;
+        _isError = false;
+
+        if (_inputData is null) { ShowError("Choose an encrypted file first."); return; }
+        if (string.IsNullOrWhiteSpace(_passphrase)) { ShowError("Passphrase is required."); return; }
+
+        _running = true;
+        StateHasChanged();
+        try
+        {
+            using var input = new MemoryStream(_inputData);
+            using var output = new MemoryStream();
+            await FileEnc.DecryptAsync(input, OwnPrivateKeyPath, _passphrase, output);
+            output.Position = 0;
+
+            var suggested = _inputName.EndsWith(".pgp", StringComparison.OrdinalIgnoreCase)
+                ? _inputName[..^4]
+                : _inputName + ".decrypted";
+
+            var saved = await Picker.SaveStreamAsync(suggested, output);
+            if (saved is null) { ShowError("Save cancelled."); }
+            else { _result = $"File decrypted and saved: {saved}"; }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Decryption failed: {ex.Message}");
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private static async Task<byte[]> ReadCappedAsync(Stream input, long maxBytes)
+    {
+        using var ms = new MemoryStream();
+        var buffer = new byte[81920];
+        long total = 0;
+        int read;
+        while ((read = await input.ReadAsync(buffer)) > 0)
+        {
+            total += read;
+            if (total > maxBytes)
+                throw new InvalidOperationException(
+                    $"File is too large. Maximum supported size is {maxBytes / (1024 * 1024)} MB.");
+            ms.Write(buffer, 0, read);
+        }
+        return ms.ToArray();
+    }
+
+    private void ShowError(string msg)
+    {
+        _result = msg;
+        _isError = true;
+    }
+}

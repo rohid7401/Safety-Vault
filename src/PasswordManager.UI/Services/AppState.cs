@@ -1,7 +1,7 @@
 using PasswordManager.Core.Models;
 using PasswordManager.Core.Services;
 
-namespace PasswordManager.App.Services
+namespace PasswordManager.UI.Services
 {
     /// <summary>
     /// Holds the application-level state: the active user account,

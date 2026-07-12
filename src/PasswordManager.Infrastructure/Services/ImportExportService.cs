@@ -117,8 +117,24 @@ namespace PasswordManager.Infrastructure.Services
 
         private static string EscapeCsvField(string field)
         {
+            field = NeutralizeCsvInjection(field);
             if (field.Contains(',') || field.Contains('"') || field.Contains('\n'))
                 return $"\"{field.Replace("\"", "\"\"")}\"";
+            return field;
+        }
+
+        /// <summary>
+        /// Prevents CSV/formula injection. Spreadsheet apps (Excel, LibreOffice, Sheets)
+        /// evaluate any cell whose value starts with = + - @ (or a leading tab / CR) as a
+        /// formula, which can exfiltrate data or run commands. Prefixing with a single
+        /// quote forces the value to be treated as text.
+        /// </summary>
+        private static string NeutralizeCsvInjection(string field)
+        {
+            if (string.IsNullOrEmpty(field)) return field;
+            char first = field[0];
+            if (first is '=' or '+' or '-' or '@' or '\t' or '\r')
+                return "'" + field;
             return field;
         }
 

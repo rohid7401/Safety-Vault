@@ -2,6 +2,21 @@ namespace PasswordManager.Core.Interfaces
 {
     public interface IFileEncryptionService
     {
+        // ─── Stream-based (platform-agnostic) ────────────────────────────────
+        // Mobile file pickers hand back a Stream / content-URI rather than a
+        // filesystem path, so these are the primitives the UI should prefer.
+
+        /// <summary>Reads plaintext from <paramref name="input"/>, PGP-encrypts it with the
+        /// given public key, and writes the ciphertext to <paramref name="output"/>.</summary>
+        Task EncryptAsync(Stream input, string publicKeyPath, Stream output);
+
+        /// <summary>Reads ciphertext from <paramref name="input"/>, decrypts it with the given
+        /// private key + passphrase, and writes the plaintext to <paramref name="output"/>.</summary>
+        Task DecryptAsync(Stream input, string privateKeyPath, string passphrase, Stream output);
+
+        // ─── Path-based convenience (desktop) ────────────────────────────────
+        // Thin wrappers over the stream methods for the filesystem-friendly platforms.
+
         /// <summary>Encrypts a file with the given PGP public key. Returns the output path.</summary>
         Task<string> EncryptFileAsync(string inputPath, string publicKeyPath, string? outputPath = null);
 

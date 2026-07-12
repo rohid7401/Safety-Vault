@@ -1,6 +1,6 @@
-using PasswordManager.App.Services;
+using PasswordManager.UI.Services;
 
-namespace PasswordManager.App.Components.Shared
+namespace PasswordManager.UI.Components.Shared
 {
     public partial class ToastHost
     {

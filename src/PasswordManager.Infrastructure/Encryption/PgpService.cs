@@ -22,6 +22,21 @@ namespace PasswordManager.Infrastructure.Encryption
         public string DecryptString(string encryptedBase64, string privateKeyPath, string passphrase) =>
             PgpOperations.DecryptString(encryptedBase64, privateKeyPath, passphrase);
 
+        public bool CanUnlockPrivateKey(string privateKeyPath, string passphrase)
+        {
+            try
+            {
+                if (!File.Exists(privateKeyPath)) return false;
+                using var stream = File.OpenRead(privateKeyPath);
+                PgpDecryptionHelper.ReadPrivateKey(stream, passphrase); // throws on wrong passphrase
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public void GenerateKeyPair(string publicKeyPath, string privateKeyPath, string passphrase)
         {
             var rng = new SecureRandom();

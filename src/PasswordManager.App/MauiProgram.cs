@@ -1,7 +1,9 @@
 using CommunityToolkit.Maui;
 using Microsoft.Extensions.Logging;
-using PasswordManager.App.Services;
+using PasswordManager.App.Platform;
 using PasswordManager.Infrastructure;
+using PasswordManager.UI.Abstractions;
+using PasswordManager.UI.Services;
 
 namespace PasswordManager.App;
 
@@ -29,11 +31,15 @@ public static class MauiProgram
             opts.AppDataPath = appData;
         });
 
+        // Shared UI services (from PasswordManager.UI)
         builder.Services.AddSingleton<AppState>();
-        builder.Services.AddSingleton<FileSystemPicker>();
         builder.Services.AddSingleton<ToastService>();
         builder.Services.AddSingleton<GeneratorPreferences>();
         builder.Services.AddHttpClient<KeyServerService>();
+
+        // Platform implementations of the UI abstractions
+        builder.Services.AddSingleton<IClipboardService, MauiClipboardService>();
+        builder.Services.AddSingleton<IFilePickerService, MauiFilePickerService>();
 
 #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();

@@ -1,4 +1,4 @@
-@page "/encrypt-file"
+@page "/encrypt-directory"
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject IFileEncryptionService FileEnc
@@ -7,16 +7,23 @@
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
 <div class="page-header">
-    <h1>Encrypt / decrypt files</h1>
-    <p>Use PGP to encrypt a single file for yourself or for a contact</p>
+    <h1>Encrypt / decrypt directories</h1>
+    <p>Zip and PGP-encrypt an entire folder into a single file</p>
+</div>
+
+<div class="alert alert-info">
+    Directory encryption is a <strong>desktop feature</strong>. On mobile, the OS does not
+    grant apps full folder access, so pick individual files on the
+    <a href="/encrypt-file" style="color:inherit; text-decoration:underline;">Encrypt Files</a>
+    page instead.
 </div>
 
 <div class="tab-bar">
     <button class="tab-btn @(_mode == Mode.Encrypt ? "active" : "")" @onclick="() => _mode = Mode.Encrypt">
-        Encrypt
+        Encrypt directory
     </button>
     <button class="tab-btn @(_mode == Mode.Decrypt ? "active" : "")" @onclick="() => _mode = Mode.Decrypt">
-        Decrypt
+        Decrypt directory
     </button>
 </div>
 
@@ -24,11 +31,11 @@
 {
     <div class="card" style="padding:24px;">
         <div class="form-group">
-            <label>File to encrypt</label>
+            <label>Directory to encrypt</label>
             <PathPicker Value="@_inputPath"
                         ValueChanged="@(v => _inputPath = v)"
-                        Mode="PathPicker.PickerMode.File"
-                        Placeholder="C:\Users\jane\Documents\secret.pdf" />
+                        Mode="PathPicker.PickerMode.Folder"
+                        Placeholder="C:\Users\jane\Documents\Project_Confidential" />
         </div>
 
         <div class="form-group">
@@ -47,12 +54,12 @@
         </div>
 
         <div class="form-group">
-            <label>Output file (optional — leave blank to use &lt;input&gt;.pgp)</label>
+            <label>Output file (optional — leave blank to save next to the folder)</label>
             <PathPicker Value="@_outputPath"
                         ValueChanged="@(v => _outputPath = v)"
                         Mode="PathPicker.PickerMode.SaveFile"
-                        SuggestedFileName="@SuggestedEncryptedName"
-                        Placeholder="C:\Users\jane\Documents\secret.pdf.pgp" />
+                        SuggestedFileName="@SuggestedArchiveName"
+                        Placeholder="C:\Users\jane\Documents\Project_Confidential.zip.pgp" />
         </div>
 
         @if (!string.IsNullOrEmpty(_result))
@@ -61,7 +68,7 @@
         }
 
         <button class="btn btn-primary" @onclick="RunEncrypt" disabled="@_running">
-            @(_running ? "Encrypting..." : "Encrypt file")
+            @(_running ? "Encrypting directory..." : "Encrypt directory")
         </button>
     </div>
 }
@@ -69,28 +76,26 @@ else
 {
     <div class="card" style="padding:24px;">
         <div class="form-group">
-            <label>Encrypted file (.pgp)</label>
+            <label>Encrypted archive (.pgp)</label>
             <PathPicker Value="@_inputPath"
                         ValueChanged="@(v => _inputPath = v)"
                         Mode="PathPicker.PickerMode.File"
                         FileExtensions="@_pgpExtensions"
-                        Placeholder="C:\Users\jane\Documents\secret.pdf.pgp" />
+                        Placeholder="C:\Users\jane\Documents\Project_Confidential.zip.pgp" />
         </div>
 
         <div class="form-group">
             <label>Master passphrase</label>
             <input type="password" class="form-control" @bind="_passphrase"
                    placeholder="esta_es_mi_frase_maestra" />
-            <small style="color:var(--text-muted);">Needed to unlock your private key</small>
         </div>
 
         <div class="form-group">
-            <label>Output file (optional — leave blank to drop the .pgp extension)</label>
+            <label>Extract to (optional)</label>
             <PathPicker Value="@_outputPath"
                         ValueChanged="@(v => _outputPath = v)"
-                        Mode="PathPicker.PickerMode.SaveFile"
-                        SuggestedFileName="@SuggestedDecryptedName"
-                        Placeholder="C:\Users\jane\Documents\secret.pdf" />
+                        Mode="PathPicker.PickerMode.Folder"
+                        Placeholder="C:\Users\jane\Documents\Restored" />
         </div>
 
         @if (!string.IsNullOrEmpty(_result))
@@ -99,7 +104,7 @@ else
         }
 
         <button class="btn btn-primary" @onclick="RunDecrypt" disabled="@_running">
-            @(_running ? "Decrypting..." : "Decrypt file")
+            @(_running ? "Extracting..." : "Decrypt directory")
         </button>
     </div>
 }
@@ -112,7 +117,7 @@ else
         border-radius: var(--radius-sm);
         padding: 4px;
         margin-bottom: 16px;
-        max-width: 260px;
+        max-width: 360px;
     }
     .tab-btn {
         flex: 1;
@@ -143,19 +148,9 @@ else
     private List<PgpKeyInfo>? _keys;
     private readonly string[] _pgpExtensions = new[] { ".pgp", ".asc", ".gpg" };
 
-    private string SuggestedEncryptedName => string.IsNullOrEmpty(_inputPath)
-        ? "output.pgp"
-        : Path.GetFileName(_inputPath) + ".pgp";
-
-    private string SuggestedDecryptedName
-    {
-        get
-        {
-            if (string.IsNullOrEmpty(_inputPath)) return "decrypted";
-            var name = Path.GetFileName(_inputPath);
-            return name.EndsWith(".pgp", StringComparison.OrdinalIgnoreCase) ? name[..^4] : name + ".decrypted";
-        }
-    }
+    private string SuggestedArchiveName => string.IsNullOrEmpty(_inputPath)
+        ? "archive.zip.pgp"
+        : new DirectoryInfo(_inputPath).Name + ".zip.pgp";
 
     private string OwnPublicKeyPath =>
         Path.Combine(AppState.Account!.VaultPath, "public_key.asc");
@@ -172,18 +167,18 @@ else
         _result = string.Empty;
         _isError = false;
 
-        if (!File.Exists(_inputPath)) { ShowError("Input file does not exist."); return; }
+        if (!Directory.Exists(_inputPath)) { ShowError("Directory does not exist."); return; }
         if (string.IsNullOrWhiteSpace(_recipientPath)) { ShowError("Select a recipient."); return; }
-        if (!File.Exists(_recipientPath)) { ShowError("Recipient public key not found."); return; }
+        if (!File.Exists(_recipientPath)) { ShowError("Recipient key not found."); return; }
 
         _running = true;
         StateHasChanged();
         try
         {
-            var output = await FileEnc.EncryptFileAsync(
+            var output = await FileEnc.EncryptDirectoryAsync(
                 _inputPath, _recipientPath,
                 string.IsNullOrWhiteSpace(_outputPath) ? null : _outputPath);
-            _result = $"File encrypted: {output}";
+            _result = $"Directory encrypted: {output}";
         }
         catch (Exception ex)
         {
@@ -207,10 +202,10 @@ else
         StateHasChanged();
         try
         {
-            var output = await FileEnc.DecryptFileAsync(
+            var output = await FileEnc.DecryptDirectoryAsync(
                 _inputPath, OwnPrivateKeyPath, _passphrase,
                 string.IsNullOrWhiteSpace(_outputPath) ? null : _outputPath);
-            _result = $"File decrypted: {output}";
+            _result = $"Directory extracted to: {output}";
         }
         catch (Exception ex)
         {

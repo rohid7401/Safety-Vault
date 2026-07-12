@@ -1,6 +1,6 @@
 using PasswordManager.Core.Models;
 
-namespace PasswordManager.App.Services
+namespace PasswordManager.UI.Services
 {
     /// <summary>
     /// Holds the user's password generation preferences app-wide.

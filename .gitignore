@@ -361,3 +361,19 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# ─── SecureVault — secretos y datos sensibles (nunca commitear) ───
+# Claves PGP
+*.asc
+*.gpg
+*.key.pgp
+# Vault cifrado y su clave AES envuelta
+vault.data.pgp
+vault.data.pgp.tmp
+vault.data.pgp.bak
+vault.key.pgp
+# Cuentas y configuración local
+accounts.json
+vault.config.json
+# Carpetas de vaults de prueba dentro del repo
+**/Vaults/
+**/key_directory/

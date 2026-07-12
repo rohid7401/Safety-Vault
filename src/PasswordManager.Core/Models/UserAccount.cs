@@ -6,10 +6,11 @@ namespace PasswordManager.Core.Models
     /// </summary>
     public class UserAccount
     {
+        // NOTE: no passphrase hash is stored. The passphrase is verified cryptographically
+        // by unlocking the PGP private key (see IAuthService.LoginAsync), which removes the
+        // weaker, redundant offline brute-force oracle a stored hash would represent.
         public string Username { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
-        public string PassphraseHash { get; set; } = string.Empty;
-        public string Salt { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime LastLogin { get; set; } = DateTime.UtcNow;
 

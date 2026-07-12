@@ -9,7 +9,12 @@
       "PowerShell(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\rohi\\\\Desktop\\\\PasswordManager\\\\tests\\\\PasswordManager.Tests\\\\Helpers\")",
       "Bash(dotnet test *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(grep -iE \"\\\\.asc$|vault\\\\.data|accounts\\\\.json|\\\\.key\\\\.pgp|vault\\\\.config\")",
+      "PowerShell(dotnet test C:\\\\Users\\\\rohi\\\\Desktop\\\\PasswordManager\\\\tests\\\\PasswordManager.Tests\\\\PasswordManager.Tests.csproj 2>&1)",
+      "PowerShell(dotnet build C:\\\\Users\\\\rohi\\\\Desktop\\\\PasswordManager\\\\src\\\\PasswordManager.App\\\\PasswordManager.App.csproj -f net9.0-windows10.0.19041.0 2>&1)",
+      "PowerShell(dotnet sln C:\\\\Users\\\\rohi\\\\Desktop\\\\PasswordManager\\\\PasswordManager.sln add C:\\\\Users\\\\rohi\\\\Desktop\\\\PasswordManager\\\\src\\\\PasswordManager.UI\\\\PasswordManager.UI.csproj 2>&1)",
+      "PowerShell(dotnet build C:\\\\Users\\\\rohi\\\\Desktop\\\\PasswordManager\\\\src\\\\PasswordManager.UI\\\\PasswordManager.UI.csproj 2>&1)"
     ]
   }
 }

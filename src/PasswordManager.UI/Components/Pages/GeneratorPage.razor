@@ -2,6 +2,7 @@
 @inject IPasswordGenerator Generator
 @inject GeneratorPreferences Prefs
 @inject ToastService Toast
+@inject IClipboardService Clipboard
 
 <div class="page-header">
     <h1>Password generator</h1>
@@ -115,7 +116,7 @@
     private async Task CopyPassword()
     {
         if (string.IsNullOrEmpty(_password)) return;
-        await Clipboard.Default.SetTextAsync(_password);
+        await Clipboard.SetTextAsync(_password);
         Toast.Success("Password copied to clipboard.");
     }
 
