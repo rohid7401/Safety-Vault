@@ -2,18 +2,20 @@
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject ToastService Toast
+@inject Loc L
+@implements IDisposable
 
 @if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
 
 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;">
     <div style="flex:1;">
-        <p style="margin:0; font-size:13px; color:var(--n-400);">@_entries.Count notes in your vault</p>
+        <p style="margin:0; font-size:13px; color:var(--n-400);">@L.Format("notes.count", _entries.Count)</p>
         <div style="margin-top:6px;">
             <WhatsThisPill FeatureKey="notes" />
         </div>
     </div>
     <button class="btn btn-primary" style="flex:none;" @onclick="() => _showAdd = true">
-        <Icon Name="plus" Size="16" StrokeWidth="2.2" />Add
+        <Icon Name="plus" Size="16" StrokeWidth="2.2" />@L["common.add"]
     </button>
 </div>
 
@@ -21,8 +23,8 @@
 {
     <div class="empty-state">
         <div class="icon-circle"><Icon Name="note" Size="30" StrokeWidth="1.8" /></div>
-        <h3>No secure notes</h3>
-        <p>Add encrypted notes to keep sensitive information safe.</p>
+        <h3>@L["notes.emptyTitle"]</h3>
+        <p>@L["notes.emptyBody"]</p>
     </div>
 }
 else
@@ -44,7 +46,7 @@ else
                     <Icon Name="trash" Size="16" StrokeWidth="1.8" />
                 </button>
                 <button class="reveal-btn" type="button" @onclick="() => ToggleReveal(note.Id)">
-                    @(_revealed.Contains(note.Id) ? "Hide" : "Show")
+                    @(_revealed.Contains(note.Id) ? L["common.hide"] : L["common.show"])
                 </button>
             </div>
             @if (_revealed.Contains(note.Id))
@@ -66,23 +68,23 @@ else
 }
 
 <SheetModal Visible="@(_showAdd || _editNote is not null)"
-            Title="@(_editNote is not null ? "Edit note" : "Add secure note")"
+            Title="@(_editNote is not null ? L["notes.editTitle"] : L["notes.addTitle"])"
             OnClose="CloseModal">
     <ChildContent>
         <div class="field">
-            <label>Title</label>
+            <label>@L["notes.field.title"]</label>
             <input type="text" class="input" @bind="_formTitle"
-                   placeholder="Recovery codes for Google" />
+                   placeholder="@L["notes.field.titlePlaceholder"]" />
         </div>
 
         <div class="field">
-            <label>Content</label>
+            <label>@L["notes.field.content"]</label>
             <textarea class="input" rows="6" @bind="_formContent"
-                      placeholder="Backup recovery codes:&#10;1234-5678&#10;9012-3456"></textarea>
+                      placeholder="@L["notes.field.contentPlaceholder"]"></textarea>
         </div>
 
         <div class="field">
-            <label>Tags (comma separated)</label>
+            <label>@L["vault.field.tags"]</label>
             <input type="text" class="input" @bind="_formTags"
                    placeholder="2fa, backup" />
         </div>
@@ -93,8 +95,8 @@ else
         }
     </ChildContent>
     <FooterContent>
-        <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
-        <button class="btn btn-primary" @onclick="SaveNote">@(_editNote is not null ? "Update" : "Add")</button>
+        <button class="btn btn-secondary" @onclick="CloseModal">@L["common.cancel"]</button>
+        <button class="btn btn-primary" @onclick="SaveNote">@(_editNote is not null ? L["common.update"] : L["common.add"])</button>
     </FooterContent>
 </SheetModal>
 
@@ -109,7 +111,13 @@ else
     private string _formTags = string.Empty;
     private string _formError = string.Empty;
 
-    protected override async Task OnInitializedAsync() => await LoadEntries();
+    protected override async Task OnInitializedAsync()
+    {
+        L.OnChanged += StateHasChanged;
+        await LoadEntries();
+    }
+
+    public void Dispose() => L.OnChanged -= StateHasChanged;
 
     private async Task LoadEntries()
     {
@@ -132,18 +140,18 @@ else
         {
             await AppState.Service!.DeleteEntryAsync(id);
             await LoadEntries();
-            Toast.Info("Note moved to trash.");
+            Toast.Info(L["toast.noteMovedToTrash"]);
         }
         catch (Exception ex)
         {
-            Toast.Error($"Could not delete: {ex.Message}");
+            Toast.Error($"{L["toast.deleteFailed"]}: {ex.Message}");
         }
     }
 
     private async Task SaveNote()
     {
         _formError = string.Empty;
-        if (string.IsNullOrWhiteSpace(_formTitle)) { _formError = "Title is required."; return; }
+        if (string.IsNullOrWhiteSpace(_formTitle)) { _formError = L["notes.err.titleRequired"]; return; }
 
         var tags = _formTags.Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
@@ -168,11 +176,11 @@ else
             var wasEdit = _editNote is not null;
             CloseModal();
             await LoadEntries();
-            Toast.Success(wasEdit ? "Note updated." : "Note saved.");
+            Toast.Success(wasEdit ? L["toast.noteUpdated"] : L["toast.noteSaved"]);
         }
         catch (Exception ex)
         {
-            _formError = $"Could not save: {ex.Message}";
+            _formError = $"{L["toast.saveFailed"]}: {ex.Message}";
         }
     }
 

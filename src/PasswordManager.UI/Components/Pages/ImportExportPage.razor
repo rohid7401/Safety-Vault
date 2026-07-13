@@ -4,6 +4,8 @@
 @inject IImportExportService ImportExport
 @inject IFileEncryptionService FileEnc
 @inject IFilePickerService Picker
+@inject Loc L
+@implements IDisposable
 
 @if (AppState.Service is null || AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
@@ -13,39 +15,39 @@
 
 @* ─── Import ─── *@
 <div class="card" style="gap:10px;">
-    <div class="card-title">Bring passwords in</div>
+    <div class="card-title">@L["io.importTitle"]</div>
     <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.5;">
-        Move from another password app using a CSV, an encrypted backup, or a Bitwarden JSON export.
+        @L["io.importBody"]
     </p>
 
     <div class="field" style="margin-bottom:0;">
-        <label>Format</label>
+        <label>@L["io.format"]</label>
         <select class="input" @bind="_importFormat">
-            <option value="csv">CSV / encrypted backup</option>
-            <option value="bitwarden">Bitwarden JSON</option>
+            <option value="csv">@L["io.format.csv"]</option>
+            <option value="bitwarden">@L["io.format.bitwarden"]</option>
         </select>
     </div>
 
     <div class="field" style="margin-bottom:0;">
-        <label>File</label>
+        <label>@L["io.file"]</label>
         <div class="input-group">
-            <input type="text" class="input" value="@_importName" placeholder="No file chosen" readonly />
-            <button class="btn btn-secondary" type="button" @onclick="PickImport">Choose</button>
+            <input type="text" class="input" value="@_importName" placeholder="@L["io.noFile"]" readonly />
+            <button class="btn btn-secondary" type="button" @onclick="PickImport">@L["io.choose"]</button>
         </div>
     </div>
 
     @if (_importIsEncrypted)
     {
         <div class="field" style="margin-bottom:0;">
-            <label>Master passphrase</label>
+            <label>@L["home.masterPassphrase"]</label>
             <input type="password" class="input" @bind="_importPassphrase"
-                   placeholder="Needed to decrypt this backup" />
-            <small style="color:var(--n-500); font-size:12px;">This file is encrypted with your PGP key.</small>
+                   placeholder="@L["io.passphraseNeeded"]" />
+            <small style="color:var(--n-500); font-size:12px;">@L["io.encryptedNote"]</small>
         </div>
     }
 
     <button class="btn btn-primary btn-block" style="height:44px;" @onclick="ImportFile" disabled="@_importing">
-        @(_importing ? "Importing..." : "Import")
+        @(_importing ? L["io.importing"] : L["io.import"])
     </button>
 
     @if (!string.IsNullOrEmpty(_importResult))
@@ -58,31 +60,28 @@
 
 @* ─── Export ─── *@
 <div class="card" style="gap:10px; margin-top:12px;">
-    <div class="card-title">Save a copy out</div>
+    <div class="card-title">@L["io.exportTitle"]</div>
     <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.5;">
-        An <strong>encrypted backup</strong> can only be opened by you, with your master passphrase.
-        <strong>Plaintext CSV</strong> holds your passwords in the clear — use it only to migrate
-        into another password manager.
+        @((MarkupString)L["io.exportBody"])
     </p>
 
     <div class="field" style="margin-bottom:0;">
-        <label>Format</label>
+        <label>@L["io.format"]</label>
         <select class="input" @bind="_exportMode">
-            <option value="encrypted">Encrypted backup (.csv.pgp) — recommended</option>
-            <option value="plaintext">Plaintext CSV — for other apps</option>
+            <option value="encrypted">@L["io.export.encrypted"]</option>
+            <option value="plaintext">@L["io.export.plaintext"]</option>
         </select>
     </div>
 
     @if (_exportMode == "plaintext")
     {
         <div class="alert alert-danger" style="margin-bottom:0;">
-            ⚠ This file will contain all your passwords in plain text. Store it somewhere safe and
-            delete it right after importing elsewhere.
+            @L["io.plaintextWarning"]
         </div>
     }
 
     <button class="btn btn-secondary btn-block" style="height:44px;" @onclick="ExportVault" disabled="@_exporting">
-        @(_exporting ? "Exporting..." : "Export")
+        @(_exporting ? L["io.exporting"] : L["io.export"])
     </button>
 
     @if (!string.IsNullOrEmpty(_exportResult))
@@ -108,6 +107,10 @@
 
     private string OwnPublicKeyPath => Path.Combine(AppState.Account!.VaultPath, "public_key.asc");
     private string OwnPrivateKeyPath => Path.Combine(AppState.Account!.VaultPath, "private_key.asc");
+
+    protected override void OnInitialized() => L.OnChanged += StateHasChanged;
+
+    public void Dispose() => L.OnChanged -= StateHasChanged;
 
     private async Task ExportVault()
     {
@@ -139,12 +142,12 @@
                 saved = await Picker.SaveStreamAsync($"vault_export_{stamp}.csv", input);
             }
 
-            if (saved is null) { _exportResult = "Export cancelled."; _exportError = true; }
-            else { _exportResult = $"Exported {portable.Count} entries to {saved}"; }
+            if (saved is null) { _exportResult = L["io.exportCancelled"]; _exportError = true; }
+            else { _exportResult = L.Format("io.exportOk", portable.Count, saved); }
         }
         catch (Exception ex)
         {
-            _exportResult = $"Export failed: {ex.Message}";
+            _exportResult = $"{L["io.exportFailed"]}: {ex.Message}";
             _exportError = true;
         }
         finally
@@ -183,7 +186,7 @@
         {
             if (_importData is null)
             {
-                _importResult = "Choose a file first.";
+                _importResult = L["io.chooseFirst"];
                 _importError = true;
                 return;
             }
@@ -193,7 +196,7 @@
             {
                 if (string.IsNullOrWhiteSpace(_importPassphrase))
                 {
-                    _importResult = "Passphrase is required to decrypt this backup.";
+                    _importResult = L["io.passphraseRequired"];
                     _importError = true;
                     return;
                 }
@@ -214,19 +217,19 @@
 
             if (entries.Count == 0)
             {
-                _importResult = "No entries found in the file.";
+                _importResult = L["io.noEntries"];
                 _importError = true;
                 return;
             }
 
             await AppState.Service!.ImportPasswordEntriesAsync(entries);
-            _importResult = $"Successfully imported {entries.Count} entries.";
+            _importResult = L.Format("io.importOk", entries.Count);
         }
         catch (Exception ex)
         {
             _importResult = _importIsEncrypted
-                ? $"Import failed (wrong passphrase or corrupt file): {ex.Message}"
-                : $"Import failed: {ex.Message}";
+                ? $"{L["io.importFailedEncrypted"]}: {ex.Message}"
+                : $"{L["io.importFailed"]}: {ex.Message}";
             _importError = true;
         }
         finally

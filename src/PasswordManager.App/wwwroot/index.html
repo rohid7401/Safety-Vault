@@ -24,6 +24,61 @@
 
     <script src="_framework/blazor.webview.js" autostart="false"></script>
 
+    <script>
+        // ── Keep a focused field inside a bottom sheet visible above the soft keyboard ──
+        document.addEventListener('focusin', function (e) {
+            var el = e.target;
+            if (el && el.matches && el.matches('.sheet input, .sheet textarea, .sheet select')) {
+                // Wait for the keyboard to open and the viewport to resize, then center the field.
+                setTimeout(function () {
+                    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                }, 300);
+            }
+        });
+
+        // ── Swipe-down on the sheet grip to dismiss (drag handle gesture) ──
+        (function () {
+            var sheet = null, startY = 0, moved = 0;
+
+            document.addEventListener('pointerdown', function (e) {
+                var grip = e.target.closest && e.target.closest('.sheet-grip');
+                if (!grip) return;
+                sheet = grip.closest('.sheet');
+                if (!sheet) return;
+                startY = e.clientY;
+                moved = 0;
+                sheet.style.transition = 'none';
+            });
+
+            document.addEventListener('pointermove', function (e) {
+                if (!sheet) return;
+                moved = Math.max(0, e.clientY - startY);
+                sheet.style.transform = 'translateY(' + moved + 'px)';
+            });
+
+            document.addEventListener('pointerup', function () {
+                if (!sheet) return;
+                var s = sheet;
+                sheet = null;
+                s.style.transition = 'transform .2s ease';
+                if (moved > 90) {
+                    // Past the threshold: slide out and trigger the backdrop's close handler.
+                    var backdrop = s.closest('.sheet-backdrop');
+                    s.style.transform = 'translateY(110%)';
+                    setTimeout(function () {
+                        s.style.transform = '';
+                        s.style.transition = '';
+                        if (backdrop) backdrop.click();
+                    }, 180);
+                } else {
+                    // Snap back.
+                    s.style.transform = 'translateY(0)';
+                    setTimeout(function () { s.style.transform = ''; s.style.transition = ''; }, 200);
+                }
+            });
+        })();
+    </script>
+
 </body>
 
 </html>

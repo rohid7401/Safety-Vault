@@ -3,6 +3,8 @@
 @inject NavigationManager Nav
 @inject IFileEncryptionService FileEnc
 @inject IKeyDirectoryService KeyDir
+@inject Loc L
+@implements IDisposable
 
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
@@ -11,18 +13,15 @@
 </div>
 
 <div class="alert alert-info">
-    Directory encryption is a <strong>desktop feature</strong>. On mobile, the OS does not
-    grant apps full folder access, so pick individual files on the
-    <a href="/encrypt-file" style="color:inherit; text-decoration:underline;">Encrypt files</a>
-    page instead.
+    @((MarkupString)L["encDir.desktopNote"])
 </div>
 
 <div class="seg" style="margin-bottom:16px;">
     <button class="seg-opt @(_mode == Mode.Encrypt ? "active" : "")" type="button" @onclick="() => _mode = Mode.Encrypt">
-        Lock (encrypt)
+        @L["enc.lock"]
     </button>
     <button class="seg-opt @(_mode == Mode.Decrypt ? "active" : "")" type="button" @onclick="() => _mode = Mode.Decrypt">
-        Unlock (decrypt)
+        @L["enc.unlock"]
     </button>
 </div>
 
@@ -30,7 +29,7 @@
 {
     <div class="card" style="gap:14px;">
         <div class="field" style="margin-bottom:0;">
-            <label>Folder to lock</label>
+            <label>@L["encDir.folderToLock"]</label>
             <PathPicker Value="@_inputPath"
                         ValueChanged="@(v => _inputPath = v)"
                         Mode="PathPicker.PickerMode.Folder"
@@ -38,10 +37,10 @@
         </div>
 
         <div class="field" style="margin-bottom:0;">
-            <label>Who can open it?</label>
+            <label>@L["enc.whoCanOpen"]</label>
             <select class="input" @bind="_recipientPath">
-                <option value="">— Select a recipient —</option>
-                <option value="@OwnPublicKeyPath">Myself (@AppState.Account!.Username)</option>
+                <option value="">@L["enc.selectRecipient"]</option>
+                <option value="@OwnPublicKeyPath">@L.Format("enc.myself", AppState.Account!.Username)</option>
                 @if (_keys is not null)
                 {
                     foreach (var k in _keys)
@@ -53,7 +52,7 @@
         </div>
 
         <div class="field" style="margin-bottom:0;">
-            <label>Output file (optional — leave blank to save next to the folder)</label>
+            <label>@L["encDir.outputFile"]</label>
             <PathPicker Value="@_outputPath"
                         ValueChanged="@(v => _outputPath = v)"
                         Mode="PathPicker.PickerMode.SaveFile"
@@ -67,20 +66,20 @@
         }
 
         <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunEncrypt" disabled="@_running">
-            @(_running ? "Locking folder..." : "Lock folder")
+            @(_running ? L["encDir.lockingFolder"] : L["encDir.lockFolder"])
         </button>
     </div>
 
     <div class="hint-row">
         <Icon Name="info" Size="15" />
-        <span>Everything in the folder is bundled and locked into one protected file only the chosen person can open.</span>
+        <span>@L["encDir.hintEncrypt"]</span>
     </div>
 }
 else
 {
     <div class="card" style="gap:14px;">
         <div class="field" style="margin-bottom:0;">
-            <label>Locked archive (.pgp)</label>
+            <label>@L["encDir.lockedArchive"]</label>
             <PathPicker Value="@_inputPath"
                         ValueChanged="@(v => _inputPath = v)"
                         Mode="PathPicker.PickerMode.File"
@@ -89,13 +88,13 @@ else
         </div>
 
         <div class="field" style="margin-bottom:0;">
-            <label>Master passphrase</label>
+            <label>@L["home.masterPassphrase"]</label>
             <input type="password" class="input" @bind="_passphrase"
-                   placeholder="the-one-phrase-you-remember" />
+                   placeholder="@L["home.placeholder.passphrase"]" />
         </div>
 
         <div class="field" style="margin-bottom:0;">
-            <label>Extract to (optional)</label>
+            <label>@L["encDir.extractTo"]</label>
             <PathPicker Value="@_outputPath"
                         ValueChanged="@(v => _outputPath = v)"
                         Mode="PathPicker.PickerMode.Folder"
@@ -108,13 +107,13 @@ else
         }
 
         <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunDecrypt" disabled="@_running">
-            @(_running ? "Unlocking..." : "Unlock folder")
+            @(_running ? L["encFile.unlocking"] : L["encDir.unlockFolder"])
         </button>
     </div>
 
     <div class="hint-row">
         <Icon Name="info" Size="15" />
-        <span>You'll need your master passphrase to open an archive locked for you.</span>
+        <span>@L["encDir.hintDecrypt"]</span>
     </div>
 }
 
@@ -144,17 +143,20 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        L.OnChanged += StateHasChanged;
         _keys = await KeyDir.ListKeysAsync(AppState.Account!.VaultPath);
     }
+
+    public void Dispose() => L.OnChanged -= StateHasChanged;
 
     private async Task RunEncrypt()
     {
         _result = string.Empty;
         _isError = false;
 
-        if (!Directory.Exists(_inputPath)) { ShowError("Directory does not exist."); return; }
-        if (string.IsNullOrWhiteSpace(_recipientPath)) { ShowError("Select a recipient."); return; }
-        if (!File.Exists(_recipientPath)) { ShowError("Recipient key not found."); return; }
+        if (!Directory.Exists(_inputPath)) { ShowError(L["encDir.err.noDir"]); return; }
+        if (string.IsNullOrWhiteSpace(_recipientPath)) { ShowError(L["enc.err.selectRecipient"]); return; }
+        if (!File.Exists(_recipientPath)) { ShowError(L["enc.err.recipientNotFound"]); return; }
 
         _running = true;
         StateHasChanged();
@@ -163,7 +165,7 @@ else
             var output = await FileEnc.EncryptDirectoryAsync(
                 _inputPath, _recipientPath,
                 string.IsNullOrWhiteSpace(_outputPath) ? null : _outputPath);
-            _result = $"Directory encrypted: {output}";
+            _result = L.Format("encDir.encryptedOk", output);
         }
         catch (Exception ex)
         {
@@ -180,8 +182,8 @@ else
         _result = string.Empty;
         _isError = false;
 
-        if (!File.Exists(_inputPath)) { ShowError("Input file does not exist."); return; }
-        if (string.IsNullOrWhiteSpace(_passphrase)) { ShowError("Passphrase is required."); return; }
+        if (!File.Exists(_inputPath)) { ShowError(L["encDir.err.noInput"]); return; }
+        if (string.IsNullOrWhiteSpace(_passphrase)) { ShowError(L["enc.err.passphraseRequired"]); return; }
 
         _running = true;
         StateHasChanged();
@@ -190,11 +192,11 @@ else
             var output = await FileEnc.DecryptDirectoryAsync(
                 _inputPath, OwnPrivateKeyPath, _passphrase,
                 string.IsNullOrWhiteSpace(_outputPath) ? null : _outputPath);
-            _result = $"Directory extracted to: {output}";
+            _result = L.Format("encDir.extractedOk", output);
         }
         catch (Exception ex)
         {
-            ShowError($"Decryption failed: {ex.Message}");
+            ShowError($"{L["enc.decryptFailed"]}: {ex.Message}");
         }
         finally
         {

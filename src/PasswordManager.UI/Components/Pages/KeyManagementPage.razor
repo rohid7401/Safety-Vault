@@ -5,6 +5,8 @@
 @inject IFilePickerService Picker
 @inject ToastService Toast
 @inject KeyServerService KeyServer
+@inject Loc L
+@implements IDisposable
 
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
@@ -14,14 +16,10 @@
 
 <div class="hint-row" style="margin-top:0; margin-bottom:16px;">
     <Icon Name="info" Size="15" />
-    <span>
-        Your public key is safe to share. Your private key is encrypted with your master
-        passphrase — never give that file <em>plus</em> your passphrase to anyone. Back up
-        <code>private_key.asc</code> somewhere safe.
-    </span>
+    <span>@((MarkupString)L["keys.hint"])</span>
 </div>
 
-<div class="dash-group-title" style="margin:0 2px 8px;">Your keys</div>
+<div class="dash-group-title" style="margin:0 2px 8px;">@L["keys.yourKeys"]</div>
 
 <div class="card" style="gap:12px;">
     <div class="card-header">
@@ -29,54 +27,47 @@
             <div class="card-title">@(AppState.Account?.Username)</div>
             <div class="card-subtitle">@(AppState.Account?.Email)</div>
         </div>
-        <span class="badge badge-success">Active</span>
+        <span class="badge badge-success">@L["keys.active"]</span>
     </div>
     <div class="key-row">
-        <span class="pill pill-public">Public</span>
+        <span class="pill pill-public">@L["tl.public"]</span>
         <span class="key-name">@OwnPublicKeyPath</span>
     </div>
     <div class="key-row">
-        <span class="pill pill-private">Private</span>
-        <span class="key-name">@OwnPrivateKeyPath · kept secret</span>
+        <span class="pill pill-private">@L["tl.private"]</span>
+        <span class="key-name">@OwnPrivateKeyPath · @L["keys.keptSecret"]</span>
     </div>
     <button class="btn btn-primary btn-block" @onclick="ExportOwnPublicKey">
-        Share my public key
+        @L["keys.share"]
     </button>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn btn-secondary btn-sm" style="flex:1;" @onclick="PublishOwnKey">
-            Add to my contact directory
+            @L["keys.addToDirectory"]
         </button>
         <button class="btn btn-secondary btn-sm" style="flex:1;" @onclick="OpenPublishToServerModal">
-            Publish to keys.openpgp.org
+            @L["keys.publishServer"]
         </button>
     </div>
 </div>
 
 @* ─── Public keyserver ─── *@
 <div class="dash-group-title" style="margin:22px 2px 8px; display:flex; align-items:center; gap:6px;">
-    Public keyservers
+    @L["keys.keyservers"]
     <InfoTooltip>
-        <strong>What is a keyserver?</strong>
-        <p style="margin:6px 0 0 0;">
-            A directory on the internet where people publish their public PGP keys so others
-            can find them by email. SecureVault uses
-            <code>keys.openpgp.org</code>, the modern verifying keyserver.
-        </p>
-        <p style="margin:6px 0 0 0;">
-            Publishing requires email confirmation (a verification link is sent to the address
-            on your key). Once verified, anyone can fetch your key by email.
-        </p>
+        <strong>@L["keys.what.title"]</strong>
+        <p style="margin:6px 0 0 0;">@L["keys.what.1"]</p>
+        <p style="margin:6px 0 0 0;">@L["keys.what.2"]</p>
     </InfoTooltip>
 </div>
 
 <div class="card" style="gap:10px;">
     <div class="field" style="margin-bottom:0;">
-        <label>Search a contact's key by email</label>
+        <label>@L["keys.searchByEmail"]</label>
         <div class="input-group">
             <input type="email" class="input" @bind="_searchEmail"
                    placeholder="alice@example.com" />
             <button class="btn btn-primary" @onclick="SearchKeyserver" disabled="@_searching">
-                @(_searching ? "Searching..." : "Search")
+                @(_searching ? L["keys.searching"] : L["keys.search"])
             </button>
         </div>
     </div>
@@ -84,12 +75,12 @@
     @if (_searchResultArmor is not null)
     {
         <div class="alert alert-success" style="margin-bottom:0;">
-            Found a public key for <strong>@_searchEmail</strong>.
+            @L.Format("keys.foundFor", _searchEmail)
             <div style="margin-top:8px;">
                 <input type="text" class="input" @bind="_searchImportLabel"
-                       placeholder="Display name for this contact" style="margin-bottom:8px;" />
+                       placeholder="@L["keys.displayNamePlaceholder"]" style="margin-bottom:8px;" />
                 <button class="btn btn-primary btn-sm" @onclick="ImportSearchResult">
-                    Add to my contact directory
+                    @L["keys.addToDirectory"]
                 </button>
             </div>
         </div>
@@ -97,35 +88,34 @@
     else if (_searchAttempted && _searchResultArmor is null && !_searching)
     {
         <div class="alert alert-info" style="margin-bottom:0;">
-            No published key found for that email on keys.openpgp.org.
+            @L["keys.noneFound"]
         </div>
     }
 </div>
 
 <div class="dash-group-title" style="margin:22px 2px 8px;">
-    Contact directory @if (_keys is not null) { <text>(@_keys.Count)</text> }
+    @L["keys.directory"] @if (_keys is not null) { <text>(@_keys.Count)</text> }
 </div>
 
 <div class="card" style="gap:10px;">
     <p style="margin:0; font-size:13px; color:var(--n-300); line-height:1.5;">
-        Public keys of people you can send locked files to. "Add to my contact directory"
-        above copies your own public key here so you can encrypt files for yourself.
+        @L["keys.directoryBody"]
     </p>
     <button class="btn btn-secondary btn-block" @onclick="OpenImportModal">
-        Import a contact's key
+        @L["keys.importContact"]
     </button>
 </div>
 
 @if (_keys is null)
 {
-    <p style="color:var(--n-500);">Loading...</p>
+    <p style="color:var(--n-500);">@L["common.loading"]</p>
 }
 else if (_keys.Count == 0)
 {
     <div class="empty-state">
         <div class="icon-circle"><Icon Name="users" Size="30" StrokeWidth="1.8" /></div>
-        <h3>No contact keys yet</h3>
-        <p>Import a public key from someone you trust, or publish your own to encrypt files for yourself.</p>
+        <h3>@L["keys.emptyTitle"]</h3>
+        <p>@L["keys.emptyBody"]</p>
     </div>
 }
 else
@@ -139,7 +129,7 @@ else
                 </div>
                 <div style="flex:1; min-width:0;">
                     <div class="card-title">@key.OwnerLabel</div>
-                    <div class="card-subtitle" style="word-break:break-all;">Fingerprint: <code>@key.Fingerprint</code></div>
+                    <div class="card-subtitle" style="word-break:break-all;">@L["keys.fingerprint"]: <code>@key.Fingerprint</code></div>
                 </div>
                 <button class="btn-icon" type="button" aria-label="Delete" style="color:var(--danger);"
                         @onclick="() => RemoveKey(key.FileName)">
@@ -154,27 +144,27 @@ else
 }
 
 @* ─── Import sheet ─── *@
-<SheetModal Visible="_showImport" Title="Import a contact public key" OnClose="CloseImportModal">
+<SheetModal Visible="_showImport" Title="@L["keys.importTitle"]" OnClose="CloseImportModal">
     <ChildContent>
         <p style="color:var(--n-400); font-size:13px; margin-bottom:14px;">
-            Pick the <code>.asc</code> file your contact gave you and choose a display name.
+            @((MarkupString)L["keys.importBody"])
         </p>
 
         <div class="field">
-            <label>Display name</label>
+            <label>@L["keys.displayName"]</label>
             <input type="text" class="input" @bind="_importLabel"
                    placeholder="Alice Johnson" />
         </div>
 
         <div class="field">
-            <label>Public key file</label>
+            <label>@L["keys.publicKeyFile"]</label>
             <PathPicker Value="@_importKeyPath"
                         ValueChanged="@(v => _importKeyPath = v)"
                         Mode="PathPicker.PickerMode.File"
                         FileExtensions="@_ascExtensions"
                         FilterTitle="Select a public key file"
                         Placeholder="C:\Users\jane\Downloads\alice_public.asc" />
-            <small style="color:var(--n-500); font-size:12px;">Supported extensions: .asc, .pub, .gpg, .pgp, .key, .txt</small>
+            <small style="color:var(--n-500); font-size:12px;">@L["keys.supportedExt"]</small>
         </div>
 
         @if (!string.IsNullOrEmpty(_importError))
@@ -183,31 +173,28 @@ else
         }
     </ChildContent>
     <FooterContent>
-        <button class="btn btn-secondary" @onclick="CloseImportModal">Cancel</button>
+        <button class="btn btn-secondary" @onclick="CloseImportModal">@L["common.cancel"]</button>
         <button class="btn btn-primary" @onclick="ImportKey" disabled="@_importing">
-            @(_importing ? "Importing..." : "Import")
+            @(_importing ? L["io.importing"] : L["io.import"])
         </button>
     </FooterContent>
 </SheetModal>
 
 @* ─── Publish-to-server sheet ─── *@
-<SheetModal Visible="_showPublishToServer" Title="Publish to keys.openpgp.org" OnClose="ClosePublishModal">
+<SheetModal Visible="_showPublishToServer" Title="@L["keys.publishTitle"]" OnClose="ClosePublishModal">
     <ChildContent>
         <p style="color:var(--n-400); font-size:13px; line-height:1.55;">
-            Your public key will be uploaded so people can find it by email. After uploading,
-            keys.openpgp.org will send a verification email to <strong>@(AppState.Account?.Email)</strong>.
-            Click the link in that email to make your key searchable.
+            @((MarkupString)L.Format("keys.publishBody1", AppState.Account?.Email ?? ""))
         </p>
         <p style="color:var(--n-400); font-size:13px; line-height:1.55; margin-top:8px;">
-            <strong style="color:var(--color-text);">This action only uploads the PUBLIC key.</strong>
-            Your private key never leaves your device.
+            @((MarkupString)L["keys.publishBody2"])
         </p>
 
         @if (_publishResult is not null)
         {
             <div class="alert alert-success" style="margin-top:10px;">
-                Upload accepted. Fingerprint: <code style="word-break:break-all;">@_publishResult.KeyFingerprint</code>.
-                Check your email and click the verification link.
+                @L["keys.uploadAccepted"] <code style="word-break:break-all;">@_publishResult.KeyFingerprint</code>.
+                @L["keys.checkEmail"]
             </div>
         }
 
@@ -217,16 +204,16 @@ else
         }
     </ChildContent>
     <FooterContent>
-        <button class="btn btn-secondary" @onclick="ClosePublishModal">Cancel</button>
+        <button class="btn btn-secondary" @onclick="ClosePublishModal">@L["common.cancel"]</button>
         @if (_publishResult is null)
         {
             <button class="btn btn-primary" @onclick="PublishToServer" disabled="@_publishing">
-                @(_publishing ? "Uploading..." : "Upload my key")
+                @(_publishing ? L["keys.uploading"] : L["keys.uploadKey"])
             </button>
         }
         else
         {
-            <button class="btn btn-primary" @onclick="ClosePublishModal">Done</button>
+            <button class="btn btn-primary" @onclick="ClosePublishModal">@L["common.done"]</button>
         }
     </FooterContent>
 </SheetModal>
@@ -266,7 +253,13 @@ else
     private string OwnPrivateKeyPath =>
         AppState.Account is null ? "" : Path.Combine(AppState.Account.VaultPath, "private_key.asc");
 
-    protected override async Task OnInitializedAsync() => await Reload();
+    protected override async Task OnInitializedAsync()
+    {
+        L.OnChanged += StateHasChanged;
+        await Reload();
+    }
+
+    public void Dispose() => L.OnChanged -= StateHasChanged;
 
     private async Task Reload()
     {

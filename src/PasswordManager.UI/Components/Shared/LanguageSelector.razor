@@ -1,0 +1,23 @@
+@* Compact language switcher. Reads options from Loc.Available, so adding a
+   language file automatically shows it here. *@
+@inject Loc L
+@implements IDisposable
+
+<div class="lang-seg" role="group" aria-label="@L["lang.title"]">
+    @foreach (var opt in L.Available)
+    {
+        <button type="button"
+                class="lang-opt @(opt.Code == L.CurrentLanguage ? "active" : "")"
+                @onclick="() => L.SetLanguage(opt.Code)">
+            @opt.Code.ToUpperInvariant()
+        </button>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => L.OnChanged += OnLanguageChanged;
+
+    private void OnLanguageChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => L.OnChanged -= OnLanguageChanged;
+}

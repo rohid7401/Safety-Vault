@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @inject AppState AppState
 @inject NavigationManager Nav
+@inject Loc L
 @implements IDisposable
 
 <ToastHost />
@@ -65,18 +66,18 @@ else
                 <div class="drawer-nav">
                     <NavLink class="nav-item" href="dashboard" Match="NavLinkMatch.All">
                         <span class="nav-item-icon"><Icon Name="home" Size="14" StrokeWidth="1.8" /></span>
-                        Home
+                        @L["common.home"]
                     </NavLink>
 
                     @foreach (var group in NavGroups)
                     {
                         <div class="nav-group">
-                            <div class="nav-group-title">@group.Title</div>
+                            <div class="nav-group-title">@L[group.TitleKey]</div>
                             @foreach (var item in group.Items)
                             {
                                 <NavLink class="nav-item" href="@item.Href" Match="NavLinkMatch.All">
                                     <span class="nav-item-icon"><Icon Name="@item.Icon" Size="14" StrokeWidth="1.8" /></span>
-                                    @item.Label
+                                    @L[item.LabelKey]
                                 </NavLink>
                             }
                         </div>
@@ -84,9 +85,13 @@ else
                 </div>
 
                 <div class="drawer-footer">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                        <span style="font-size:12px; color:var(--n-500);">@L["lang.title"]</span>
+                        <LanguageSelector />
+                    </div>
                     <button class="btn btn-secondary btn-block btn-lock" @onclick="LockVault">
                         <Icon Name="lock" Size="16" />
-                        Lock vault
+                        @L["common.lockVault"]
                     </button>
                 </div>
             </nav>
@@ -113,55 +118,54 @@ else
     private bool _drawerOpen;
     private ErrorBoundary? _boundary;
 
-    private sealed record NavItem(string Label, string Href, string Icon);
-    private sealed record NavGroup(string Title, NavItem[] Items);
+    private sealed record NavItem(string LabelKey, string Href, string Icon);
+    private sealed record NavGroup(string TitleKey, NavItem[] Items);
 
     private static readonly NavGroup[] NavGroups =
     [
-        new("Vault",
+        new("nav.group.vault",
         [
-            new NavItem("Passwords", "vault", "lock"),
-            new NavItem("Secure notes", "vault/notes", "note"),
-            new NavItem("Cards", "vault/cards", "card"),
+            new NavItem("nav.passwords", "vault", "lock"),
+            new NavItem("nav.notes", "vault/notes", "note"),
+            new NavItem("nav.cards", "vault/cards", "card"),
         ]),
-        new("Tools",
+        new("nav.group.tools",
         [
-            new NavItem("Password generator", "generator", "refresh"),
-            new NavItem("Vault audit", "audit", "shield"),
-            new NavItem("Import / export", "import-export", "swap"),
+            new NavItem("nav.generator", "generator", "refresh"),
+            new NavItem("nav.audit", "audit", "shield"),
+            new NavItem("nav.importExport", "import-export", "swap"),
         ]),
-        new("Keys & files",
+        new("nav.group.keys",
         [
-            new NavItem("Key management", "keys", "key"),
-            new NavItem("Encrypt", "encrypt", "lock-keyhole"),
-            new NavItem("Encrypt files", "encrypt-file", "file"),
-            new NavItem("Encrypt directories", "encrypt-directory", "folder"),
+            new NavItem("nav.keys", "keys", "key"),
+            new NavItem("nav.encrypt", "encrypt", "lock-keyhole"),
+            new NavItem("nav.encryptFiles", "encrypt-file", "file"),
+            new NavItem("nav.encryptDirs", "encrypt-directory", "folder"),
         ]),
-        new("Learn",
+        new("nav.group.learn",
         [
-            new NavItem("How PGP works", "tutorial", "book"),
+            new NavItem("nav.tutorial", "tutorial", "book"),
         ]),
     ];
 
-    private static readonly Dictionary<string, string> Titles = new()
+    // Route → translation key for the app-bar title. Dashboard/root show the brand instead.
+    private static readonly Dictionary<string, string> TitleKeys = new()
     {
-        [""] = "SecureVault",
-        ["dashboard"] = "SecureVault",
-        ["vault"] = "Passwords",
-        ["vault/notes"] = "Secure notes",
-        ["vault/cards"] = "Cards",
-        ["generator"] = "Generator",
-        ["audit"] = "Vault audit",
-        ["import-export"] = "Import / export",
-        ["keys"] = "Key management",
-        ["encrypt"] = "Encrypt",
-        ["encrypt-file"] = "Encrypt files",
-        ["encrypt-directory"] = "Encrypt directories",
-        ["tutorial"] = "How PGP works",
+        ["vault"] = "title.passwords",
+        ["vault/notes"] = "title.notes",
+        ["vault/cards"] = "title.cards",
+        ["generator"] = "title.generator",
+        ["audit"] = "title.audit",
+        ["import-export"] = "title.importExport",
+        ["keys"] = "title.keys",
+        ["encrypt"] = "title.encrypt",
+        ["encrypt-file"] = "title.encryptFiles",
+        ["encrypt-directory"] = "title.encryptDirs",
+        ["tutorial"] = "title.tutorial",
     };
 
     private string CurrentRoute => Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].TrimEnd('/');
-    private string Title => Titles.TryGetValue(CurrentRoute, out var t) ? t : "SecureVault";
+    private string Title => TitleKeys.TryGetValue(CurrentRoute, out var key) ? L[key] : "SecureVault";
     private bool ShowBack => CurrentRoute is not ("" or "dashboard");
 
     private string Initials
@@ -181,6 +185,7 @@ else
     {
         AppState.OnStateChanged += StateHasChanged;
         Nav.LocationChanged += OnLocationChanged;
+        L.OnChanged += StateHasChanged;
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
@@ -204,6 +209,7 @@ else
     {
         AppState.OnStateChanged -= StateHasChanged;
         Nav.LocationChanged -= OnLocationChanged;
+        L.OnChanged -= StateHasChanged;
     }
 
     private void ResetBoundary() => _boundary?.Recover();

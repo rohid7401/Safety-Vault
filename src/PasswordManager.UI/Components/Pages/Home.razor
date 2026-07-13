@@ -5,25 +5,30 @@
 @inject IPgpService PgpService
 @inject IAuthService AuthService
 @inject ToastService Toast
+@inject Loc L
+@implements IDisposable
 
 <div class="unlock-container">
     <div class="unlock-card">
+        <div style="display:flex; justify-content:flex-end; margin-bottom:8px;">
+            <LanguageSelector />
+        </div>
         <div class="unlock-hero">
             <div class="unlock-hero-icon">
                 <Icon Name="lock-keyhole" Size="30" StrokeWidth="1.8" />
             </div>
             <h1>SecureVault</h1>
-            <p class="subtitle">Your private vault. It lives only on this device — nobody else can read it.</p>
+            <p class="subtitle">@L["home.subtitle"]</p>
         </div>
 
         <div class="seg" style="margin-bottom:22px;">
             <button class="seg-opt @(_tab == Tab.Login ? "active" : "")" type="button"
                     @onclick="() => SwitchTab(Tab.Login)">
-                Sign in
+                @L["home.signIn"]
             </button>
             <button class="seg-opt @(_tab == Tab.Register ? "active" : "")" type="button"
                     @onclick="() => SwitchTab(Tab.Register)">
-                Create account
+                @L["home.createAccount"]
             </button>
         </div>
 
@@ -39,93 +44,90 @@
         @if (_tab == Tab.Login)
         {
             <div class="field">
-                <label>Username or email</label>
+                <label>@L["home.usernameOrEmail"]</label>
                 <input type="text" class="input" @bind="_loginIdentity"
-                       placeholder="jane.doe  ·  jane@example.com" />
+                       placeholder="@L["home.placeholder.identity"]" />
             </div>
 
             <div class="field" style="margin-bottom:8px;">
                 <label style="display:flex; align-items:center; gap:8px;">
-                    Master passphrase
+                    @L["home.masterPassphrase"]
                     <button class="info-dot" type="button" aria-label="What is this"
                             @onclick="() => _showWhatIs = !_showWhatIs">i</button>
                 </label>
                 <PasswordField @bind-Value="_loginPassphrase"
-                               Placeholder="the-one-phrase-you-remember"
+                               Placeholder="@L["home.placeholder.passphrase"]"
                                OnEnter="HandleLogin" />
             </div>
             @if (_showWhatIs)
             {
                 <div class="explainer-box" style="margin-bottom:8px;">
-                    This is the one phrase that unlocks everything. We never store it and
-                    it can't be recovered — so pick something you'll remember.
+                    @L["home.whatIsShort"]
                 </div>
             }
 
             <button class="btn btn-primary btn-block btn-lg" style="margin-top:14px;"
                     @onclick="HandleLogin" disabled="@_loading">
-                @(_loading ? "Signing in..." : "Sign in")
+                @(_loading ? L["home.signingIn"] : L["home.signIn"])
             </button>
 
             @if (_knownUsers.Count > 0)
             {
                 <div class="known-users">
-                    Existing accounts on this device: @string.Join(", ", _knownUsers)
+                    @L.Format("home.knownUsers", string.Join(", ", _knownUsers))
                 </div>
             }
         }
         else
         {
             <div class="field">
-                <label>Username</label>
+                <label>@L["home.username"]</label>
                 <input type="text" class="input" @bind="_regUsername"
                        placeholder="jane.doe" />
             </div>
 
             <div class="field">
-                <label>Email</label>
+                <label>@L["home.email"]</label>
                 <input type="email" class="input" @bind="_regEmail"
                        placeholder="jane@example.com" />
             </div>
 
             <div class="field" style="margin-bottom:8px;">
                 <label style="display:flex; align-items:center; gap:8px;">
-                    Master passphrase
+                    @L["home.masterPassphrase"]
                     <button class="info-dot" type="button" aria-label="What is this"
                             @onclick="() => _showWhatIs = !_showWhatIs">i</button>
                 </label>
                 <PasswordField @bind-Value="_regPassphrase"
-                               Placeholder="the-one-phrase-you-remember" />
-                <small class="hint">Minimum 8 characters — use 4+ random words or 16+ mixed characters.</small>
+                               Placeholder="@L["home.placeholder.passphrase"]" />
+                <small class="hint">@L["home.minChars"]</small>
             </div>
             @if (_showWhatIs)
             {
                 <div class="explainer-box" style="margin-bottom:8px;">
-                    This is the one phrase that unlocks everything. It also encrypts your
-                    private PGP key. It can't be recovered — losing it means losing the
-                    vault — so pick something strong you'll remember.
+                    @L["home.whatIsCreate"]
                 </div>
             }
 
             <div class="field">
-                <label>Confirm passphrase</label>
+                <label>@L["home.confirmPassphrase"]</label>
                 <PasswordField @bind-Value="_regPassphraseConfirm"
-                               Placeholder="repeat-the-phrase-above" />
+                               Placeholder="@L["home.placeholder.confirm"]" />
             </div>
 
             <button class="btn btn-primary btn-block btn-lg" style="margin-top:14px;"
                     @onclick="HandleRegister" disabled="@_loading">
-                @(_loading ? "Creating account..." : "Create account")
+                @(_loading ? L["home.creating"] : L["home.createAccount"])
             </button>
 
             <small class="hint" style="display:block; margin-top:12px; text-align:center;">
-                Your vault is created automatically in this device's app data folder.
+                @L["home.autoVault"]
             </small>
         }
 
         <div class="unlock-footer">
             <Icon Name="lock" Size="13" />
-            <span>Offline · end-to-end encrypted · stays on your device</span>
+            <span>@L["home.offline"]</span>
         </div>
     </div>
 </div>
@@ -192,6 +194,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        L.OnChanged += StateHasChanged;
+
         if (AppState.IsUnlocked)
         {
             Nav.NavigateTo("dashboard");
@@ -206,6 +210,8 @@
         }
         catch { }
     }
+
+    public void Dispose() => L.OnChanged -= StateHasChanged;
 
     private void SwitchTab(Tab tab)
     {

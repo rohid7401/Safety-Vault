@@ -3,42 +3,64 @@
 @inject GeneratorPreferences Prefs
 @inject ToastService Toast
 @inject IClipboardService Clipboard
+@inject Loc L
+@implements IDisposable
 
 <div style="margin-bottom:14px;">
     <WhatsThisPill FeatureKey="generator" />
 </div>
 
 <div class="card" style="gap:14px;">
-    <div class="generated-box">@_password</div>
-
-    @if (!string.IsNullOrEmpty(_password))
+    @if (_conflicts.Count > 0)
     {
-        var s = Generator.CalculateStrength(_password);
-        <div>
-            <div class="strength-bar" style="margin-top:0;">
-                <div class="strength-fill strength-@s" style="width:@(s * 12.5)%"></div>
+        <div class="explainer-box" style="background:color-mix(in srgb, var(--warning) 14%, transparent); color:#fcd34d; margin-bottom:0;">
+            <div style="font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                <Icon Name="alert" Size="15" /> @L["gen.conflict.title"]
             </div>
-            <div class="strength-row">
-                <span>Strength</span>
-                <span style="font-weight:600;">@StrengthLabel(s)</span>
+            <ul style="margin:0; padding-left:18px; line-height:1.6;">
+                @foreach (var c in _conflicts)
+                {
+                    <li>@ConflictMessage(c)</li>
+                }
+            </ul>
+        </div>
+        <button class="btn btn-primary btn-block" style="height:42px;" @onclick="FixConflicts">
+            <Icon Name="check" Size="16" /> @L["gen.conflict.fix"]
+        </button>
+    }
+    else
+    {
+        <div class="generated-box">@_password</div>
+
+        @if (!string.IsNullOrEmpty(_password))
+        {
+            var s = Generator.CalculateStrength(_password);
+            <div>
+                <div class="strength-bar" style="margin-top:0;">
+                    <div class="strength-fill strength-@s" style="width:@(s * 12.5)%"></div>
+                </div>
+                <div class="strength-row">
+                    <span>@L["gen.strength"]</span>
+                    <span style="font-weight:600;">@StrengthLabel(s)</span>
+                </div>
             </div>
+        }
+
+        <div style="display:flex; gap:10px;">
+            <button class="btn btn-primary" style="flex:1; height:42px;" @onclick="Regenerate">
+                <Icon Name="refresh" Size="16" />@L["gen.new"]
+            </button>
+            <button class="btn btn-secondary" style="flex:1; height:42px;" @onclick="CopyPassword">
+                <Icon Name="copy" Size="16" StrokeWidth="1.8" />@L["gen.copy"]
+            </button>
         </div>
     }
-
-    <div style="display:flex; gap:10px;">
-        <button class="btn btn-primary" style="flex:1; height:42px;" @onclick="Regenerate">
-            <Icon Name="refresh" Size="16" />New
-        </button>
-        <button class="btn btn-secondary" style="flex:1; height:42px;" @onclick="CopyPassword">
-            <Icon Name="copy" Size="16" StrokeWidth="1.8" />Copy
-        </button>
-    </div>
 </div>
 
 <div class="card" style="gap:16px; margin-top:14px;">
     <div>
         <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px;">
-            <span style="color:var(--n-300);">Length</span>
+            <span style="color:var(--n-300);">@L["gen.length"]</span>
             <span style="font-weight:600; color:var(--color-accent); font-family:var(--font-heading);">@Prefs.Options.Length</span>
         </div>
         <input type="range" min="8" max="64" @bind="Prefs.Options.Length" @bind:event="oninput"
@@ -46,31 +68,41 @@
     </div>
 
     <label class="form-check" style="margin-bottom:0;">
-        <span>Uppercase (A–Z)</span>
+        <span>@L["gen.uppercase"]</span>
         <input type="checkbox" @bind="Prefs.Options.IncludeUppercase" @bind:after="OnPrefsChanged" />
     </label>
     <label class="form-check" style="margin-bottom:0;">
-        <span>Lowercase (a–z)</span>
+        <span>@L["gen.lowercase"]</span>
         <input type="checkbox" @bind="Prefs.Options.IncludeLowercase" @bind:after="OnPrefsChanged" />
     </label>
     <label class="form-check" style="margin-bottom:0;">
-        <span>Digits (0–9)</span>
+        <span>@L["gen.digits"]</span>
         <input type="checkbox" @bind="Prefs.Options.IncludeDigits" @bind:after="OnPrefsChanged" />
     </label>
     <label class="form-check" style="margin-bottom:0;">
-        <span>Special characters</span>
+        <span>@L["gen.special"]</span>
         <input type="checkbox" @bind="Prefs.Options.IncludeSpecial" @bind:after="OnPrefsChanged" />
     </label>
 
     <div class="field" style="margin-bottom:0;">
         <label style="display:flex; align-items:center; gap:8px;">
-            Exclude characters
+            @L["gen.includeWord"]
             <InfoTooltip>
-                <strong>Why exclude characters?</strong>
-                <p style="margin:6px 0 0 0;">
-                    Useful to skip lookalikes like <code>0/O</code>, <code>1/l/I</code> on fonts that
-                    confuse them, or characters that some websites reject.
-                </p>
+                <strong>@L["gen.includeWord"]</strong>
+                <p style="margin:6px 0 0 0;">@L["gen.includeWord.hint"]</p>
+            </InfoTooltip>
+        </label>
+        <input type="text" class="input" @bind="Prefs.Options.IncludeWord"
+               @bind:event="oninput" @bind:after="OnPrefsChanged"
+               placeholder="@L["gen.includeWord.placeholder"]" />
+    </div>
+
+    <div class="field" style="margin-bottom:0;">
+        <label style="display:flex; align-items:center; gap:8px;">
+            @L["gen.excludeChars"]
+            <InfoTooltip>
+                <strong>@L["gen.excludeWhy.title"]</strong>
+                <p style="margin:6px 0 0 0;">@L["gen.excludeWhy.body"]</p>
             </InfoTooltip>
         </label>
         <input type="text" class="input" @bind="Prefs.Options.ExcludeChars"
@@ -97,40 +129,94 @@
 
 @code {
     private string _password = string.Empty;
+    private IReadOnlyList<GeneratorConflict> _conflicts = Array.Empty<GeneratorConflict>();
 
-    private static string StrengthLabel(int s) => s switch
+    private string StrengthLabel(int s) => s switch
     {
-        <= 2 => "Weak",
-        <= 4 => "Fair",
-        <= 6 => "Good",
-        _ => "Strong",
+        <= 2 => L["gen.strength.weak"],
+        <= 4 => L["gen.strength.fair"],
+        <= 6 => L["gen.strength.good"],
+        _ => L["gen.strength.strong"],
     };
+
+    private string ConflictMessage(GeneratorConflict c)
+    {
+        var word = Prefs.Options.IncludeWord;
+        return c switch
+        {
+            GeneratorConflict.WordLongerThanLength =>
+                L.Format("gen.conflict.wordTooLong", word, word.Length, Prefs.Options.Length),
+            GeneratorConflict.WordContainsExcludedChars =>
+                L.Format("gen.conflict.wordExcluded", word),
+            GeneratorConflict.NoCharacterSetForFiller =>
+                L["gen.conflict.noCharset"],
+            _ => "",
+        };
+    }
 
     protected override void OnInitialized()
     {
-        Prefs.OnChanged += Regenerate;
-        Regenerate();
+        Prefs.OnChanged += Refresh;
+        L.OnChanged += StateHasChanged;
+        Refresh();
     }
 
     private void OnPrefsChanged()
     {
         Prefs.Notify();
-        Regenerate();
+        Refresh();
+    }
+
+    /// <summary>Re-validate the options; regenerate only when there are no conflicts.</summary>
+    private void Refresh()
+    {
+        _conflicts = Generator.Validate(Prefs.Options);
+        if (_conflicts.Count == 0)
+            Regenerate();
+        else
+        {
+            _password = string.Empty;
+            StateHasChanged();
+        }
     }
 
     private void Regenerate()
     {
-        try { _password = Generator.Generate(Prefs.Options); }
-        catch (Exception ex) { _password = string.Empty; Toast.Error($"Generator: {ex.Message}"); }
+        try
+        {
+            _password = Generator.Generate(Prefs.Options);
+            _conflicts = Array.Empty<GeneratorConflict>();
+        }
+        catch (PasswordManager.Core.Exceptions.GeneratorConstraintException ex)
+        {
+            _conflicts = ex.Conflicts;
+            _password = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _password = string.Empty;
+            Toast.Error($"{L["gen.error"]}: {ex.Message}");
+        }
         StateHasChanged();
+    }
+
+    private void FixConflicts()
+    {
+        Generator.ResolveConflicts(Prefs.Options);
+        Prefs.Notify();
+        Refresh();
     }
 
     private async Task CopyPassword()
     {
         if (string.IsNullOrEmpty(_password)) return;
         await Clipboard.SetTextAsync(_password);
-        Toast.Success("Password copied to clipboard.");
+        Toast.Success(L["toast.passwordCopied"]);
     }
 
-    public void Dispose() => Prefs.OnChanged -= Regenerate;
+    public void Dispose()
+    {
+        Prefs.OnChanged -= Refresh;
+        L.OnChanged -= StateHasChanged;
+    }
 }

@@ -1,12 +1,13 @@
 @page "/dashboard"
 @inject AppState AppState
 @inject NavigationManager Nav
+@inject Loc L
 @implements IDisposable
 
 @if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
 
 <div class="dash-welcome">
-    <p>Welcome back</p>
+    <p>@L["dash.welcome"]</p>
     <h2>@(AppState.Account?.Username ?? "user")</h2>
 </div>
 
@@ -15,15 +16,15 @@
         <Icon Name="shield-check" Size="19" />
     </div>
     <div style="flex:1;">
-        <div class="dash-status-title">Vault unlocked &amp; protected</div>
-        <div class="dash-status-sub">@_countsLine</div>
+        <div class="dash-status-title">@L["dash.statusTitle"]</div>
+        <div class="dash-status-sub">@CountsLine</div>
     </div>
 </div>
 
 @foreach (var group in _groups)
 {
     <div class="dash-group">
-        <div class="dash-group-title">@group.Title</div>
+        <div class="dash-group-title">@L[group.TitleKey]</div>
         <div class="dash-list">
             @foreach (var item in group.Items)
             {
@@ -32,8 +33,8 @@
                         <Icon Name="@item.Icon" Size="17" StrokeWidth="1.8" />
                     </div>
                     <div class="dash-row-text">
-                        <div class="dash-row-label">@item.Label</div>
-                        <div class="dash-row-desc">@item.Desc</div>
+                        <div class="dash-row-label">@L[item.LabelKey]</div>
+                        <div class="dash-row-desc">@L[item.DescKey]</div>
                     </div>
                     <span class="dash-row-chevron"><Icon Name="chevron-right" Size="18" /></span>
                 </button>
@@ -43,54 +44,64 @@
 }
 
 @code {
-    private record Item(string Label, string Desc, string Route, string Icon);
-    private record Group(string Title, Item[] Items);
+    private record Item(string LabelKey, string DescKey, string Route, string Icon);
+    private record Group(string TitleKey, Item[] Items);
 
     private static readonly Group[] _groups =
     [
-        new("Vault",
+        new("nav.group.vault",
         [
-            new Item("Passwords", "Your logins, locked away", "/vault", "lock"),
-            new Item("Secure notes", "Text you don't want anyone to see", "/vault/notes", "note"),
-            new Item("Cards", "Card numbers, hidden until you need them", "/vault/cards", "card"),
+            new Item("nav.passwords", "dash.desc.passwords", "/vault", "lock"),
+            new Item("nav.notes", "dash.desc.notes", "/vault/notes", "note"),
+            new Item("nav.cards", "dash.desc.cards", "/vault/cards", "card"),
         ]),
-        new("Tools",
+        new("nav.group.tools",
         [
-            new Item("Password generator", "Make a strong password", "/generator", "refresh"),
-            new Item("Vault audit", "Find weak or repeated passwords", "/audit", "shield"),
-            new Item("Import / export", "Move your data in or out", "/import-export", "swap"),
+            new Item("nav.generator", "dash.desc.generator", "/generator", "refresh"),
+            new Item("nav.audit", "dash.desc.audit", "/audit", "shield"),
+            new Item("nav.importExport", "dash.desc.importExport", "/import-export", "swap"),
         ]),
-        new("Keys & files",
+        new("nav.group.keys",
         [
-            new Item("Key management", "Your keys and trusted contacts", "/keys", "key"),
-            new Item("Encrypt files", "Lock a single file", "/encrypt-file", "file"),
-            new Item("Encrypt directories", "Lock a whole folder", "/encrypt-directory", "folder"),
+            new Item("nav.keys", "dash.desc.keys", "/keys", "key"),
+            new Item("nav.encryptFiles", "dash.desc.encryptFiles", "/encrypt-file", "file"),
+            new Item("nav.encryptDirs", "dash.desc.encryptDirs", "/encrypt-directory", "folder"),
         ]),
-        new("Learn",
+        new("nav.group.learn",
         [
-            new Item("How PGP works", "A 2-minute plain-language guide", "/tutorial", "book"),
+            new Item("nav.tutorial", "dash.desc.tutorial", "/tutorial", "book"),
         ]),
     ];
 
-    private string _countsLine = "";
+    private int _passwords, _notes, _cards;
+    private bool _countsReady;
+
+    private string CountsLine => _countsReady
+        ? L.Format("dash.counts", _passwords, _notes, _cards)
+        : L["dash.vaultReady"];
 
     protected override async Task OnInitializedAsync()
     {
         AppState.OnStateChanged += StateHasChanged;
+        L.OnChanged += StateHasChanged;
         try
         {
             var svc = AppState.Service;
             if (svc is null) return;
-            var passwords = await svc.GetEntriesAsync<PasswordEntry>();
-            var notes = await svc.GetEntriesAsync<SecureNote>();
-            var cards = await svc.GetEntriesAsync<CardEntry>();
-            _countsLine = $"{passwords.Count} passwords · {notes.Count} notes · {cards.Count} cards";
+            _passwords = (await svc.GetEntriesAsync<PasswordEntry>()).Count;
+            _notes = (await svc.GetEntriesAsync<SecureNote>()).Count;
+            _cards = (await svc.GetEntriesAsync<CardEntry>()).Count;
+            _countsReady = true;
         }
         catch
         {
-            _countsLine = "Vault ready";
+            _countsReady = false;
         }
     }
 
-    public void Dispose() => AppState.OnStateChanged -= StateHasChanged;
+    public void Dispose()
+    {
+        AppState.OnStateChanged -= StateHasChanged;
+        L.OnChanged -= StateHasChanged;
+    }
 }

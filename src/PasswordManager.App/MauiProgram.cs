@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using PasswordManager.App.Platform;
 using PasswordManager.Infrastructure;
 using PasswordManager.UI.Abstractions;
+using PasswordManager.UI.Localization;
 using PasswordManager.UI.Services;
 
 namespace PasswordManager.App;
@@ -36,6 +37,10 @@ public static class MauiProgram
         builder.Services.AddSingleton<ToastService>();
         builder.Services.AddSingleton<GeneratorPreferences>();
         builder.Services.AddHttpClient<KeyServerService>();
+
+        // Localization
+        builder.Services.AddSingleton<ILanguageStore, MauiLanguageStore>();
+        builder.Services.AddSingleton<Loc>();
 
         // Platform implementations of the UI abstractions
         builder.Services.AddSingleton<IClipboardService, MauiClipboardService>();

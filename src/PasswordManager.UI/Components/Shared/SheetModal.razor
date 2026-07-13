@@ -5,7 +5,9 @@
 {
     <div class="sheet-backdrop @(Centered ? "centered" : "")" @onclick="HandleBackdrop">
         <div class="sheet" @onclick:stopPropagation="true">
-            <div class="sheet-handle"></div>
+            <div class="sheet-grip" @onclick="HandleBackdrop" role="button" aria-label="Close">
+                <div class="sheet-handle"></div>
+            </div>
             @if (!string.IsNullOrEmpty(Title))
             {
                 <h3>@Title</h3>

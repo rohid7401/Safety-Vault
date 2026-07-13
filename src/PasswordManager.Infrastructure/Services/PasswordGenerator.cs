@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using PasswordManager.Core.Exceptions;
 using PasswordManager.Core.Interfaces;
 using PasswordManager.Core.Models;
 
@@ -14,24 +15,99 @@ namespace PasswordManager.Infrastructure.Services
         public string Generate(PasswordGeneratorOptions? options = null)
         {
             options ??= new PasswordGeneratorOptions();
+            var word = options.IncludeWord ?? string.Empty;
 
             if (options.Length < 4)
                 throw new ArgumentException("Password length must be at least 4.");
 
-            var charPool = BuildCharPool(options);
-            if (charPool.Length == 0)
-                throw new ArgumentException("At least one character set must be enabled.");
+            var conflicts = Validate(options);
+            if (conflicts.Count > 0)
+                throw new GeneratorConstraintException(conflicts);
 
-            char[] password;
+            var charPool = BuildCharPool(options);
+
+            // ── No word: original behaviour ──
+            if (word.Length == 0)
+            {
+                if (charPool.Length == 0)
+                    throw new ArgumentException("At least one character set must be enabled.");
+
+                char[] password;
+                do
+                {
+                    password = new char[options.Length];
+                    for (var i = 0; i < options.Length; i++)
+                        password[i] = charPool[RandomNumberGenerator.GetInt32(charPool.Length)];
+                }
+                while (!MeetsRequirements(password, options));
+
+                return new string(password);
+            }
+
+            // ── With an included word: fill the remaining length randomly, embed the word ──
+            var fillerLength = options.Length - word.Length; // >= 0 (Validate guarantees it)
+            char[] result;
+            var attempts = 0;
             do
             {
-                password = new char[options.Length];
-                for (var i = 0; i < options.Length; i++)
-                    password[i] = charPool[RandomNumberGenerator.GetInt32(charPool.Length)];
-            }
-            while (!MeetsRequirements(password, options));
+                var filler = new char[fillerLength];
+                for (var i = 0; i < fillerLength; i++)
+                    filler[i] = charPool[RandomNumberGenerator.GetInt32(charPool.Length)];
 
-            return new string(password);
+                // Insert the word verbatim at a random position among the filler.
+                var pos = RandomNumberGenerator.GetInt32(fillerLength + 1);
+                result = new char[options.Length];
+                Array.Copy(filler, 0, result, 0, pos);
+                word.CopyTo(0, result, pos, word.Length);
+                Array.Copy(filler, pos, result, pos + word.Length, fillerLength - pos);
+                attempts++;
+            }
+            // Try to satisfy the required character classes via the filler, but never loop forever:
+            // a tight length may leave no room, in which case we accept the best effort.
+            while (fillerLength > 0 && !MeetsRequirements(result, options) && attempts < 200);
+
+            return new string(result);
+        }
+
+        public IReadOnlyList<GeneratorConflict> Validate(PasswordGeneratorOptions options)
+        {
+            var conflicts = new List<GeneratorConflict>();
+            var word = options.IncludeWord ?? string.Empty;
+            if (word.Length == 0)
+                return conflicts;
+
+            if (word.Length > options.Length)
+                conflicts.Add(GeneratorConflict.WordLongerThanLength);
+
+            if (!string.IsNullOrEmpty(options.ExcludeChars) &&
+                word.Any(c => options.ExcludeChars.Contains(c)))
+                conflicts.Add(GeneratorConflict.WordContainsExcludedChars);
+
+            var fillerLength = options.Length - word.Length;
+            if (fillerLength > 0 && BuildCharPool(options).Length == 0)
+                conflicts.Add(GeneratorConflict.NoCharacterSetForFiller);
+
+            return conflicts;
+        }
+
+        public void ResolveConflicts(PasswordGeneratorOptions options)
+        {
+            var word = options.IncludeWord ?? string.Empty;
+            if (word.Length == 0)
+                return;
+
+            // 1. Grow the length so the word fits.
+            if (word.Length > options.Length)
+                options.Length = word.Length;
+
+            // 2. Stop excluding characters that the word itself needs.
+            if (!string.IsNullOrEmpty(options.ExcludeChars))
+                options.ExcludeChars = new string(options.ExcludeChars.Where(c => !word.Contains(c)).ToArray());
+
+            // 3. Make sure there is a character set to fill the remaining length.
+            var fillerLength = options.Length - word.Length;
+            if (fillerLength > 0 && BuildCharPool(options).Length == 0)
+                options.IncludeLowercase = true;
         }
 
         public int CalculateStrength(string password)

@@ -1,7 +1,9 @@
 @* "What's this?" pill that toggles a plain-language explainer box (Nocturne mockup). *@
+@inject Loc L
+@implements IDisposable
 
 <button class="whats-this-pill" type="button" @onclick="Toggle">
-    <span class="info-dot">i</span><span>What's this?</span>
+    <span class="info-dot">i</span><span>@L["whatsThis.pill"]</span>
 </button>
 
 @if (_open)
@@ -19,21 +21,9 @@
     private bool _open;
     private void Toggle() => _open = !_open;
 
-    private string ExplainerText =>
-        Text ?? (Explainers.TryGetValue(FeatureKey, out var t) ? t : "");
+    private string ExplainerText => Text ?? L[$"whatsThis.{FeatureKey}"];
 
-    private static readonly Dictionary<string, string> Explainers = new()
-    {
-        ["passwords"] = "A private list of your logins. Only you can open it — everything is scrambled, so even someone holding the file can't read it.",
-        ["notes"] = "A safe place for text you want kept private — recovery codes, secret numbers, personal notes. It stays hidden until you reveal it.",
-        ["cards"] = "Store your card details so you don't have to memorise them. They stay locked and masked until you tap to reveal.",
-        ["generator"] = "Builds strong, random passwords for you — the kind that are almost impossible to guess or crack.",
-        ["audit"] = "A quick health check. It flags passwords that are weak, reused, or old, so you know exactly what to improve.",
-        ["import-export"] = "Bring passwords in from another app, or save a copy out. Your data is always yours to move.",
-        ["keys"] = "You have a pair of keys: one you share so people can send you locked files, and one you keep secret to open them. This is where you look after both.",
-        ["encrypt"] = "Turn any file into a locked version only the right person can open — perfect for sharing something private.",
-        ["encrypt-file"] = "Turn any file into a locked version only the right person can open — perfect for sharing something private.",
-        ["encrypt-directory"] = "Same idea as locking a file, but for a whole folder — everything is bundled and locked into one protected file.",
-        ["tutorial"] = "A short, jargon-free walkthrough of how the locking and unlocking actually works.",
-    };
+    protected override void OnInitialized() => L.OnChanged += StateHasChanged;
+
+    public void Dispose() => L.OnChanged -= StateHasChanged;
 }

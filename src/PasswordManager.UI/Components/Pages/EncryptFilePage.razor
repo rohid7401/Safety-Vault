@@ -4,6 +4,8 @@
 @inject IFileEncryptionService FileEnc
 @inject IKeyDirectoryService KeyDir
 @inject IFilePickerService Picker
+@inject Loc L
+@implements IDisposable
 
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
@@ -13,10 +15,10 @@
 
 <div class="seg" style="margin-bottom:16px;">
     <button class="seg-opt @(_mode == Mode.Encrypt ? "active" : "")" type="button" @onclick="() => SwitchMode(Mode.Encrypt)">
-        Lock (encrypt)
+        @L["enc.lock"]
     </button>
     <button class="seg-opt @(_mode == Mode.Decrypt ? "active" : "")" type="button" @onclick="() => SwitchMode(Mode.Decrypt)">
-        Unlock (decrypt)
+        @L["enc.unlock"]
     </button>
 </div>
 
@@ -24,18 +26,18 @@
 {
     <div class="card" style="gap:14px;">
         <div class="field" style="margin-bottom:0;">
-            <label>File to lock</label>
+            <label>@L["encFile.fileToLock"]</label>
             <div class="input-group">
                 <input type="text" class="input" value="@_inputName" placeholder="photo.jpg" readonly />
-                <button class="btn btn-secondary" type="button" @onclick="PickInput">Choose</button>
+                <button class="btn btn-secondary" type="button" @onclick="PickInput">@L["common.choose"]</button>
             </div>
         </div>
 
         <div class="field" style="margin-bottom:0;">
-            <label>Who can open it?</label>
+            <label>@L["enc.whoCanOpen"]</label>
             <select class="input" @bind="_recipientPath">
-                <option value="">— Select a recipient —</option>
-                <option value="@OwnPublicKeyPath">Myself (@AppState.Account!.Username)</option>
+                <option value="">@L["enc.selectRecipient"]</option>
+                <option value="@OwnPublicKeyPath">@L.Format("enc.myself", AppState.Account!.Username)</option>
                 @if (_keys is not null)
                 {
                     foreach (var k in _keys)
@@ -52,30 +54,30 @@
         }
 
         <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunEncrypt" disabled="@_running">
-            @(_running ? "Locking..." : "Lock file")
+            @(_running ? L["encFile.locking"] : L["encFile.lockFile"])
         </button>
     </div>
 
     <div class="hint-row">
         <Icon Name="info" Size="15" />
-        <span>The locked file can only be opened by the person you choose above. After locking you'll choose where to save the <code>.pgp</code> file.</span>
+        <span>@L["encFile.hintEncrypt"]</span>
     </div>
 }
 else
 {
     <div class="card" style="gap:14px;">
         <div class="field" style="margin-bottom:0;">
-            <label>Locked file to open</label>
+            <label>@L["encFile.lockedToOpen"]</label>
             <div class="input-group">
                 <input type="text" class="input" value="@_inputName" placeholder="secret.pgp" readonly />
-                <button class="btn btn-secondary" type="button" @onclick="PickInput">Choose</button>
+                <button class="btn btn-secondary" type="button" @onclick="PickInput">@L["common.choose"]</button>
             </div>
         </div>
 
         <div class="field" style="margin-bottom:0;">
-            <label>Master passphrase</label>
+            <label>@L["home.masterPassphrase"]</label>
             <input type="password" class="input" @bind="_passphrase"
-                   placeholder="the-one-phrase-you-remember" />
+                   placeholder="@L["home.placeholder.passphrase"]" />
         </div>
 
         @if (!string.IsNullOrEmpty(_result))
@@ -84,13 +86,13 @@ else
         }
 
         <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunDecrypt" disabled="@_running">
-            @(_running ? "Unlocking..." : "Unlock file")
+            @(_running ? L["encFile.unlocking"] : L["encFile.unlockFile"])
         </button>
     </div>
 
     <div class="hint-row">
         <Icon Name="info" Size="15" />
-        <span>You'll need your master passphrase to open a file locked for you. After unlocking you'll choose where to save the recovered file.</span>
+        <span>@L["encFile.hintDecrypt"]</span>
     </div>
 }
 
@@ -116,8 +118,11 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        L.OnChanged += StateHasChanged;
         _keys = await KeyDir.ListKeysAsync(AppState.Account!.VaultPath);
     }
+
+    public void Dispose() => L.OnChanged -= StateHasChanged;
 
     private void SwitchMode(Mode mode)
     {
@@ -159,9 +164,9 @@ else
         _result = string.Empty;
         _isError = false;
 
-        if (_inputData is null) { ShowError("Choose a file first."); return; }
-        if (string.IsNullOrWhiteSpace(_recipientPath)) { ShowError("Select a recipient."); return; }
-        if (!File.Exists(_recipientPath)) { ShowError("Recipient public key not found."); return; }
+        if (_inputData is null) { ShowError(L["enc.err.chooseFile"]); return; }
+        if (string.IsNullOrWhiteSpace(_recipientPath)) { ShowError(L["enc.err.selectRecipient"]); return; }
+        if (!File.Exists(_recipientPath)) { ShowError(L["enc.err.recipientNotFound"]); return; }
 
         _running = true;
         StateHasChanged();
@@ -173,8 +178,8 @@ else
             output.Position = 0;
 
             var saved = await Picker.SaveStreamAsync(_inputName + ".pgp", output);
-            if (saved is null) { ShowError("Save cancelled."); }
-            else { _result = $"File encrypted and saved: {saved}"; }
+            if (saved is null) { ShowError(L["enc.saveCancelled"]); }
+            else { _result = L.Format("encFile.encryptedOk", saved); }
         }
         catch (Exception ex)
         {
@@ -191,8 +196,8 @@ else
         _result = string.Empty;
         _isError = false;
 
-        if (_inputData is null) { ShowError("Choose an encrypted file first."); return; }
-        if (string.IsNullOrWhiteSpace(_passphrase)) { ShowError("Passphrase is required."); return; }
+        if (_inputData is null) { ShowError(L["enc.err.chooseEncrypted"]); return; }
+        if (string.IsNullOrWhiteSpace(_passphrase)) { ShowError(L["enc.err.passphraseRequired"]); return; }
 
         _running = true;
         StateHasChanged();
@@ -208,12 +213,12 @@ else
                 : _inputName + ".decrypted";
 
             var saved = await Picker.SaveStreamAsync(suggested, output);
-            if (saved is null) { ShowError("Save cancelled."); }
-            else { _result = $"File decrypted and saved: {saved}"; }
+            if (saved is null) { ShowError(L["enc.saveCancelled"]); }
+            else { _result = L.Format("encFile.decryptedOk", saved); }
         }
         catch (Exception ex)
         {
-            ShowError($"Decryption failed: {ex.Message}");
+            ShowError($"{L["enc.decryptFailed"]}: {ex.Message}");
         }
         finally
         {

@@ -6,25 +6,26 @@
 @inject ToastService Toast
 @inject ITotpService TotpService
 @inject IClipboardService Clipboard
+@inject Loc L
 @implements IDisposable
 
 @if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
 
 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;">
     <div style="flex:1;">
-        <p style="margin:0; font-size:13px; color:var(--n-400);">@_entries.Count passwords in your vault</p>
+        <p style="margin:0; font-size:13px; color:var(--n-400);">@L.Format("vault.count", _entries.Count)</p>
         <div style="margin-top:6px;">
             <WhatsThisPill FeatureKey="passwords" />
         </div>
     </div>
     <button class="btn btn-primary" style="flex:none;" @onclick="OpenAddModal">
-        <Icon Name="plus" Size="16" StrokeWidth="2.2" />Add
+        <Icon Name="plus" Size="16" StrokeWidth="2.2" />@L["common.add"]
     </button>
 </div>
 
 <div class="search-box">
     <span class="search-icon"><Icon Name="search" Size="17" /></span>
-    <input type="text" placeholder="github.com, jane.doe, work…"
+    <input type="text" placeholder="@L["vault.searchPlaceholder"]"
            @bind="_search" @bind:event="oninput" />
 </div>
 
@@ -32,8 +33,8 @@
 {
     <div class="empty-state">
         <div class="icon-circle"><Icon Name="lock" Size="30" StrokeWidth="1.8" /></div>
-        <h3>No passwords found</h3>
-        <p>Add your first password entry to get started.</p>
+        <h3>@L["vault.emptyTitle"]</h3>
+        <p>@L["vault.emptyBody"]</p>
     </div>
 }
 else
@@ -75,7 +76,7 @@ else
                     <span class="value">••••••••••••</span>
                 }
                 <button class="reveal-btn" type="button" @onclick="() => ToggleReveal(entry.Id)">
-                    @(_revealed.Contains(entry.Id) ? "Hide" : "Show")
+                    @(_revealed.Contains(entry.Id) ? L["common.hide"] : L["common.show"])
                 </button>
             </div>
             @if (entry.TotpSecret is not null || entry.Tags.Count > 0)
@@ -99,34 +100,34 @@ else
 
 @* ───── Add / Edit sheet ───── *@
 <SheetModal Visible="@(_showAdd || _editEntry is not null)"
-            Title="@(_editEntry is not null ? "Edit password" : "Add password")"
+            Title="@(_editEntry is not null ? L["vault.editTitle"] : L["vault.addTitle"])"
             OnClose="CloseModal">
     <ChildContent>
         <div class="field">
-            <label>Site / Application</label>
+            <label>@L["vault.field.site"]</label>
             <input type="text" class="input" @bind="_formSite" placeholder="github.com" />
         </div>
 
         <div class="field">
-            <label>Username</label>
+            <label>@L["vault.field.username"]</label>
             <input type="text" class="input" @bind="_formUsername" placeholder="jane.doe" />
         </div>
 
         <div class="field">
-            <label>Email (optional)</label>
+            <label>@L["vault.field.email"]</label>
             <input type="text" class="input" @bind="_formEmail" placeholder="jane@example.com" />
         </div>
 
         <div class="field">
-            <label>Password</label>
+            <label>@L["vault.field.password"]</label>
             <div class="input-group">
                 <input type="@(_formPwVisible ? "text" : "password")" class="input"
-                       style="font-family:var(--font-mono);" @bind="_formPassword" placeholder="type or generate" />
+                       style="font-family:var(--font-mono);" @bind="_formPassword" placeholder="@L["vault.field.passwordPlaceholder"]" />
                 <button class="btn btn-secondary" type="button" @onclick="() => _formPwVisible = !_formPwVisible">
-                    @(_formPwVisible ? "Hide" : "Show")
+                    @(_formPwVisible ? L["common.hide"] : L["common.show"])
                 </button>
-                <button class="btn btn-secondary" type="button" @onclick="GeneratePassword" title="Use your generator preferences">
-                    Generate
+                <button class="btn btn-secondary" type="button" @onclick="GeneratePassword" title="@L["vault.generateTitle"]">
+                    @L["vault.generate"]
                 </button>
             </div>
             @if (!string.IsNullOrEmpty(_formPassword))
@@ -139,24 +140,17 @@ else
         </div>
 
         <div class="field">
-            <label>Tags (comma separated)</label>
-            <input type="text" class="input" @bind="_formTags" placeholder="work, social, personal" />
+            <label>@L["vault.field.tags"]</label>
+            <input type="text" class="input" @bind="_formTags" placeholder="@L["vault.field.tagsPlaceholder"]" />
         </div>
 
         <div class="field">
             <label style="display:flex; align-items:center; gap:8px;">
-                2FA code secret (optional)
+                @L["vault.field.totp"]
                 <InfoTooltip>
-                    <strong>What is TOTP?</strong>
-                    <p style="margin:6px 0 0 0;">
-                        Time-based One-Time Password — the rotating 6-digit codes used
-                        for two-factor authentication on sites like GitHub or Google.
-                    </p>
-                    <p style="margin:6px 0 0 0;">
-                        When a site offers 2FA, it shows a QR code or a Base32 secret like
-                        <code>JBSWY3DPEHPK3PXP</code>. Paste that secret here and SecureVault
-                        will generate the codes for you — no separate authenticator app needed.
-                    </p>
+                    <strong>@L["vault.totp.whatTitle"]</strong>
+                    <p style="margin:6px 0 0 0;">@L["vault.totp.what1"]</p>
+                    <p style="margin:6px 0 0 0;">@L["vault.totp.what2"]</p>
                 </InfoTooltip>
             </label>
             <input type="text" class="input" @bind="_formTotp" placeholder="JBSWY3DPEHPK3PXP" />
@@ -168,9 +162,9 @@ else
         }
     </ChildContent>
     <FooterContent>
-        <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+        <button class="btn btn-secondary" @onclick="CloseModal">@L["common.cancel"]</button>
         <button class="btn btn-primary" @onclick="SaveEntry">
-            @(_editEntry is not null ? "Update" : "Add")
+            @(_editEntry is not null ? L["common.update"] : L["common.add"])
         </button>
     </FooterContent>
 </SheetModal>
@@ -181,10 +175,10 @@ else
         @if (_totpEntry is not null)
         {
             <div style="text-align:center;">
-                <div style="font-size:12px; color:var(--n-400); margin-bottom:4px;">2FA code for</div>
+                <div style="font-size:12px; color:var(--n-400); margin-bottom:4px;">@L["vault.totp.codeFor"]</div>
                 <div style="font-size:16px; font-weight:600; margin-bottom:18px;">@_totpEntry.Site</div>
                 <div class="totp-code">@_totpCode</div>
-                <div class="totp-timer">@_totpRemaining s remaining</div>
+                <div class="totp-timer">@L.Format("vault.totp.remaining", _totpRemaining)</div>
                 <div class="totp-bar">
                     <div class="totp-bar-fill"
                          @key="_totpCode"
@@ -194,8 +188,8 @@ else
         }
     </ChildContent>
     <FooterContent>
-        <button class="btn btn-secondary" @onclick="CloseTotp">Close</button>
-        <button class="btn btn-primary" @onclick="CopyTotp">Copy</button>
+        <button class="btn btn-secondary" @onclick="CloseTotp">@L["common.close"]</button>
+        <button class="btn btn-primary" @onclick="CopyTotp">@L["common.copy"]</button>
     </FooterContent>
 </SheetModal>
 
@@ -243,7 +237,11 @@ else
             e.Tags.Any(t => t.Contains(_search, StringComparison.OrdinalIgnoreCase))
         ).ToList();
 
-    protected override async Task OnInitializedAsync() => await LoadEntries();
+    protected override async Task OnInitializedAsync()
+    {
+        L.OnChanged += StateHasChanged;
+        await LoadEntries();
+    }
 
     private async Task LoadEntries()
     {
@@ -267,7 +265,7 @@ else
     {
         var pw = AppState.Service!.DecryptPassword(entry);
         await Clipboard.SetTextAsync(pw);
-        Toast.Success("Password copied to clipboard.");
+        Toast.Success(L["toast.passwordCopied"]);
     }
 
     private void EditEntry(PasswordEntry entry)
@@ -289,11 +287,11 @@ else
         {
             await AppState.Service!.DeleteEntryAsync(id);
             await LoadEntries();
-            Toast.Info("Entry moved to trash.");
+            Toast.Info(L["toast.movedToTrash"]);
         }
         catch (Exception ex)
         {
-            Toast.Error($"Could not delete: {ex.Message}");
+            Toast.Error($"{L["toast.deleteFailed"]}: {ex.Message}");
         }
     }
 
@@ -303,9 +301,13 @@ else
         {
             _formPassword = PasswordGen.Generate(GenPrefs.Options);
         }
+        catch (PasswordManager.Core.Exceptions.GeneratorConstraintException)
+        {
+            Toast.Warning(L["vault.generateConflict"]);
+        }
         catch (Exception ex)
         {
-            Toast.Error($"Generator: {ex.Message}");
+            Toast.Error($"{L["gen.error"]}: {ex.Message}");
         }
     }
 
@@ -314,9 +316,9 @@ else
         _formError = string.Empty;
 
         if (string.IsNullOrWhiteSpace(_formSite))
-        { _formError = "Site is required."; return; }
+        { _formError = L["vault.err.siteRequired"]; return; }
         if (string.IsNullOrWhiteSpace(_formPassword))
-        { _formError = "Password is required."; return; }
+        { _formError = L["vault.err.passwordRequired"]; return; }
 
         var tags = _formTags.Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
@@ -362,11 +364,11 @@ else
             var wasEdit = _editEntry is not null;
             CloseModal();
             await LoadEntries();
-            Toast.Success(wasEdit ? "Entry updated." : "Entry added.");
+            Toast.Success(wasEdit ? L["toast.entryUpdated"] : L["toast.entryAdded"]);
         }
         catch (Exception ex)
         {
-            _formError = $"Could not save: {ex.Message}";
+            _formError = $"{L["toast.saveFailed"]}: {ex.Message}";
         }
     }
 
@@ -417,11 +419,12 @@ else
     private async Task CopyTotp()
     {
         await Clipboard.SetTextAsync(_totpCode);
-        Toast.Success("TOTP code copied!");
+        Toast.Success(L["toast.totpCopied"]);
     }
 
     public void Dispose()
     {
         _totpTimer?.Dispose();
+        L.OnChanged -= StateHasChanged;
     }
 }

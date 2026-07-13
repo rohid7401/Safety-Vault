@@ -1,3 +1,4 @@
+using PasswordManager.Core.Exceptions;
 using PasswordManager.Core.Models;
 using PasswordManager.Infrastructure.Services;
 using Xunit;
@@ -103,6 +104,78 @@ namespace PasswordManager.Tests.Services
         {
             var score = _generator.CalculateStrength(password);
             Assert.InRange(score, expectedMinScore, 8);
+        }
+
+        // ── Include-word feature ──
+
+        [Fact]
+        public void Generate_IncludeWord_ContainsWordAndCorrectLength()
+        {
+            var options = new PasswordGeneratorOptions { Length = 20, IncludeWord = "yuki" };
+            var password = _generator.Generate(options);
+
+            Assert.Contains("yuki", password);
+            Assert.Equal(20, password.Length);
+        }
+
+        [Fact]
+        public void Generate_WordFillsWholeLength_ReturnsExactlyTheWord()
+        {
+            var options = new PasswordGeneratorOptions { Length = 4, IncludeWord = "yuki" };
+            var password = _generator.Generate(options);
+            Assert.Equal("yuki", password);
+        }
+
+        [Fact]
+        public void Validate_WordLongerThanLength_ReportsConflict()
+        {
+            var options = new PasswordGeneratorOptions { Length = 3, IncludeWord = "yuki" };
+            Assert.Contains(GeneratorConflict.WordLongerThanLength, _generator.Validate(options));
+        }
+
+        [Fact]
+        public void Validate_WordContainsExcludedChar_ReportsConflict()
+        {
+            var options = new PasswordGeneratorOptions { Length = 20, IncludeWord = "yuki", ExcludeChars = "k" };
+            Assert.Contains(GeneratorConflict.WordContainsExcludedChars, _generator.Validate(options));
+        }
+
+        [Fact]
+        public void Validate_NoConflicts_ReturnsEmpty()
+        {
+            var options = new PasswordGeneratorOptions { Length = 20, IncludeWord = "yuki" };
+            Assert.Empty(_generator.Validate(options));
+        }
+
+        [Fact]
+        public void Generate_ConflictingOptions_ThrowsGeneratorConstraintException()
+        {
+            // Valid length, but excludes a character the word needs → unsatisfiable.
+            var options = new PasswordGeneratorOptions { Length = 20, IncludeWord = "yuki", ExcludeChars = "k" };
+            Assert.Throws<GeneratorConstraintException>(() => _generator.Generate(options));
+        }
+
+        [Fact]
+        public void ResolveConflicts_MakesOptionsSatisfiable_ThenGenerates()
+        {
+            // 3-char length, excludes 'k', but wants "yuki" — three-way conflict.
+            var options = new PasswordGeneratorOptions
+            {
+                Length = 3,
+                IncludeWord = "yuki",
+                ExcludeChars = "k",
+            };
+
+            Assert.NotEmpty(_generator.Validate(options));
+
+            _generator.ResolveConflicts(options);
+
+            Assert.Empty(_generator.Validate(options));
+            Assert.True(options.Length >= "yuki".Length);
+            Assert.DoesNotContain('k', options.ExcludeChars);
+
+            var password = _generator.Generate(options);
+            Assert.Contains("yuki", password);
         }
     }
 }

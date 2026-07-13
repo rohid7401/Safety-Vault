@@ -1,8 +1,10 @@
 @page "/tutorial"
 @inject NavigationManager Nav
+@inject Loc L
+@implements IDisposable
 
 <p style="margin:0 0 20px; font-size:14px; color:var(--n-300); line-height:1.55;">
-    A 2-minute, plain-language walkthrough of how your vault keeps things locked — no tech background needed.
+    @L["tl.intro"]
 </p>
 
 <div class="tl-step">
@@ -11,19 +13,16 @@
         <div class="tl-line"></div>
     </div>
     <div class="card" style="gap:6px;">
-        <div class="card-title">You get two keys</div>
-        <div class="card-body">
-            When you create an account, SecureVault generates two keys that belong only to you.
-            Think of a mailbox: anyone can drop a letter in, only you have the key to take letters out.
-        </div>
+        <div class="card-title">@L["tl.s1.title"]</div>
+        <div class="card-body">@L["tl.s1.body"]</div>
         <div class="key-pair">
             <div class="key-card public">
-                <h3><span class="pill pill-public">Public</span></h3>
-                <p>Share it freely. It is only used to <strong>encrypt</strong> data destined for you.</p>
+                <h3><span class="pill pill-public">@L["tl.public"]</span></h3>
+                <p>@((MarkupString)L["tl.publicDesc"])</p>
             </div>
             <div class="key-card private">
-                <h3><span class="pill pill-private">Private</span></h3>
-                <p>Keep it secret. Only this key can <strong>decrypt</strong> what was locked with your public key.</p>
+                <h3><span class="pill pill-private">@L["tl.private"]</span></h3>
+                <p>@((MarkupString)L["tl.privateDesc"])</p>
             </div>
         </div>
     </div>
@@ -35,18 +34,14 @@
         <div class="tl-line"></div>
     </div>
     <div class="card" style="gap:6px;">
-        <div class="card-title">Your passphrase guards the private key</div>
-        <div class="card-body">
-            The private key file on disk is itself encrypted with your master passphrase.
-            No passphrase, no access — not even to us. Without it, the file is useless,
-            even if someone copies it.
-        </div>
+        <div class="card-title">@L["tl.s2.title"]</div>
+        <div class="card-body">@L["tl.s2.body"]</div>
         <div class="flow-diagram">
-            <span class="flow-box">passphrase</span>
+            <span class="flow-box">@L["tl.flow.passphrase"]</span>
             <span class="arrow">+</span>
-            <span class="flow-box">encrypted private key file</span>
+            <span class="flow-box">@L["tl.flow.encPrivKey"]</span>
             <span class="arrow">=</span>
-            <span class="flow-box highlight">unlocked private key</span>
+            <span class="flow-box highlight">@L["tl.flow.unlockedKey"]</span>
         </div>
     </div>
 </div>
@@ -57,25 +52,22 @@
         <div class="tl-line"></div>
     </div>
     <div class="card" style="gap:6px;">
-        <div class="card-title">Locking a message</div>
-        <div class="card-body">
-            To send you something private, someone locks it with your <em>public key</em>.
-            From that moment only your private key can open it.
-        </div>
+        <div class="card-title">@L["tl.s3.title"]</div>
+        <div class="card-body">@((MarkupString)L["tl.s3.body"])</div>
         <div class="flow-diagram vertical">
             <div class="flow-row">
-                <span class="flow-box">plain file</span>
+                <span class="flow-box">@L["tl.flow.plainFile"]</span>
                 <span class="arrow">&#10148;</span>
-                <span class="flow-box accent">your public key</span>
+                <span class="flow-box accent">@L["tl.flow.yourPubKey"]</span>
                 <span class="arrow">&#10148;</span>
-                <span class="flow-box dark">encrypted .pgp</span>
+                <span class="flow-box dark">@L["tl.flow.encPgp"]</span>
             </div>
             <div class="flow-row">
-                <span class="flow-box dark">encrypted .pgp</span>
+                <span class="flow-box dark">@L["tl.flow.encPgp"]</span>
                 <span class="arrow">&#10148;</span>
-                <span class="flow-box accent">your private key + passphrase</span>
+                <span class="flow-box accent">@L["tl.flow.privKeyPass"]</span>
                 <span class="arrow">&#10148;</span>
-                <span class="flow-box">plain file</span>
+                <span class="flow-box">@L["tl.flow.plainFile"]</span>
             </div>
         </div>
     </div>
@@ -87,13 +79,8 @@
         <div class="tl-line"></div>
     </div>
     <div class="card" style="gap:6px;">
-        <div class="card-title">The whole vault is locked too</div>
-        <div class="card-body">
-            Your passwords, notes and cards are stored as one scrambled blob. On disk it looks
-            like meaningless noise until you unlock it. SecureVault uses a hybrid scheme:
-            a strong random AES-256 key (encrypted with your PGP public key) does the bulk
-            symmetric encryption per field, and the vault as a whole is PGP-wrapped on save.
-        </div>
+        <div class="card-title">@L["tl.s4.title"]</div>
+        <div class="card-body">@L["tl.s4.body"]</div>
     </div>
 </div>
 
@@ -103,13 +90,13 @@
         <div class="tl-line"></div>
     </div>
     <div class="card" style="gap:6px;">
-        <div class="card-title">Pick a passphrase you can keep</div>
+        <div class="card-title">@L["tl.s5.title"]</div>
         <ul class="tip-list">
-            <li><strong>Length wins.</strong> A 4-word passphrase like <code>caballo correcto batería grapa</code> is much stronger than <code>P@ss1!</code> and far easier to remember.</li>
-            <li><strong>Never reuse it.</strong> If a website you use is breached and you share passphrases, attackers get your vault too.</li>
-            <li><strong>Don't write it down digitally.</strong> Pen and paper in a locked drawer is fine.</li>
-            <li><strong>It is not recoverable.</strong> If you forget it, nobody — including us — can decrypt your vault.</li>
-            <li><strong>Back up the private key file.</strong> Copy <code>private_key.asc</code> to an offline drive.</li>
+            <li>@((MarkupString)L["tl.tip1"])</li>
+            <li>@((MarkupString)L["tl.tip2"])</li>
+            <li>@((MarkupString)L["tl.tip3"])</li>
+            <li>@((MarkupString)L["tl.tip4"])</li>
+            <li>@((MarkupString)L["tl.tip5"])</li>
         </ul>
     </div>
 </div>
@@ -119,19 +106,20 @@
         <div class="tl-num">6</div>
     </div>
     <div class="card" style="gap:6px;">
-        <div class="card-title">The key directory</div>
-        <div class="card-body">
-            To encrypt a file <strong>for someone else</strong>, you need their public key.
-            The Key management page lets you import public keys from people you trust so
-            you can lock files addressed to them.
-        </div>
+        <div class="card-title">@L["tl.s6.title"]</div>
+        <div class="card-body">@((MarkupString)L["tl.s6.body"])</div>
     </div>
 </div>
 
 <button class="btn btn-primary btn-block" style="height:44px; margin-top:4px;"
         @onclick='() => Nav.NavigateTo("/keys")'>
-    Go to Key management
+    @L["tl.cta"]
 </button>
+
+@code {
+    protected override void OnInitialized() => L.OnChanged += StateHasChanged;
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+}
 
 <style>
     .key-pair {
