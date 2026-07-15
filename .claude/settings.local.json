@@ -20,7 +20,11 @@
       "PowerShell(dotnet build src/PasswordManager.App/PasswordManager.App.csproj -f net8.0-android)",
       "PowerShell(dotnet build src/PasswordManager.App/PasswordManager.App.csproj -t:InstallAndroidDependencies -f net8.0-android \"-p:AndroidSdkDirectory=C:\\\\Users\\\\rd740\\\\AppData\\\\Local\\\\Android\\\\Sdk\" -p:AcceptAndroidSDKLicenses=true)",
       "PowerShell($adb = \"C:\\\\Users\\\\rd740\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; if \\(Test-Path $adb\\) { & $adb devices } else { \"adb not found - platform-tools may not be installed\" })",
-      "PowerShell($raw = Get-Content -Raw \"C:\\\\Users\\\\rd740\\\\.claude\\\\projects\\\\C--Users-rd740-CODE-Safety-Vault\\\\50fc8de3-fd30-48d1-8f7c-4b3c859ad0fa\\\\tool-results\\\\toolu_017bnu29mkzsJWwtWfoNyTeR.txt\"; $raw.Substring\\(44900\\) | Out-File -Encoding utf8 \"C:\\\\Users\\\\rd740\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-rd740-CODE-Safety-Vault\\\\50fc8de3-fd30-48d1-8f7c-4b3c859ad0fa\\\\scratchpad\\\\design-rest.txt\"; \"saved, length: $\\($raw.Length - 44900\\)\")"
+      "PowerShell($raw = Get-Content -Raw \"C:\\\\Users\\\\rd740\\\\.claude\\\\projects\\\\C--Users-rd740-CODE-Safety-Vault\\\\50fc8de3-fd30-48d1-8f7c-4b3c859ad0fa\\\\tool-results\\\\toolu_017bnu29mkzsJWwtWfoNyTeR.txt\"; $raw.Substring\\(44900\\) | Out-File -Encoding utf8 \"C:\\\\Users\\\\rd740\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-rd740-CODE-Safety-Vault\\\\50fc8de3-fd30-48d1-8f7c-4b3c859ad0fa\\\\scratchpad\\\\design-rest.txt\"; \"saved, length: $\\($raw.Length - 44900\\)\")",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"print\\('n/a'\\)\")",
+      "Bash(powershell -NoProfile -Command \"[xml]\\(Get-Content 'src/PasswordManager.App/Platforms/Android/AndroidManifest.xml' -Raw\\) | Out-Null; Write-Output 'XML valido'\")",
+      "PowerShell(winget install --id Microsoft.OpenJDK.17 --accept-package-agreements --accept-source-agreements -e)"
     ]
   }
 }

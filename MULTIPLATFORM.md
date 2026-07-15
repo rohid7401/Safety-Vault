@@ -54,7 +54,7 @@ IVaultStorage   // filesystem / IndexedDB  vs  cloud
 | Plataforma | Estado hoy | Trabajo para llegar |
 |---|---|---|
 | **Windows / macOS** | ✅ Ya corre (MAUI) | 0 |
-| **iOS / Android** | ⚠️ Compila | Servicio de cifrado ya es **stream-based** ✅ y el picker expone `PickFileForReadAsync`/`SaveStreamAsync` ✅. Falta: cablear las páginas Encrypt para usar streams, ajustar permisos y **probar en dispositivo/emulador** (requiere Mac para iOS). ~4–6 h restantes |
+| **iOS / Android** | ✅ Android probado en dispositivo real; ⚠️ iOS solo compila (requiere Mac para probar) | Streams + picker + UI ya cableados ✅. Falta: pase de pruebas en iOS físico/simulador (Mac) |
 | **Web (WASM)** | ❌ No existe | Proyecto Blazor WASM + `IVaultStorage` sobre IndexedDB + JS interop clipboard/archivos. **Sin folder picker** (limitación del navegador). ~20–30 h |
 
 El refactor a streams tiene doble beneficio: desbloquea móvil **y** es lo que la web
@@ -139,7 +139,7 @@ depende de la raíz derivada de la passphrase.
 | # | Paso | Depende de | Estado |
 |---|------|-----------|--------|
 | 0 | **Fase 0 de seguridad** — `.gitignore`, CSV injection, path traversal | — | ✅ Hecho |
-| 1 | **🔒 NO NEGOCIABLE — Fase 1 de seguridad** — escritura atómica, backup, integridad/MAC del vault, corrupto≠vacío, ACL de archivos | 0 | ✅ Hecho (falta cablear botón "restaurar backup" en UI) |
+| 1 | **🔒 NO NEGOCIABLE — Fase 1 de seguridad** — escritura atómica, backup, integridad/MAC del vault, corrupto≠vacío, ACL de archivos | 0 | ✅ Hecho (incl. botón "restaurar backup" en UI) |
 | 2 | **🔒 NO NEGOCIABLE — Fase 2 de seguridad** — Argon2id, colapsar autenticación, memoria zeroizable | 1 | ✅ Hecho |
 | 2b | **🔒 NO NEGOCIABLE — Fase 2b** — migrar el candado de la bóveda de PGP a **KEK derivada de la passphrase** (Argon2id); guardar el par PGP **dentro** de la bóveda para que viaje entre dispositivos. **El par PGP se conserva** para la función de compartir archivos con terceros (cifrado asimétrico) | 2 | Pendiente (prerrequisito de multi-device) |
 | 3 | Refactor de `FileEncryptionService` a **streams** | 1 | ✅ Servicio + picker + UI (Encrypt Files e Import/Export por streams). Directorios quedan solo-escritorio. Falta prueba en dispositivo |

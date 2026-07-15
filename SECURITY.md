@@ -275,6 +275,20 @@ en Windows); documentar la limitación en la UI.
 
 ---
 
+### N11 — Android Auto Backup incluye el vault sin exclusión explícita · Medio · `✅ resuelto`
+`AndroidManifest.xml` tiene `android:allowBackup="true"` (el valor por defecto de la
+plantilla MAUI) y no declara `android:fullBackupContent` / `dataExtractionRules`. Esto
+significa que Android **copia el almacenamiento privado de la app** (donde vive
+`vault.data.pgp`, `accounts.json` y `private_key.asc`) a la cuenta de Google del usuario
+vía Auto Backup, sin que el usuario lo pida explícitamente — exactamente el escenario
+"backup en nube filtrado" del modelo de amenazas (T1). El contenido sigue protegido por
+la passphrase (cifrado PGP + Argon2id), pero es una superficie de exposición evitable.
+*Corrección aplicada:* `android:allowBackup="false"` en `AndroidManifest.xml` — no
+dependemos de ese mecanismo para nada (el propio backup rotativo `.bak` ya cubre la
+recuperación local).
+
+---
+
 ### Checklist de re-verificación (tras Fases 1–5)
 
 | ID | Vulnerabilidad | ¿Sigue presente? | Notas |
@@ -289,3 +303,4 @@ en Windows); documentar la limitación en la UI.
 | N8 | UID del keyserver sin verificar | ⬜ pendiente | |
 | N9 | Cadena de suministro | ⬜ pendiente | |
 | N10 | Historial de portapapeles | ⬜ pendiente | |
+| N11 | Android Auto Backup sin exclusión | ✅ resuelto | `allowBackup="false"` en el manifest |
