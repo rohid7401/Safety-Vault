@@ -2,7 +2,7 @@
 @inject IPasswordGenerator Generator
 @inject GeneratorPreferences Prefs
 @inject ToastService Toast
-@inject IClipboardService Clipboard
+@inject SecureClipboardService SecureClipboard
 @inject Loc L
 @implements IDisposable
 
@@ -210,7 +210,7 @@
     private async Task CopyPassword()
     {
         if (string.IsNullOrEmpty(_password)) return;
-        await Clipboard.SetTextAsync(_password);
+        await SecureClipboard.CopySensitiveAsync(_password);
         Toast.Success(L["toast.passwordCopied"]);
     }
 

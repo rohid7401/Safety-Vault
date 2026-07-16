@@ -161,7 +161,7 @@ Estado: `abierto` · `Fase 0 ✅` · `planificado`
 | ID | Descripción | Ubicación | Estado |
 |----|-------------|-----------|--------|
 | B1 | Una sola clave AES para todos los campos | `PasswordManagerService.cs` | Fase 5 |
-| B2 | Portapapeles no se limpia tras copiar | `VaultPage.razor` | Fase 3 |
+| B2 | Portapapeles no se limpia tras copiar | `VaultPage.razor` | **✅ Resuelto** (`SecureClipboardService`, ver N10) |
 | B3 | RSA-2048; subir a RSA-4096 o Curve25519 | `PgpService.cs:30` | Fase 5 |
 | B4 | Path traversal latente en key directory | `KeyDirectoryService.cs` | **Fase 0 ✅** |
 | B5 | Clave del keyserver sin validar (PGP + UID vs email) | `KeyServerService.cs` | Fase 5 |
@@ -311,13 +311,21 @@ el grafo transitivo completo con hashes SHA-512 por paquete — auditable y repr
 *Pendiente:* activar modo bloqueado en CI (`--locked-mode`) cuando exista pipeline, y una
 revisión periódica de vulnerabilidades (`dotnet list package --vulnerable`).
 
-### N10 — Persistencia del portapapeles del SO · Bajo · `pendiente`
-Aunque implementemos B2 (limpiar el portapapeles tras N segundos), el **historial del
-portapapeles de Windows (Win+V)** y gestores de terceros **retienen la contraseña copiada**
-más allá de nuestro borrado programático.
-*Corrección:* al copiar, marcar el contenido como sensible/excluido del historial cuando la
-plataforma lo permita (formato `ExcludeClipboardContentFromMonitorProcessing` / `CanIncludeInClipboardHistory`
-en Windows); documentar la limitación en la UI.
+### N10 — Persistencia del portapapeles del SO · Bajo · `✅ mitigado (parcial)`
+El portapapeles no se limpiaba tras copiar una contraseña/código 2FA, dejando el secreto
+expuesto indefinidamente a cualquier otra app hasta el siguiente copiado del usuario.
+*Corrección aplicada (B2):* `SecureClipboardService` envuelve `IClipboardService` — al
+copiar un secreto, programa un borrado automático a los 30s. Antes de borrar, verifica que
+el portapapeles siga teniendo exactamente lo que copiamos (si el usuario copió otra cosa
+mientras tanto, no la toca); copiar de nuevo cancela el borrado pendiente anterior. Cubre
+los 3 puntos de copia (contraseña en bóveda, código 2FA, generador). Cubierto por
+`SecureClipboardServiceTests` (4 casos).
+*Limitación residual (no resuelta por diseño):* el **historial del portapapeles de Windows
+(Win+V)** y gestores de terceros pueden retener el valor copiado más allá de nuestro borrado
+programático — no existe una API soportada y confiable expuesta a través de MAUI para excluir
+una entrada del historial del sistema. Es una limitación de plataforma aceptada, no un bug de
+la app; el toast de copiado ahora lo comunica ("se borra del portapapeles en 30s") para que el
+usuario sepa que solo cubre el portapapeles activo, no el historial del SO.
 
 ---
 
@@ -348,5 +356,5 @@ recuperación local).
 | N7 | Vault en claro en el heap | ⬜ pendiente | |
 | N8 | UID del keyserver sin verificar | ✅ resuelto | `InspectPublicKey`: fingerprint real + UIDs + advertencia de mismatch |
 | N9 | Cadena de suministro | ✅ resuelto (parcial) | `packages.lock.json` en todos los proyectos; falta `--locked-mode` en CI |
-| N10 | Historial de portapapeles | ⬜ pendiente | |
+| N10 | Historial de portapapeles | ✅ mitigado (parcial) | Auto-clear a 30s (B2); historial del SO (Win+V) queda como limitación de plataforma aceptada |
 | N11 | Android Auto Backup sin exclusión | ✅ resuelto | `allowBackup="false"` en el manifest |

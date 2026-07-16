@@ -5,7 +5,7 @@
 @inject GeneratorPreferences GenPrefs
 @inject ToastService Toast
 @inject ITotpService TotpService
-@inject IClipboardService Clipboard
+@inject SecureClipboardService SecureClipboard
 @inject Loc L
 @implements IDisposable
 
@@ -264,7 +264,7 @@ else
     private async Task CopyPassword(PasswordEntry entry)
     {
         var pw = AppState.Service!.DecryptPassword(entry);
-        await Clipboard.SetTextAsync(pw);
+        await SecureClipboard.CopySensitiveAsync(pw);
         Toast.Success(L["toast.passwordCopied"]);
     }
 
@@ -418,7 +418,7 @@ else
 
     private async Task CopyTotp()
     {
-        await Clipboard.SetTextAsync(_totpCode);
+        await SecureClipboard.CopySensitiveAsync(_totpCode);
         Toast.Success(L["toast.totpCopied"]);
     }
 

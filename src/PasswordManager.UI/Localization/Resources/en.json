@@ -94,8 +94,8 @@
   "whatsThis.encrypt-directory": "Same idea as locking a file, but for a whole folder — everything is bundled and locked into one protected file.",
   "whatsThis.tutorial": "A short, jargon-free walkthrough of how the locking and unlocking actually works.",
 
-  "toast.passwordCopied": "Password copied to clipboard.",
-  "toast.totpCopied": "2FA code copied.",
+  "toast.passwordCopied": "Password copied — clears from clipboard in 30s.",
+  "toast.totpCopied": "2FA code copied — clears from clipboard in 30s.",
   "toast.movedToTrash": "Entry moved to trash.",
   "toast.noteMovedToTrash": "Note moved to trash.",
   "toast.cardMovedToTrash": "Card moved to trash.",

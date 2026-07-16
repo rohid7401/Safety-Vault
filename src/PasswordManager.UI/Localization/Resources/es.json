@@ -94,8 +94,8 @@
   "whatsThis.encrypt-directory": "La misma idea que bloquear un archivo, pero para una carpeta entera — todo se empaqueta y bloquea en un único archivo protegido.",
   "whatsThis.tutorial": "Un recorrido corto y sin tecnicismos de cómo funciona realmente el bloqueo y desbloqueo.",
 
-  "toast.passwordCopied": "Contraseña copiada al portapapeles.",
-  "toast.totpCopied": "Código 2FA copiado.",
+  "toast.passwordCopied": "Contraseña copiada — se borra del portapapeles en 30s.",
+  "toast.totpCopied": "Código 2FA copiado — se borra del portapapeles en 30s.",
   "toast.movedToTrash": "Entrada movida a la papelera.",
   "toast.noteMovedToTrash": "Nota movida a la papelera.",
   "toast.cardMovedToTrash": "Tarjeta movida a la papelera.",

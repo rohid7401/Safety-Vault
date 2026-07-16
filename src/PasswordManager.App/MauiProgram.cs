@@ -45,6 +45,7 @@ public static class MauiProgram
         // Platform implementations of the UI abstractions
         builder.Services.AddSingleton<IClipboardService, MauiClipboardService>();
         builder.Services.AddSingleton<IFilePickerService, MauiFilePickerService>();
+        builder.Services.AddSingleton<SecureClipboardService>();
 
 #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();

@@ -7,5 +7,8 @@ namespace PasswordManager.UI.Abstractions
     public interface IClipboardService
     {
         Task SetTextAsync(string text);
+
+        /// <summary>Reads the current clipboard text, or null if empty/unavailable.</summary>
+        Task<string?> GetTextAsync();
     }
 }
