@@ -2,7 +2,6 @@
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject IAesService AesService
-@inject IPgpService PgpService
 @inject IAuthService AuthService
 @inject ToastService Toast
 @inject Loc L
@@ -244,7 +243,7 @@
         }
         catch (Exception ex)
         {
-            _error = $"Could not unlock vault: {ex.Message}";
+            _error = UserError.Describe(L, ex);
         }
         finally
         {
@@ -290,7 +289,7 @@
         }
         catch (Exception ex)
         {
-            _error = $"Unexpected error: {ex.Message}"; _info = string.Empty;
+            _error = UserError.Describe(L, ex); _info = string.Empty;
         }
         finally
         {
@@ -305,13 +304,24 @@
     /// </summary>
     private async Task<bool> UnlockVaultAsync(PasswordManager.Core.Models.UserAccount account, string passphrase)
     {
-        var options = new VaultOptions
+        var vaultKey = PasswordManager.Infrastructure.Encryption.VaultKeyRing.Unlock(account.VaultPath, passphrase);
+        byte[] blobKey, fieldKey;
+        try
         {
-            DataFolderPath = account.VaultPath,
-            Passphrase = passphrase,
-        };
-        var repo = new PasswordManager.Infrastructure.Persistence.PgpVaultRepository(PgpService, options);
-        var service = await PasswordManagerService.CreateAsync(repo, AesService, PgpService, options);
+            blobKey = PasswordManager.Infrastructure.Encryption.VaultKeyRing.DeriveSubkey(
+                vaultKey, PasswordManager.Infrastructure.Encryption.VaultKeyRing.BlobKeyInfo);
+            fieldKey = PasswordManager.Infrastructure.Encryption.VaultKeyRing.DeriveSubkey(
+                vaultKey, PasswordManager.Infrastructure.Encryption.VaultKeyRing.FieldKeyInfo);
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(vaultKey);
+        }
+
+        // KekVaultRepository takes ownership of blobKey (zeroized on Dispose); the service
+        // takes ownership of fieldKey the same way.
+        var repo = new PasswordManager.Infrastructure.Persistence.KekVaultRepository(blobKey, account.VaultPath);
+        var service = await PasswordManagerService.CreateAsync(repo, AesService, fieldKey);
 
         try
         {
@@ -332,6 +342,10 @@
             throw;
         }
 
+        // Make sure the PGP key pair (used for encrypting files for contacts) exists on
+        // disk — restores it from the vault's own copy if this device is missing it.
+        await service.EnsurePgpKeyFilesAsync(account.VaultPath);
+
         AppState.Unlock(account, service);
         return true;
     }
@@ -347,6 +361,7 @@
         {
             await _pendingService.RestoreVaultFromBackupAsync();
             await _pendingService.ValidateVaultAsync();
+            await _pendingService.EnsurePgpKeyFilesAsync(_pendingAccount.VaultPath);
             AppState.Unlock(_pendingAccount, _pendingService);
             _showRestore = false;
             _pendingService = null;
@@ -356,7 +371,7 @@
         }
         catch (Exception ex)
         {
-            _restoreFailure = $"Restore failed: {ex.Message}";
+            _restoreFailure = UserError.Describe(L, ex);
         }
         finally
         {

@@ -1,4 +1,3 @@
-using System.Text;
 using Org.BouncyCastle.Bcpg;
 using Org.BouncyCastle.Bcpg.OpenPgp;
 
@@ -62,20 +61,6 @@ namespace PasswordManager.Infrastructure.Encryption
             using var fallback = new MemoryStream();
             clearStream.CopyTo(fallback);
             return fallback.ToArray();
-        }
-
-        internal static string EncryptString(string plainText, string publicKeyPath)
-        {
-            var data = Encoding.UTF8.GetBytes(plainText);
-            var encrypted = EncryptBytes(data, publicKeyPath);
-            return Convert.ToBase64String(encrypted);
-        }
-
-        internal static string DecryptString(string encryptedBase64, string privateKeyPath, string passphrase)
-        {
-            var encrypted = Convert.FromBase64String(encryptedBase64);
-            var data = DecryptBytes(encrypted, privateKeyPath, passphrase);
-            return Encoding.UTF8.GetString(data);
         }
     }
 }

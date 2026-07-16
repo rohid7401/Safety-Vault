@@ -1,3 +1,5 @@
+using PasswordManager.Core.Models;
+
 namespace PasswordManager.Core.Interfaces
 {
     public interface IPgpService
@@ -8,20 +10,14 @@ namespace PasswordManager.Core.Interfaces
         /// <summary>Decrypts PGP binary data with the given private key. Returns plaintext bytes.</summary>
         byte[] DecryptBytes(byte[] encryptedData, string privateKeyPath, string passphrase);
 
-        /// <summary>Encrypts a string and returns Base64-encoded PGP data (for small values like AES key).</summary>
-        string EncryptString(string plainText, string publicKeyPath);
-
-        /// <summary>Decrypts Base64-encoded PGP data and returns the original string.</summary>
-        string DecryptString(string encryptedBase64, string privateKeyPath, string passphrase);
-
         /// <summary>Generates a new PGP key pair and writes armored files to disk.</summary>
         void GenerateKeyPair(string publicKeyPath, string privateKeyPath, string passphrase);
 
         /// <summary>
-        /// True if the passphrase can unlock the private key at the given path. This is the
-        /// authoritative passphrase check — it proves the passphrase can derive the keys that
-        /// protect the vault, without any separate (weaker) password hash.
+        /// Parses an armored public key and returns its real PGP fingerprint and user IDs, so a
+        /// key fetched from an untrusted source (e.g. a keyserver) can be shown for out-of-band
+        /// verification before it is trusted. Throws if the input is not a valid public key.
         /// </summary>
-        bool CanUnlockPrivateKey(string privateKeyPath, string passphrase);
+        PgpKeyDetails InspectPublicKey(string armoredPublicKey);
     }
 }

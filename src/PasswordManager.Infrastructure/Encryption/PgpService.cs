@@ -1,3 +1,4 @@
+using System.Text;
 using Org.BouncyCastle.Bcpg;
 using Org.BouncyCastle.Bcpg.OpenPgp;
 using Org.BouncyCastle.Crypto.Generators;
@@ -5,6 +6,7 @@ using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Security;
 using PasswordManager.Core.Interfaces;
+using PasswordManager.Core.Models;
 
 namespace PasswordManager.Infrastructure.Encryption
 {
@@ -16,25 +18,10 @@ namespace PasswordManager.Infrastructure.Encryption
         public byte[] DecryptBytes(byte[] encryptedData, string privateKeyPath, string passphrase) =>
             PgpOperations.DecryptBytes(encryptedData, privateKeyPath, passphrase);
 
-        public string EncryptString(string plainText, string publicKeyPath) =>
-            PgpOperations.EncryptString(plainText, publicKeyPath);
-
-        public string DecryptString(string encryptedBase64, string privateKeyPath, string passphrase) =>
-            PgpOperations.DecryptString(encryptedBase64, privateKeyPath, passphrase);
-
-        public bool CanUnlockPrivateKey(string privateKeyPath, string passphrase)
+        public PgpKeyDetails InspectPublicKey(string armoredPublicKey)
         {
-            try
-            {
-                if (!File.Exists(privateKeyPath)) return false;
-                using var stream = File.OpenRead(privateKeyPath);
-                PgpDecryptionHelper.ReadPrivateKey(stream, passphrase); // throws on wrong passphrase
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(armoredPublicKey));
+            return PgpKeyInspector.Inspect(stream);
         }
 
         public void GenerateKeyPair(string publicKeyPath, string privateKeyPath, string passphrase)

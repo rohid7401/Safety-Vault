@@ -366,11 +366,11 @@ FodyWeavers.xsd
 *.asc
 *.gpg
 *.key.pgp
-# Vault cifrado y su clave AES envuelta
-vault.data.pgp
-vault.data.pgp.tmp
-vault.data.pgp.bak
-vault.key.pgp
+# Vault cifrado (AES-GCM, clave derivada de la passphrase) y su keyring envuelto
+vault.data
+vault.data.tmp
+vault.data.bak
+vault.keyring.json
 # Cuentas y configuración local
 accounts.json
 vault.config.json

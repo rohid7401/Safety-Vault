@@ -1,4 +1,5 @@
 {
+  "error.unexpected": "Something went wrong. Please try again.",
   "common.home": "Home",
   "common.lockVault": "Lock vault",
   "common.add": "Add",
@@ -278,6 +279,9 @@
   "keys.search": "Search",
   "keys.searching": "Searching...",
   "keys.foundFor": "Found a public key for {0}.",
+  "keys.verifyBeforeTrust": "Verify this fingerprint with your contact through a separate channel before trusting the key.",
+  "keys.identities": "Identities on this key",
+  "keys.emailMismatch": "This key does not list the email you searched ({0}). Only add it if you trust where it came from.",
   "keys.displayNamePlaceholder": "Display name for this contact",
   "keys.noneFound": "No published key found for that email on keys.openpgp.org.",
   "keys.directory": "Contact directory",

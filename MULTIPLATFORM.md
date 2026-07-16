@@ -91,7 +91,7 @@ Implementaciones intercambiables: `LocalFileStorage`, `DropboxStorage`, `OneDriv
 | Aspecto | Complejidad | Notas |
 |---|---|---|
 | Cifrado E2E del blob | **Baja** | Ya ciframos; la nube guarda opaco |
-| Distribución de clave entre dispositivos | **Baja** *(tras Fase 2)* | La KEK se re-deriva de la passphrase; nada que sincronizar |
+| Distribución de clave entre dispositivos | **Baja** *(Fase 2b ✅)* | La KEK se re-deriva de la passphrase; nada que sincronizar |
 | Resolución de conflictos | **Media** | Merge por entrada con `Id` + `LastUpdateTime` (el modelo ya lo soporta) |
 | Auth sin debilitar zero-knowledge | **Media** | El secreto de login debe ser **distinto** del de cifrado |
 | **Rollback attack** | **Media-Alta** | Un servidor puede servir una versión **vieja**. El MAC protege el contenido pero no la frescura → hace falta un **contador de versión firmado y monótono** |
@@ -141,7 +141,7 @@ depende de la raíz derivada de la passphrase.
 | 0 | **Fase 0 de seguridad** — `.gitignore`, CSV injection, path traversal | — | ✅ Hecho |
 | 1 | **🔒 NO NEGOCIABLE — Fase 1 de seguridad** — escritura atómica, backup, integridad/MAC del vault, corrupto≠vacío, ACL de archivos | 0 | ✅ Hecho (incl. botón "restaurar backup" en UI) |
 | 2 | **🔒 NO NEGOCIABLE — Fase 2 de seguridad** — Argon2id, colapsar autenticación, memoria zeroizable | 1 | ✅ Hecho |
-| 2b | **🔒 NO NEGOCIABLE — Fase 2b** — migrar el candado de la bóveda de PGP a **KEK derivada de la passphrase** (Argon2id); guardar el par PGP **dentro** de la bóveda para que viaje entre dispositivos. **El par PGP se conserva** para la función de compartir archivos con terceros (cifrado asimétrico) | 2 | Pendiente (prerrequisito de multi-device) |
+| 2b | **🔒 NO NEGOCIABLE — Fase 2b** — migrar el candado de la bóveda de PGP a **KEK derivada de la passphrase** (Argon2id); guardar el par PGP **dentro** de la bóveda para que viaje entre dispositivos. **El par PGP se conserva** para la función de compartir archivos con terceros (cifrado asimétrico) | 2 | ✅ Hecho (`VaultKeyRing` + `KekVaultRepository`; envelope encryption VK/KEK + AES-GCM; PGP embebido en `VaultData` y materializado en disco al desbloquear; ver SECURITY.md §4). Cambio de formato sin migración — bóvedas de prueba anteriores se recrean |
 | 3 | Refactor de `FileEncryptionService` a **streams** | 1 | ✅ Servicio + picker + UI (Encrypt Files e Import/Export por streams). Directorios quedan solo-escritorio. Falta prueba en dispositivo |
 | 4 | Extraer UI a **Razor Class Library** | — | ✅ Hecho (`PasswordManager.UI` con abstracciones `IClipboardService`/`IFilePickerService`; shell MAUI las implementa) |
 | 5 | `IVaultStorage` + **merge por entrada** (Id/LastUpdateTime) | 2b | Pendiente |

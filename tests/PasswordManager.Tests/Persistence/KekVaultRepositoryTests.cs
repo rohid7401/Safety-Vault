@@ -1,26 +1,22 @@
-using PasswordManager.Core.Configuration;
+using System.Security.Cryptography;
 using PasswordManager.Core.Exceptions;
 using PasswordManager.Core.Models;
-using PasswordManager.Infrastructure.Encryption;
 using PasswordManager.Infrastructure.Persistence;
-using PasswordManager.Tests.Helpers;
 using Xunit;
 
 namespace PasswordManager.Tests.Persistence
 {
-    public class PgpVaultRepositoryTests : IDisposable
+    public class KekVaultRepositoryTests : IDisposable
     {
-        private readonly PgpTestFixture _pgp = new();
+        private readonly string _dataDir =
+            Path.Combine(Path.GetTempPath(), "pmgr_test_" + Guid.NewGuid().ToString("N"));
 
-        private PgpVaultRepository CreateRepo(string? passphrase = null)
-        {
-            var options = new VaultOptions
-            {
-                DataFolderPath = _pgp.DataDir,
-                Passphrase = passphrase ?? PgpTestFixture.Passphrase
-            };
-            return new PgpVaultRepository(new PgpService(), options);
-        }
+        public KekVaultRepositoryTests() => Directory.CreateDirectory(_dataDir);
+
+        private static byte[] NewKey() => RandomNumberGenerator.GetBytes(32);
+
+        private KekVaultRepository CreateRepo(byte[]? key = null) =>
+            new(key ?? NewKey(), _dataDir);
 
         private static VaultData VaultWith(params string[] labels)
         {
@@ -30,84 +26,91 @@ namespace PasswordManager.Tests.Persistence
             return vault;
         }
 
-        private string VaultPath => Path.Combine(_pgp.DataDir, "vault.data.pgp");
-        private string IntegrityPath => Path.Combine(_pgp.DataDir, "vault.integrity.json");
+        private string VaultPath => Path.Combine(_dataDir, "vault.data");
 
         // ─── Round trip ──────────────────────────────────────────────────────
 
         [Fact]
         public async Task LoadAsync_NoVault_ReturnsEmpty()
         {
-            var repo = CreateRepo();
-            var vault = await repo.LoadAsync();
+            var vault = await CreateRepo().LoadAsync();
             Assert.Empty(vault.Entries);
         }
 
         [Fact]
         public async Task SaveThenLoad_RoundTrips()
         {
-            var repo = CreateRepo();
-            await repo.SaveAsync(VaultWith("alpha", "beta"));
+            var key = NewKey();
+            await CreateRepo(key).SaveAsync(VaultWith("alpha", "beta"));
 
-            var loaded = await repo.LoadAsync();
+            var loaded = await CreateRepo(key).LoadAsync();
             Assert.Equal(2, loaded.Entries.Count);
             Assert.Contains(loaded.Entries, e => e.Label == "alpha");
             Assert.Contains(loaded.Entries, e => e.Label == "beta");
         }
 
         [Fact]
-        public async Task SaveAsync_WritesIntegritySidecar()
+        public async Task SaveThenLoad_PreservesPgpKeyFields()
         {
-            var repo = CreateRepo();
-            await repo.SaveAsync(VaultWith("x"));
-            Assert.True(File.Exists(IntegrityPath));
+            var key = NewKey();
+            var vault = new VaultData
+            {
+                PgpPublicKeyArmored = "-----BEGIN PGP PUBLIC KEY-----\nfake\n-----END-----",
+                PgpPrivateKeyArmored = "-----BEGIN PGP PRIVATE KEY-----\nfake\n-----END-----",
+            };
+            await CreateRepo(key).SaveAsync(vault);
+
+            var loaded = await CreateRepo(key).LoadAsync();
+            Assert.Equal(vault.PgpPublicKeyArmored, loaded.PgpPublicKeyArmored);
+            Assert.Equal(vault.PgpPrivateKeyArmored, loaded.PgpPrivateKeyArmored);
         }
 
         [Fact]
-        public async Task Load_FromFreshRepositoryInstance_VerifiesUsingStoredSalt()
+        public async Task Load_FromFreshRepositoryInstance_WithSameKey_Succeeds()
         {
-            await CreateRepo().SaveAsync(VaultWith("persisted"));
+            var key = NewKey();
+            await CreateRepo(key).SaveAsync(VaultWith("persisted"));
 
-            // A brand-new instance (new session) must re-derive the MAC key from the sidecar salt.
-            var loaded = await CreateRepo().LoadAsync();
+            // A brand-new instance (new session) with the same blob key must decrypt fine.
+            var loaded = await CreateRepo(key).LoadAsync();
             Assert.Single(loaded.Entries);
             Assert.Equal("persisted", loaded.Entries[0].Label);
         }
 
-        // ─── Tamper detection (C1) ───────────────────────────────────────────
+        // ─── Tamper / wrong-key detection ────────────────────────────────────
 
         [Fact]
         public async Task LoadAsync_TamperedCiphertext_ThrowsIntegrityException()
         {
-            var repo = CreateRepo();
-            await repo.SaveAsync(VaultWith("secret"));
+            var key = NewKey();
+            await CreateRepo(key).SaveAsync(VaultWith("secret"));
 
             var bytes = await File.ReadAllBytesAsync(VaultPath);
             bytes[^1] ^= 0xFF; // flip the last byte
             await File.WriteAllBytesAsync(VaultPath, bytes);
 
-            await Assert.ThrowsAsync<VaultIntegrityException>(() => CreateRepo().LoadAsync());
+            await Assert.ThrowsAsync<VaultIntegrityException>(() => CreateRepo(key).LoadAsync());
         }
 
         [Fact]
-        public async Task LoadAsync_MissingIntegritySidecar_ThrowsIntegrityException()
+        public async Task LoadAsync_WrongBlobKey_ThrowsIntegrityException()
         {
-            var repo = CreateRepo();
-            await repo.SaveAsync(VaultWith("secret"));
+            await CreateRepo(NewKey()).SaveAsync(VaultWith("secret"));
 
-            File.Delete(IntegrityPath);
-
-            await Assert.ThrowsAsync<VaultIntegrityException>(() => CreateRepo().LoadAsync());
+            // A different key (e.g. a wrong passphrase's derived KEK/VK/subkey) must fail
+            // the AES-GCM authentication tag check.
+            await Assert.ThrowsAsync<VaultIntegrityException>(() => CreateRepo(NewKey()).LoadAsync());
         }
 
         [Fact]
-        public async Task LoadAsync_WrongPassphraseMac_ThrowsIntegrityException()
+        public async Task LoadAsync_TruncatedFile_ThrowsIntegrityException()
         {
-            await CreateRepo().SaveAsync(VaultWith("secret"));
+            var key = NewKey();
+            await CreateRepo(key).SaveAsync(VaultWith("secret"));
 
-            // Different passphrase → different MAC key → authentication must fail.
-            await Assert.ThrowsAsync<VaultIntegrityException>(
-                () => CreateRepo("a-totally-different-passphrase").LoadAsync());
+            await File.WriteAllBytesAsync(VaultPath, new byte[4]); // shorter than nonce+tag
+
+            await Assert.ThrowsAsync<VaultIntegrityException>(() => CreateRepo(key).LoadAsync());
         }
 
         // ─── Backup & restore (C2, M2) ───────────────────────────────────────
@@ -115,7 +118,8 @@ namespace PasswordManager.Tests.Persistence
         [Fact]
         public async Task SecondSave_CreatesBackup()
         {
-            var repo = CreateRepo();
+            var key = NewKey();
+            var repo = CreateRepo(key);
             await repo.SaveAsync(VaultWith("v1"));
             Assert.False(repo.HasBackup()); // first save: nothing to back up yet
 
@@ -126,7 +130,8 @@ namespace PasswordManager.Tests.Persistence
         [Fact]
         public async Task RestoreFromBackup_RecoversPreviousGoodState()
         {
-            var repo = CreateRepo();
+            var key = NewKey();
+            var repo = CreateRepo(key);
             await repo.SaveAsync(VaultWith("only-v1"));
             await repo.SaveAsync(VaultWith("only-v1", "added-v2"));
 
@@ -153,6 +158,9 @@ namespace PasswordManager.Tests.Persistence
             await Assert.ThrowsAsync<VaultIntegrityException>(() => repo.RestoreFromBackupAsync());
         }
 
-        public void Dispose() => _pgp.Dispose();
+        public void Dispose()
+        {
+            try { Directory.Delete(_dataDir, recursive: true); } catch { /* best effort */ }
+        }
     }
 }

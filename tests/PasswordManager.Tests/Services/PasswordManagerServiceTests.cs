@@ -1,83 +1,92 @@
-using PasswordManager.Core.Configuration;
+using System.Security.Cryptography;
+using PasswordManager.Core.Exceptions;
 using PasswordManager.Core.Models;
 using PasswordManager.Core.Services;
 using PasswordManager.Infrastructure.Encryption;
 using PasswordManager.Infrastructure.Persistence;
-using PasswordManager.Tests.Helpers;
 using Xunit;
 
 namespace PasswordManager.Tests.Services
 {
     public class PasswordManagerServiceTests : IDisposable
     {
-        private readonly PgpTestFixture _pgp = new();
+        private readonly string _dataDir =
+            Path.Combine(Path.GetTempPath(), "pmgr_test_" + Guid.NewGuid().ToString("N"));
+
+        // Fixed for the lifetime of the test — each service/repository instance gets its
+        // own clone, since both zeroize their copy on Dispose.
+        private readonly byte[] _blobKey = RandomNumberGenerator.GetBytes(32);
+        private readonly byte[] _fieldKey = RandomNumberGenerator.GetBytes(32);
+
+        public PasswordManagerServiceTests() => Directory.CreateDirectory(_dataDir);
 
         private Task<PasswordManagerService> CreateServiceAsync()
         {
-            var options = new VaultOptions
-            {
-                DataFolderPath = _pgp.DataDir,
-                Passphrase = PgpTestFixture.Passphrase
-            };
-            var pgpService = new PgpService();
-            var repository = new PgpVaultRepository(pgpService, options);
-            return PasswordManagerService.CreateAsync(repository, new AesService(), pgpService, options);
+            var repository = new KekVaultRepository((byte[])_blobKey.Clone(), _dataDir);
+            return PasswordManagerService.CreateAsync(repository, new AesService(), (byte[])_fieldKey.Clone());
         }
 
         // ─── Initialization ──────────────────────────────────────────────────
 
         [Fact]
-        public async Task CreateAsync_ValidKeys_ReturnsService()
+        public async Task CreateAsync_ReturnsService()
         {
             await using var svc = await CreateServiceAsync();
             Assert.NotNull(svc);
         }
 
         [Fact]
-        public async Task CreateAsync_CreatesAesKeyFile()
+        public async Task GetAllEntriesAsync_WrongBlobKey_ThrowsVaultIntegrityException()
         {
+            await using (var svc = await CreateServiceAsync())
+                await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "s.com" }, "pass");
+
+            var wrongRepo = new KekVaultRepository(RandomNumberGenerator.GetBytes(32), _dataDir);
+            await using var wrongSvc = await PasswordManagerService.CreateAsync(
+                wrongRepo, new AesService(), RandomNumberGenerator.GetBytes(32));
+
+            await Assert.ThrowsAsync<VaultIntegrityException>(() => wrongSvc.GetAllEntriesAsync());
+        }
+
+        // ─── Ensure PGP key files ────────────────────────────────────────────
+
+        [Fact]
+        public async Task EnsurePgpKeyFilesAsync_RestoresMissingFilesFromVault()
+        {
+            const string publicArmor = "-----BEGIN PGP PUBLIC KEY-----\nfake\n-----END-----";
+            const string privateArmor = "-----BEGIN PGP PRIVATE KEY-----\nfake\n-----END-----";
+
+            await using (var svc = await CreateServiceAsync())
+            {
+                var vault = await svc.GetAllEntriesAsync(); // ensure vault file exists
+                Assert.Empty(vault);
+
+                var repo = new KekVaultRepository((byte[])_blobKey.Clone(), _dataDir);
+                await repo.SaveAsync(new VaultData
+                {
+                    PgpPublicKeyArmored = publicArmor,
+                    PgpPrivateKeyArmored = privateArmor,
+                });
+                repo.Dispose();
+            }
+
+            await using var svc2 = await CreateServiceAsync();
+            await svc2.EnsurePgpKeyFilesAsync(_dataDir);
+
+            Assert.Equal(publicArmor, await File.ReadAllTextAsync(Path.Combine(_dataDir, "public_key.asc")));
+            Assert.Equal(privateArmor, await File.ReadAllTextAsync(Path.Combine(_dataDir, "private_key.asc")));
+        }
+
+        [Fact]
+        public async Task EnsurePgpKeyFilesAsync_DoesNotOverwriteExistingFiles()
+        {
+            var publicPath = Path.Combine(_dataDir, "public_key.asc");
+            await File.WriteAllTextAsync(publicPath, "already-here");
+
             await using var svc = await CreateServiceAsync();
-            Assert.True(File.Exists(Path.Combine(_pgp.DataDir, "vault.key.pgp")));
-        }
+            await svc.EnsurePgpKeyFilesAsync(_dataDir);
 
-        [Fact]
-        public async Task CreateAsync_WrongPassphrase_ThrowsException()
-        {
-            await using var _ = await CreateServiceAsync();
-            var badOptions = new VaultOptions
-            {
-                DataFolderPath = _pgp.DataDir,
-                Passphrase = "wrong-passphrase"
-            };
-            var pgp = new PgpService();
-            await Assert.ThrowsAnyAsync<Exception>(() =>
-                PasswordManagerService.CreateAsync(
-                    new PgpVaultRepository(pgp, badOptions), new AesService(), pgp, badOptions));
-        }
-
-        [Fact]
-        public async Task CreateAsync_EmptyPassphrase_ThrowsArgumentException()
-        {
-            var options = new VaultOptions { DataFolderPath = _pgp.DataDir, Passphrase = "" };
-            var pgp = new PgpService();
-            await Assert.ThrowsAsync<ArgumentException>(() =>
-                PasswordManagerService.CreateAsync(
-                    new PgpVaultRepository(pgp, options), new AesService(), pgp, options));
-        }
-
-        [Fact]
-        public async Task CreateAsync_MissingPublicKey_ThrowsFileNotFoundException()
-        {
-            var options = new VaultOptions
-            {
-                DataFolderPath = _pgp.DataDir,
-                PublicKeyPath = Path.Combine(_pgp.DataDir, "nonexistent.asc"),
-                Passphrase = PgpTestFixture.Passphrase
-            };
-            var pgp = new PgpService();
-            await Assert.ThrowsAsync<FileNotFoundException>(() =>
-                PasswordManagerService.CreateAsync(
-                    new PgpVaultRepository(pgp, options), new AesService(), pgp, options));
+            Assert.Equal("already-here", await File.ReadAllTextAsync(publicPath));
         }
 
         // ─── Empty vault ─────────────────────────────────────────────────────
@@ -432,6 +441,9 @@ namespace PasswordManager.Tests.Services
             await Assert.ThrowsAsync<ObjectDisposedException>(() => svc.GetAllEntriesAsync());
         }
 
-        public void Dispose() => _pgp.Dispose();
+        public void Dispose()
+        {
+            try { Directory.Delete(_dataDir, recursive: true); } catch { /* best effort */ }
+        }
     }
 }

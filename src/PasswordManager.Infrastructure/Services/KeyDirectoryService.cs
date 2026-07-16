@@ -1,5 +1,6 @@
 using PasswordManager.Core.Interfaces;
 using PasswordManager.Core.Models;
+using PasswordManager.Infrastructure.Encryption;
 
 namespace PasswordManager.Infrastructure.Services
 {
@@ -110,9 +111,10 @@ namespace PasswordManager.Infrastructure.Services
             try
             {
                 using var stream = File.OpenRead(path);
-                using var sha = System.Security.Cryptography.SHA256.Create();
-                var hash = sha.ComputeHash(stream);
-                return Convert.ToHexString(hash, 0, 8);
+                // The real PGP fingerprint (not a file hash), so it can be verified out-of-band.
+                // Show the last 16 hex chars — the long key ID — for a compact, recognizable form.
+                var fp = PgpKeyInspector.Inspect(stream).Fingerprint;
+                return fp.Length > 16 ? fp[^16..] : fp;
             }
             catch
             {

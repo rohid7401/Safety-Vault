@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using PasswordManager.Core.Configuration;
 using PasswordManager.Core.Interfaces;
 using PasswordManager.Core.Models;
 
@@ -9,62 +8,51 @@ namespace PasswordManager.Core.Services
     {
         private readonly IVaultRepository _repository;
         private readonly IAesService _aesService;
-        private readonly IPgpService _pgpService;
-        private readonly VaultOptions _options;
 
         private byte[]? _aesKey;
         private bool _disposed;
 
-        private const string AesKeyFileName = "vault.key.pgp";
-
         private PasswordManagerService(
             IVaultRepository repository,
             IAesService aesService,
-            IPgpService pgpService,
-            VaultOptions options)
+            byte[] fieldKey)
         {
             _repository = repository;
             _aesService = aesService;
-            _pgpService = pgpService;
-            _options = options;
+            _aesKey = fieldKey;
         }
 
-        public static async Task<PasswordManagerService> CreateAsync(
+        /// <summary>
+        /// Takes ownership of <paramref name="fieldKey"/> (zeroized on Dispose) — the caller
+        /// derives it from the already-unlocked Vault Key (see VaultKeyRing.DeriveSubkey in
+        /// the Infrastructure layer).
+        /// </summary>
+        public static Task<PasswordManagerService> CreateAsync(
             IVaultRepository repository,
             IAesService aesService,
-            IPgpService pgpService,
-            VaultOptions options)
+            byte[] fieldKey)
         {
-            if (string.IsNullOrEmpty(options.Passphrase))
-                throw new ArgumentException("Passphrase cannot be empty.");
-
-            if (!File.Exists(options.ResolvedPublicKeyPath))
-                throw new FileNotFoundException("Public key not found.", options.ResolvedPublicKeyPath);
-            if (!File.Exists(options.ResolvedPrivateKeyPath))
-                throw new FileNotFoundException("Private key not found.", options.ResolvedPrivateKeyPath);
-
-            var service = new PasswordManagerService(repository, aesService, pgpService, options);
-            await service.InitializeAesKeyAsync();
-            return service;
+            return Task.FromResult(new PasswordManagerService(repository, aesService, fieldKey));
         }
 
-        private async Task InitializeAesKeyAsync()
+        /// <summary>
+        /// Writes the account's PGP key pair (used for encrypting files for contacts) back to
+        /// disk if missing, using the copy stored inside the vault. This is what lets a vault
+        /// copied to a new device — without its loose key files — become fully usable again
+        /// once unlocked with just the passphrase.
+        /// </summary>
+        public async Task EnsurePgpKeyFilesAsync(string vaultFolder)
         {
-            var aesKeyPath = Path.Combine(_options.DataFolderPath, AesKeyFileName);
-            if (File.Exists(aesKeyPath))
-            {
-                var encryptedKey = await File.ReadAllTextAsync(aesKeyPath);
-                var keyBase64 = _pgpService.DecryptString(
-                    encryptedKey, _options.ResolvedPrivateKeyPath, _options.Passphrase);
-                _aesKey = Convert.FromBase64String(keyBase64);
-            }
-            else
-            {
-                _aesKey = RandomNumberGenerator.GetBytes(32);
-                var keyBase64 = Convert.ToBase64String(_aesKey);
-                var encryptedKey = _pgpService.EncryptString(keyBase64, _options.ResolvedPublicKeyPath);
-                await File.WriteAllTextAsync(aesKeyPath, encryptedKey);
-            }
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+
+            var publicPath = Path.Combine(vaultFolder, "public_key.asc");
+            var privatePath = Path.Combine(vaultFolder, "private_key.asc");
+
+            if (!File.Exists(publicPath) && !string.IsNullOrEmpty(vault.PgpPublicKeyArmored))
+                await File.WriteAllTextAsync(publicPath, vault.PgpPublicKeyArmored);
+            if (!File.Exists(privatePath) && !string.IsNullOrEmpty(vault.PgpPrivateKeyArmored))
+                await File.WriteAllTextAsync(privatePath, vault.PgpPrivateKeyArmored);
         }
 
         // ─── Query ───────────────────────────────────────────────────────────
@@ -346,7 +334,7 @@ namespace PasswordManager.Core.Services
                 CryptographicOperations.ZeroMemory(_aesKey);
                 _aesKey = null;
             }
-            // Zeroize any derived key material held by the repository (e.g. the MAC key).
+            // Zeroize any derived key material held by the repository (e.g. the blob key).
             (_repository as IDisposable)?.Dispose();
             _disposed = true;
         }

@@ -67,42 +67,59 @@ Login:
 
 ---
 
-## 4. Arquitectura criptográfica OBJETIVO (to-be)
+## 4. Arquitectura criptográfica ACTUAL — post Fase 2b ✅ (envelope encryption con KEK)
 
-Colapsar todo a **una sola raíz criptográfica** derivada de la passphrase.
+Una sola raíz criptográfica derivada de la passphrase, con **envelope encryption**:
+una Vault Key (VK) aleatoria y fija se genera una única vez al registrarse, y una
+Key-Encryption-Key (KEK) derivada de la passphrase la envuelve. Esto separa "cambiar
+la passphrase" (solo re-envolver la VK) de "recifrar toda la bóveda" (nunca hace falta).
 
 ```
-                 ┌─────────────── Argon2id(passphrase, salt, params) ───────────────┐
-                 │                                                                    │
-             Clave Maestra (KEK, 32 bytes, nunca tocada en disco)                    │
-                 │                                                                    │
-      ┌──────────┼───────────────────────────┐                                       │
-      ▼          ▼                            ▼                                       │
-  K_enc      K_mac                        (opcional) K_wrap                           │
-  (AES-GCM   (HMAC-SHA256                 envuelve la clave privada PGP               │
-   del vault) del vault + metadatos)      para archivos externos)                    │
-      │          │                                                                    │
-      ▼          ▼                                                                    │
-  vault.data ──> se cifra con K_enc y se AUTENTICA con K_mac (o AES-GCM que ya       │
-                 provee AEAD sobre todo el blob, no solo por-campo)                   │
-      │                                                                               │
-  Login = "¿la KEK derivada descifra Y el tag/MAC valida?"  ◄─── única puerta ───────┘
+Registro (una vez):
+  RNG(32 bytes) ──────────────────────────────────► Vault Key (VK)
+  passphrase ──Argon2id(salt, m=19MiB,t=2,p=1)──► KEK
+  VK ──AES-256-GCM cifrada con KEK──► vault.keyring.json (salt, params, nonce, tag)
+
+Cada login (VK ya existe, se re-deriva la KEK y se desenvuelve):
+  passphrase + salt ──Argon2id──► KEK ──AES-GCM-decrypt(wrapped VK)──► VK
+                                          ▲
+                          si la passphrase es incorrecta, el tag AEAD
+                          no valida → UnauthorizedAccessException
+                          (ESTA es la única puerta de login; no existe
+                          ningún hash de contraseña en ningún archivo)
+
+  VK ──HKDF-Expand(info="vault-blob")──► K_blob  (cifra/autentica todo VaultData vía AES-GCM → vault.data)
+  VK ──HKDF-Expand(info="field")─────►  K_field (cifra cada campo sensible individualmente, AES-GCM)
 ```
 
 **Propiedades que gana el sistema:**
 
-- **Una sola raíz.** No más hash-oráculo en `accounts.json`; la verificación es
-  "¿descifra?", con el coste completo de Argon2id **y** del propio cifrado.
-- **Integridad autenticada.** El vault entero lleva un tag AEAD / MAC. Sustituir o
-  editar el blob se detecta al cargar (cierra C1).
+- **Una sola raíz, sin hash en ningún lado.** No existe `PassphraseHash` en `accounts.json`
+  ni en ningún archivo; la verificación es "¿el tag AEAD de la VK envuelta valida?", al
+  costo completo de Argon2id.
+- **Integridad autenticada nativa.** AES-GCM es AEAD: el propio tag de autenticación
+  detecta cualquier sustitución o edición del blob al cargar (cierra C1 de forma más
+  simple que el HMAC-SHA256 separado de la Fase 1 — ya no hace falta esa capa aparte).
 - **Resistencia a hardware.** Argon2id castiga GPU/ASIC mucho más que PBKDF2 (cierra M1).
-- **Memoria acotada.** KEK y claves derivadas viven en `byte[]` zeroizables, se limpian
-  al bloquear (mitiga A3 / T3).
+- **Memoria acotada.** KEK, VK y las subclaves derivadas viven en `byte[]` zeroizables
+  (`CryptographicOperations.ZeroMemory`) y se liberan tan pronto se derivan las subclaves
+  o al hacer `Dispose()` (cierra A3 por completo — la passphrase-string ya **no** vive
+  toda la sesión: solo se usa transitoriamente en `VaultKeyRing.Unlock`/`Create`).
+- **Autocontenida / lista para multi-dispositivo.** Cualquier dispositivo que conozca la
+  passphrase puede re-derivar la KEK y desenvolver la misma VK — no hay ningún archivo de
+  clave específico del dispositivo que sincronizar. Esto es exactamente lo que necesita
+  el Paso 5 del roadmap multiplataforma (`IVaultStorage` + sync).
 
 **Nota sobre PGP:** el par PGP se mantiene para lo que es bueno — **cifrar archivos y
 directorios externos** y participar del ecosistema de keyservers. El **vault interno**
-deja de depender del par pública/privada y pasa al esquema autenticado de arriba. Son
-dos dominios: "mi bóveda" (KEK) y "compartir con terceros" (PGP).
+ya no depende del par pública/privada en absoluto. Son dos dominios: "mi bóveda" (KEK,
+simétrico) y "compartir con terceros" (PGP, asimétrico). El par PGP se genera igual que
+antes al registrarse, pero además se guarda armado *dentro* de `VaultData`
+(`PgpPublicKeyArmored`/`PgpPrivateKeyArmored`), protegido por la misma VK que todo lo
+demás — así viaja con la bóveda a cualquier dispositivo. `PasswordManagerService.
+EnsurePgpKeyFilesAsync` materializa `public_key.asc`/`private_key.asc` en disco si
+faltan, usando esa copia embebida, para que la función de compartir archivos siga
+funcionando sin importar cómo llegó la bóveda a ese dispositivo.
 
 ---
 
@@ -114,24 +131,24 @@ Estado: `abierto` · `Fase 0 ✅` · `planificado`
 
 | ID | Descripción | Ubicación | Estado |
 |----|-------------|-----------|--------|
-| C1 | Vault sin autenticar → sustitución/inyección indetectable | `PgpVaultRepository.cs` | **Fase 1 ✅** (HMAC-SHA256 sobre ciphertext con clave derivada de passphrase) |
-| C2 | Escritura no atómica → corrupción y pérdida total ante fallo | `PgpVaultRepository.cs` | **Fase 1 ✅** (escritura temp→move + backup rotativo) |
+| C1 | Vault sin autenticar → sustitución/inyección indetectable | `KekVaultRepository.cs` | **Fase 1 ✅ → Fase 2b ✅** (AES-GCM AEAD sobre el blob; el propio tag de autenticación detecta manipulación, ya sin capa de HMAC separada) |
+| C2 | Escritura no atómica → corrupción y pérdida total ante fallo | `KekVaultRepository.cs` | **Fase 1 ✅** (escritura temp→move + backup rotativo) |
 
 ### Alto
 
 | ID | Descripción | Ubicación | Estado |
 |----|-------------|-----------|--------|
-| A1 | Hash en `accounts.json` = oráculo de fuerza bruta offline redundante | `AuthService.cs` | **Fase 2 ✅** (hash eliminado; passphrase verificada por desbloqueo de clave privada PGP) |
+| A1 | Hash en `accounts.json` = oráculo de fuerza bruta offline redundante | `AuthService.cs` | **Fase 2 ✅ → Fase 2b ✅** (hash eliminado; passphrase verificada por `VaultKeyRing.CanUnlock`, es decir, por el tag AEAD al desenvolver la Vault Key) |
 | A2 | Sin auto-lock ni timeout de sesión | `AppState.cs` | Fase 3 |
-| A3 | Passphrase/clave AES no zeroizables en memoria | `VaultOptions`, `PgpService.cs` | **Fase 2 parcial ✅** (claves derivadas zeroizadas; passphrase-string pendiente de migración PGP→KEK) |
-| A4 | Corrupción del vault tragada → sobrescritura silenciosa | `PgpVaultRepository.cs` | **Fase 1 ✅** (lanza `VaultIntegrityException`, nunca sobrescribe) |
+| A3 | Passphrase/clave AES no zeroizables en memoria | `VaultKeyRing.cs` | **Fase 2b ✅ completa** (KEK/VK/subclaves zeroizadas tan pronto se usan; la passphrase-string ya no vive toda la sesión — solo durante `Unlock`/`Create`) |
+| A4 | Corrupción del vault tragada → sobrescritura silenciosa | `KekVaultRepository.cs` | **Fase 1 ✅** (lanza `VaultIntegrityException`, nunca sobrescribe) |
 
 ### Medio
 
 | ID | Descripción | Ubicación | Estado |
 |----|-------------|-----------|--------|
 | M1 | PBKDF2 200k < 600k recomendado; migrar a Argon2id | `AuthService.cs` | **Fase 2 ✅** (Argon2id OWASP m=19 MiB/t=2/p=1; PBKDF2 eliminado del código) |
-| M2 | Sin backup/versionado del vault | `PgpVaultRepository.cs` | **Fase 1 ✅** (backup rotativo `.bak` + `RestoreFromBackupAsync`) |
+| M2 | Sin backup/versionado del vault | `KekVaultRepository.cs` | **Fase 1 ✅** (backup rotativo `.bak` + `RestoreFromBackupAsync`) |
 | M3 | `SecureDelete` inefectivo en SSD (falsa confianza) | `SecureFileHandler.cs` | Fase 4 |
 | M4 | Descifrado de directorios pasa por temp sin cifrar | `FileEncryptionService.cs` | Fase 4 |
 | M5 | Sin rate limiting en intentos de passphrase | `AuthService.cs` | Fase 3 |
@@ -164,21 +181,25 @@ Estado: `abierto` · `Fase 0 ✅` · `planificado`
   `VaultIntegrityException` (hoy la capacidad existe en el repositorio; falta el botón).
 - **Fase 2 — Raíz criptográfica unificada (alto) ✅ APLICADA:** M1 (Argon2id OWASP,
   `Argon2idKdf`, metadata de integridad v2 auto-descriptiva con id+params del KDF),
-  A1 (eliminado el hash de `accounts.json`; `UserAccount` ya no guarda `PassphraseHash`/`Salt`;
-  la passphrase se verifica con `IPgpService.CanUnlockPrivateKey`), A3 parcial (claves
-  derivadas —MAC, AES— zeroizadas en `Dispose`; `Argon2idKdf` limpia la copia UTF-8 de la
-  passphrase).
-- **Fase 2b — Candado de bóveda por KEK (COMPROMETIDA, no opcional):** migrar el cifrado
-  de la bóveda de PGP a una **KEK derivada de la passphrase con Argon2id** (envelope
-  encryption: KEK → K_enc/K_mac de la bóveda). Esto (a) elimina la vida larga de la
-  passphrase-string —hoy el vault se descifra con PGP en cada carga, obligando a mantenerla
-  en memoria toda la sesión— cerrando del todo A3, y (b) vuelve la bóveda **autocontenida**
-  para multi-device (cualquier dispositivo re-deriva la KEK; no hay archivo de clave que
-  sincronizar). **El par PGP se conserva** y pasa a guardarse *dentro* de la bóveda: sigue
-  siendo la herramienta para la función de **compartir archivos con terceros** (cifrado
-  asimétrico con la llave pública del contacto) y para **recibir** archivos cifrados a la
-  llave pública propia. KEK ≠ PGP: la KEK es simétrica (mi bóveda), PGP es asimétrico
-  (compartir). Prerrequisito del Paso 5 (sincronización) del roadmap multiplataforma.
+  A1 (eliminado el hash de `accounts.json`; `UserAccount` ya no guarda `PassphraseHash`/`Salt`).
+- **Fase 2b — Candado de bóveda por KEK ✅ APLICADA:** el cifrado de la bóveda migró de
+  PGP a una **KEK derivada de la passphrase con Argon2id** que envuelve una Vault Key (VK)
+  aleatoria fija (envelope encryption); el blob se cifra con AES-256-GCM (AEAD) usando un
+  subkey HKDF de la VK. Ver §4 para el diagrama completo. Esto (a) cierra A3 del todo —la
+  passphrase-string ya no vive toda la sesión, solo durante `VaultKeyRing.Unlock`/`Create`—
+  y (b) vuelve la bóveda **autocontenida** para multi-device: cualquier dispositivo
+  re-deriva la KEK con solo la passphrase, no hay archivo de clave que sincronizar.
+  **El par PGP se conserva** y ahora se guarda también *dentro* de la bóveda
+  (`VaultData.PgpPublicKeyArmored`/`PgpPrivateKeyArmored`): sigue siendo la herramienta
+  para **compartir archivos con terceros** (cifrado asimétrico con la llave pública del
+  contacto) y para **recibir** archivos cifrados a la llave pública propia —
+  `PasswordManagerService.EnsurePgpKeyFilesAsync` los materializa en disco si faltan.
+  KEK ≠ PGP: la KEK es simétrica (mi bóveda), PGP es asimétrico (compartir). Prerrequisito
+  cumplido del Paso 5 (sincronización) del roadmap multiplataforma.
+  Nuevos archivos en disco: `vault.data` (blob AES-GCM) y `vault.keyring.json` (salt Argon2id
+  + VK envuelta), reemplazando a `vault.data.pgp`/`vault.integrity.json`/`vault.key.pgp`.
+  Fue un **cambio de formato sin migración** (decisión explícita: las bóvedas de prueba
+  existentes se recrean desde cero en vez de migrarse).
 - **Fase 3 — Seguridad de sesión (alto/medio):** A2 (auto-lock), M5 (backoff), B2
   (limpiar portapapeles).
 - **Fase 4 — Higiene de datos (medio):** M4 (temporales cifrados), M3 (borrado honesto),
@@ -195,38 +216,56 @@ Estado: `abierto` · `Fase 0 ✅` · `planificado`
 > estado **`pendiente`**. Tras aplicar las Fases 1–5 hay que volver aquí y verificar
 > si siguen presentes, marcando cada una como `resuelta`, `mitigada` o `persistente`.
 
-### N1 — Enumeración de cuentas por mensajes de login distintos · Medio · `pendiente`
-`LoginAsync` responde `"No account found with that username or email."` vs
-`"Incorrect passphrase."`. Un atacante local puede **distinguir qué usuarios/emails
-existen** en el dispositivo. Además el tiempo de respuesta difiere (si no hay cuenta,
-no se ejecuta Argon2id/PBKDF2 → respuesta más rápida = **oráculo de tiempo**).
-*Corrección:* un único mensaje genérico y ejecutar siempre un KDF "dummy" de coste
-equivalente cuando la cuenta no existe.
+### N1 — Enumeración de cuentas por mensajes de login distintos · Medio · `✅ resuelto`
+`LoginAsync` respondía `"No account found..."` vs `"Incorrect passphrase."`, dejando
+**distinguir qué usuarios/emails existen** en el dispositivo; y el tiempo difería (sin
+cuenta no se ejecutaba Argon2id → **oráculo de tiempo**).
+*Corrección aplicada:* un único mensaje genérico (`"Incorrect username/email or
+passphrase."`) en ambas ramas, y `VaultKeyRing.PerformDummyUnlock` corre un Argon2id de
+coste equivalente cuando la cuenta no existe, igualando el tiempo de respuesta (el costo
+de Argon2id domina el camino real). Cubierto por
+`AuthServiceTests.LoginAsync_WrongPassphraseAndUnknownAccount_ProduceIdenticalMessage`.
 
-### N2 — TOCTOU / carrera sin bloqueo en `accounts.json` · Medio · `pendiente`
-`LoadAllAsync` → mutar lista → `SaveAllAsync` es un **read-modify-write no atómico y sin
-lock de archivo**. Dos registros simultáneos, o dos instancias de la app, pueden pisarse
-y **perder una cuenta**. Mismo patrón afecta a `SaveAsync` del vault si hay dos ventanas.
-*Corrección:* lock de archivo (`FileStream` con `FileShare.None`) + escritura atómica
-temp→rename, o un mutex por-vault a nivel de proceso.
+### N2 — TOCTOU / carrera sin bloqueo en `accounts.json` · Medio · `✅ resuelto`
+`LoadAllAsync` → mutar lista → `SaveAllAsync` era un **read-modify-write no atómico y sin
+lock**. Dos registros simultáneos podían leer la misma lista y pisarse → **perder una cuenta**.
+*Corrección aplicada:* `AuthService` serializa el read-modify-write de `accounts.json` con
+un `SemaphoreSlim` estático (registro y actualización de `LastLogin`), re-leyendo dentro del
+lock; y `SaveAllAsync` ahora escribe atómicamente (temp→`File.Move`) para que un fallo a
+mitad no deje el archivo truncado. Cubierto por
+`AuthServiceTests.RegisterAsync_ConcurrentRegistrations_AllPersist`. (El `SaveAsync` del
+vault ya era atómico desde Fase 1.) *Nota:* el lock es intra-proceso; dos instancias
+separadas de la app siguen siendo un caso extremo no cubierto — aceptable para un gestor
+local de un solo proceso.
 
-### N3 — Bomba de descompresión al desencriptar directorios · Alto · `pendiente`
-El límite de 200 MB / 1 GB es sobre el archivo **de entrada**. Un `.zip.pgp` malicioso de
-pocos MB puede expandirse a **decenas de GB** al hacer `ZipFile.ExtractToDirectory`
-(bomba zip), llenando el disco o agotando memoria → DoS. También el paquete PGP puede
-llevar un `literal data` gigante o compresión anidada.
-*Corrección:* extraer entrada por entrada verificando el tamaño total descomprimido
-acumulado contra un límite, y abortar si se excede; validar ratio de compresión.
+### N3 — Bomba de descompresión al desencriptar directorios · Alto · `✅ resuelto`
+El límite de 200 MB / 1 GB era sobre el archivo **de entrada**. Un `.zip.pgp` malicioso de
+pocos MB podía expandirse a **decenas de GB** al hacer `ZipFile.ExtractToDirectory`
+(bomba zip), llenando el disco → DoS.
+*Corrección aplicada:* `FileEncryptionService.SafeExtract` reemplaza a
+`ZipFile.ExtractToDirectory` y extrae entrada por entrada en streaming, abortando apenas
+el **total descomprimido** cruza `MaxExtractedBytes` (1 GB) o la **cantidad de entradas**
+supera `MaxExtractedEntries` (100 000). De paso re-implementa la guarda **zip-slip**
+(rechaza entradas cuyo path se escape del directorio destino), que al hacer extracción
+manual hay que reponer. Cubierto por `SafeExtractTests` (bytes, cantidad, zip-slip,
+round-trip).
 
-### N4 — Fuga de datos por mensajes de excepción y logging · Medio · `pendiente`
-La UI muestra `ex.Message` crudo (`$"Could not unlock vault: {ex.Message}"`, etc.), que
-puede filtrar **rutas absolutas, detalles criptográficos o estructura interna**. En DEBUG,
-`builder.Logging.AddDebug()` y las DeveloperTools del WebView pueden volcar datos sensibles.
-*Corrección:* mensajes genéricos al usuario + log técnico separado sin secretos; asegurar
-que DeveloperTools y AddDebug **nunca** se compilen en Release.
+### N4 — Fuga de datos por mensajes de excepción y logging · Medio · `✅ resuelto`
+La UI mostraba `ex.Message` crudo (`$"Could not unlock vault: {ex.Message}"`, etc.), que
+podía filtrar **rutas absolutas, detalles criptográficos o estructura interna** en pantalla.
+*Corrección aplicada:* el helper `UserError.Describe(Loc, Exception)` centraliza el manejo:
+solo las excepciones **cuyo mensaje escribimos nosotros** y que no llevan rutas
+(`ArgumentException`, `InvalidOperationException`, `VaultIntegrityException`,
+`GeneratorConstraintException` — validación, conflictos del generador, integridad) se muestran
+tal cual; cualquier otra (IO con rutas, `CryptographicException`, JSON) se colapsa a un mensaje
+genérico (`error.unexpected`) y el detalle técnico va a `Debug` en vez de a la pantalla.
+Se convirtieron ~28 sitios de `catch` en la UI (`UnauthorizedAccessException`/`FileNotFound`
+quedan deliberadamente **fuera** del whitelist por incluir rutas). Los `catch` tipados de
+login/validación conservan su mensaje seguro. La **parte 2** (DevTools + `AddDebug` solo en
+Release) ya estaba: ambos están bajo `#if DEBUG` en `MauiProgram`.
 
 ### N5 — Permisos de archivo laxos / sin cifrado del SO en reposo · Alto · `pendiente`
-`accounts.json`, `private_key.asc` y `vault.data.pgp` se escriben con la **ACL por defecto**;
+`accounts.json`, `private_key.asc` y `vault.data` se escriben con la **ACL por defecto**;
 en una máquina compartida, **otros usuarios del SO podrían leerlos**. No se usa DPAPI
 (Windows) ni Keychain/Keystore para envolver secretos en reposo. La protección hoy depende
 solo de la passphrase, no del aislamiento del SO.
@@ -249,21 +288,28 @@ puede acabar en **swap o hibernación**. Más amplio que A3 (que era solo la pas
 sea posible, y considerar `[JsonIgnore]` + descifrado perezoso; a largo plazo, buffers
 nativos fuera del GC para los secretos calientes.
 
-### N8 — Confianza en el keyserver sin verificación de UID · Medio · `pendiente`
-`SearchByEmailAsync` descarga una clave y `KeyManagementPage` la importa **sin parsear el
-paquete PGP ni verificar que su UID coincide con el email buscado**. TLS valida el servidor
-pero no hay pinning; un keyserver comprometido o un operador malicioso podría entregar una
-**clave de recipiente falsa**, y luego el usuario cifraría archivos "para su contacto" que en
-realidad puede leer el atacante.
-*Corrección:* parsear la clave, mostrar fingerprint + UIDs y **exigir confirmación explícita**;
-verificar que algún UID contenga el email consultado antes de guardar (extiende B5).
+### N8 — Confianza en el keyserver sin verificación de UID · Medio · `✅ resuelto`
+`SearchByEmailAsync` descargaba una clave y `KeyManagementPage` la importaba **sin parsear el
+paquete PGP ni verificar que su UID coincidiera con el email buscado**; el "fingerprint" que se
+mostraba era un SHA-256 del archivo, inútil para verificación. Un keyserver comprometido podía
+entregar una **clave de recipiente falsa** y el usuario cifraría archivos "para su contacto"
+legibles por el atacante.
+*Corrección aplicada:* `IPgpService.InspectPublicKey` (vía `PgpKeyInspector` con BouncyCastle)
+parsea la clave y expone su **fingerprint PGP real** + los **UIDs**. La UI de búsqueda ahora
+muestra fingerprint (para verificación out-of-band) + identidades antes de importar, y **advierte
+si ningún UID contiene el email buscado** (o si la clave no parsea). Además el fingerprint del
+directorio de contactos pasó a ser el real (long key ID) en vez del SHA del archivo. Cubierto por
+`PgpKeyInspectorTests`. *Pendiente (extiende B5):* pinning del keyserver y bloqueo duro
+opcional en mismatch (hoy es advertencia + confirmación explícita del usuario).
 
-### N9 — Cadena de suministro sin fijar · Bajo · `pendiente`
-No hay lockfile de dependencias ni fijación de transitivas. `BouncyCastle.Cryptography`,
-`CommunityToolkit.Maui` y demás se confían implícitamente por versión. Un paquete comprometido
-tendría acceso directo a las rutinas criptográficas.
-*Corrección:* habilitar `packages.lock.json` (`RestorePackagesWithLockFile`), revisar hashes,
-y fijar versiones exactas de paquetes con superficie criptográfica.
+### N9 — Cadena de suministro sin fijar · Bajo · `✅ resuelto (parcial)`
+No había lockfile de dependencias ni fijación de transitivas. `BouncyCastle.Cryptography`,
+`CommunityToolkit.Maui` y demás se confiaban implícitamente por versión.
+*Corrección aplicada:* `Directory.Build.props` con `RestorePackagesWithLockFile=true`;
+cada proyecto (incl. el MAUI multi-TFM) genera y versiona su `packages.lock.json`, fijando
+el grafo transitivo completo con hashes SHA-512 por paquete — auditable y reproducible.
+*Pendiente:* activar modo bloqueado en CI (`--locked-mode`) cuando exista pipeline, y una
+revisión periódica de vulnerabilidades (`dotnet list package --vulnerable`).
 
 ### N10 — Persistencia del portapapeles del SO · Bajo · `pendiente`
 Aunque implementemos B2 (limpiar el portapapeles tras N segundos), el **historial del
@@ -279,10 +325,10 @@ en Windows); documentar la limitación en la UI.
 `AndroidManifest.xml` tiene `android:allowBackup="true"` (el valor por defecto de la
 plantilla MAUI) y no declara `android:fullBackupContent` / `dataExtractionRules`. Esto
 significa que Android **copia el almacenamiento privado de la app** (donde vive
-`vault.data.pgp`, `accounts.json` y `private_key.asc`) a la cuenta de Google del usuario
+`vault.data`, `accounts.json` y `private_key.asc`) a la cuenta de Google del usuario
 vía Auto Backup, sin que el usuario lo pida explícitamente — exactamente el escenario
 "backup en nube filtrado" del modelo de amenazas (T1). El contenido sigue protegido por
-la passphrase (cifrado PGP + Argon2id), pero es una superficie de exposición evitable.
+la passphrase (KEK vía Argon2id), pero es una superficie de exposición evitable.
 *Corrección aplicada:* `android:allowBackup="false"` en `AndroidManifest.xml` — no
 dependemos de ese mecanismo para nada (el propio backup rotativo `.bak` ya cubre la
 recuperación local).
@@ -293,14 +339,14 @@ recuperación local).
 
 | ID | Vulnerabilidad | ¿Sigue presente? | Notas |
 |----|----------------|------------------|-------|
-| N1 | Enumeración de cuentas / timing | ⬜ persistente | Fase 2 no lo resolvió: `LoginAsync` aún distingue "no account" vs "incorrect passphrase" y solo corre PGP si la cuenta existe (oráculo de tiempo). Abordar con mensaje único + verificación dummy |
-| N2 | TOCTOU en accounts.json | ⬜ pendiente | |
-| N3 | Bomba de descompresión | ⬜ pendiente | |
-| N4 | Fuga por excepciones/logging | ⬜ pendiente | |
+| N1 | Enumeración de cuentas / timing | ✅ resuelto | Mensaje unificado + `PerformDummyUnlock` (Argon2id de igual costo cuando no hay cuenta) |
+| N2 | TOCTOU en accounts.json | ✅ resuelto | `SemaphoreSlim` en el read-modify-write + escritura atómica temp→move |
+| N3 | Bomba de descompresión | ✅ resuelto | `SafeExtract`: cap de bytes/entradas descomprimidos + guarda zip-slip |
+| N4 | Fuga por excepciones/logging | ✅ resuelto | `UserError.Describe` (whitelist de excepciones seguras + genérico para el resto); DevTools/AddDebug ya en `#if DEBUG` |
 | N5 | Permisos de archivo / DPAPI | ⬜ pendiente | |
 | N6 | Hardening WebView / CSP | ⬜ pendiente | |
 | N7 | Vault en claro en el heap | ⬜ pendiente | |
-| N8 | UID del keyserver sin verificar | ⬜ pendiente | |
-| N9 | Cadena de suministro | ⬜ pendiente | |
+| N8 | UID del keyserver sin verificar | ✅ resuelto | `InspectPublicKey`: fingerprint real + UIDs + advertencia de mismatch |
+| N9 | Cadena de suministro | ✅ resuelto (parcial) | `packages.lock.json` en todos los proyectos; falta `--locked-mode` en CI |
 | N10 | Historial de portapapeles | ⬜ pendiente | |
 | N11 | Android Auto Backup sin exclusión | ✅ resuelto | `allowBackup="false"` en el manifest |

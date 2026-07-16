@@ -7,6 +7,10 @@ namespace PasswordManager.Infrastructure.Services
     {
         public const long MaxFileSizeBytes = 200L * 1024 * 1024;        // 200 MB
         public const long MaxDirectorySizeBytes = 1024L * 1024 * 1024;  // 1 GB
+        // Caps on the DECOMPRESSED output when extracting an encrypted directory, to defuse
+        // decompression bombs (a small zip that expands to hundreds of GB / millions of files).
+        private const long MaxExtractedBytes = MaxDirectorySizeBytes;
+        private const int MaxExtractedEntries = 100_000;
 
         private readonly IPgpService _pgpService;
 
@@ -143,7 +147,7 @@ namespace PasswordManager.Infrastructure.Services
                 await using (var zipOutput = File.Create(tempZip))
                     await DecryptCoreAsync(input, MaxDirectorySizeBytes, privateKeyPath, passphrase, zipOutput);
 
-                ZipFile.ExtractToDirectory(tempZip, extractToPath, overwriteFiles: true);
+                SafeExtract(tempZip, extractToPath);
             }
             finally
             {
@@ -174,6 +178,67 @@ namespace PasswordManager.Infrastructure.Services
                 buffer.Write(chunk, 0, read);
             }
             return buffer.ToArray();
+        }
+
+        /// <summary>
+        /// Extracts a zip while enforcing decompression-bomb limits (total decompressed bytes
+        /// and entry count) and rejecting entries whose path escapes the destination (zip-slip).
+        /// Replaces <see cref="ZipFile.ExtractToDirectory(string, string)"/>, whose only guard is
+        /// against zip-slip and which would happily write an unbounded amount of data.
+        /// </summary>
+        private static void SafeExtract(string zipPath, string destinationDir) =>
+            SafeExtractCore(zipPath, destinationDir, MaxExtractedBytes, MaxExtractedEntries);
+
+        /// <summary>Testable core of <see cref="SafeExtract"/> with injectable limits.</summary>
+        internal static void SafeExtractCore(string zipPath, string destinationDir, long maxBytes, int maxEntries)
+        {
+            // Normalized destination prefix, with a trailing separator, for containment checks.
+            var destFull = Path.GetFullPath(destinationDir);
+            if (!destFull.EndsWith(Path.DirectorySeparatorChar))
+                destFull += Path.DirectorySeparatorChar;
+
+            using var archive = ZipFile.OpenRead(zipPath);
+
+            if (archive.Entries.Count > maxEntries)
+                throw new InvalidOperationException(
+                    $"Archive has too many entries ({archive.Entries.Count:N0}); " +
+                    $"the maximum is {maxEntries:N0} (possible decompression bomb).");
+
+            long totalWritten = 0;
+            var chunk = new byte[81920];
+
+            foreach (var entry in archive.Entries)
+            {
+                var targetPath = Path.GetFullPath(Path.Combine(destinationDir, entry.FullName));
+
+                // Zip-slip guard: the resolved path must stay inside the destination.
+                var isDir = targetPath.EndsWith(Path.DirectorySeparatorChar) || entry.Name.Length == 0;
+                var containmentCheck = isDir ? targetPath.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar : targetPath;
+                if (!containmentCheck.StartsWith(destFull, StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        $"Archive entry '{entry.FullName}' would extract outside the target directory.");
+
+                if (isDir)
+                {
+                    Directory.CreateDirectory(targetPath);
+                    continue;
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+
+                using var entryStream = entry.Open();
+                using var outFile = File.Create(targetPath);
+                int read;
+                while ((read = entryStream.Read(chunk, 0, chunk.Length)) > 0)
+                {
+                    totalWritten += read;
+                    if (totalWritten > maxBytes)
+                        throw new InvalidOperationException(
+                            $"Decompressed contents exceed the maximum of {FormatBytes(maxBytes)} " +
+                            "(possible decompression bomb).");
+                    outFile.Write(chunk, 0, read);
+                }
+            }
         }
 
         private static void TryDelete(string path)

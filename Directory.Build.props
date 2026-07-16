@@ -1,0 +1,11 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- N9 (cadena de suministro): fija el grafo de dependencias resuelto en
+         packages.lock.json (versionado) para que las versiones sean auditables y
+         reproducibles. No activa modo bloqueado, así que los builds siguen resolviendo
+         normalmente; el lockfile solo deja constancia de lo instalado. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+</Project>

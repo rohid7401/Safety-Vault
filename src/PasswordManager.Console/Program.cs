@@ -1,4 +1,4 @@
-using PasswordManager.Core.Configuration;
+using System.Security.Cryptography;
 using PasswordManager.Core.Models;
 using PasswordManager.Core.Services;
 using PasswordManager.Infrastructure.Encryption;
@@ -26,15 +26,23 @@ namespace PasswordManager.Console
             string passphrase = ReadPassword();
             System.Console.WriteLine();
 
-            var options = new VaultOptions { DataFolderPath = dataPath, Passphrase = passphrase };
-            var pgpService = new PgpService();
-            var repository = new PgpVaultRepository(pgpService, options);
-
             PasswordManagerService? service = null;
             try
             {
-                service = await PasswordManagerService.CreateAsync(
-                    repository, new AesService(), pgpService, options);
+                var vaultKey = VaultKeyRing.Unlock(dataPath, passphrase);
+                byte[] blobKey, fieldKey;
+                try
+                {
+                    blobKey = VaultKeyRing.DeriveSubkey(vaultKey, VaultKeyRing.BlobKeyInfo);
+                    fieldKey = VaultKeyRing.DeriveSubkey(vaultKey, VaultKeyRing.FieldKeyInfo);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(vaultKey);
+                }
+
+                var repository = new KekVaultRepository(blobKey, dataPath);
+                service = await PasswordManagerService.CreateAsync(repository, new AesService(), fieldKey);
                 WriteSuccess("Vault unlocked successfully!");
             }
             catch (Exception ex)

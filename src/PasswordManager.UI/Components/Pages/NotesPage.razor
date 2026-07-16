@@ -144,7 +144,7 @@ else
         }
         catch (Exception ex)
         {
-            Toast.Error($"{L["toast.deleteFailed"]}: {ex.Message}");
+            Toast.Error($"{L["toast.deleteFailed"]}: {UserError.Describe(L, ex)}");
         }
     }
 
@@ -180,7 +180,7 @@ else
         }
         catch (Exception ex)
         {
-            _formError = $"{L["toast.saveFailed"]}: {ex.Message}";
+            _formError = $"{L["toast.saveFailed"]}: {UserError.Describe(L, ex)}";
         }
     }
 
