@@ -1,3 +1,4 @@
+using System.Text;
 using Org.BouncyCastle.Bcpg;
 using Org.BouncyCastle.Bcpg.OpenPgp;
 using Org.BouncyCastle.Crypto.Generators;
@@ -5,6 +6,7 @@ using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Security;
 using PasswordManager.Core.Interfaces;
+using PasswordManager.Core.Models;
 
 namespace PasswordManager.Infrastructure.Encryption
 {
@@ -35,6 +37,12 @@ namespace PasswordManager.Infrastructure.Encryption
             {
                 return false;
             }
+        }
+
+        public PgpKeyDetails InspectPublicKey(string armoredPublicKey)
+        {
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(armoredPublicKey));
+            return PgpKeyInspector.Inspect(stream);
         }
 
         public void GenerateKeyPair(string publicKeyPath, string privateKeyPath, string passphrase)

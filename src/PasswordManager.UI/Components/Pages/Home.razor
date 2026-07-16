@@ -244,7 +244,7 @@
         }
         catch (Exception ex)
         {
-            _error = $"Could not unlock vault: {ex.Message}";
+            _error = UserError.Describe(L, ex);
         }
         finally
         {
@@ -290,7 +290,7 @@
         }
         catch (Exception ex)
         {
-            _error = $"Unexpected error: {ex.Message}"; _info = string.Empty;
+            _error = UserError.Describe(L, ex); _info = string.Empty;
         }
         finally
         {
@@ -356,7 +356,7 @@
         }
         catch (Exception ex)
         {
-            _restoreFailure = $"Restore failed: {ex.Message}";
+            _restoreFailure = UserError.Describe(L, ex);
         }
         finally
         {

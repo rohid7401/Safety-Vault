@@ -179,6 +179,9 @@ Estado: `abierto` · `Fase 0 ✅` · `planificado`
   asimétrico con la llave pública del contacto) y para **recibir** archivos cifrados a la
   llave pública propia. KEK ≠ PGP: la KEK es simétrica (mi bóveda), PGP es asimétrico
   (compartir). Prerrequisito del Paso 5 (sincronización) del roadmap multiplataforma.
+  **Esta migración vive en la rama `KEK`**, no en esta — esta rama (release/Play Store)
+  se queda intencionalmente en el esquema PGP-por-dispositivo, con los hallazgos N1
+  (parcial), N2, N3, N4, N8, N9 y N11 aplicados encima igual (ver §7).
 - **Fase 3 — Seguridad de sesión (alto/medio):** A2 (auto-lock), M5 (backoff), B2
   (limpiar portapapeles).
 - **Fase 4 — Higiene de datos (medio):** M4 (temporales cifrados), M3 (borrado honesto),
@@ -195,35 +198,44 @@ Estado: `abierto` · `Fase 0 ✅` · `planificado`
 > estado **`pendiente`**. Tras aplicar las Fases 1–5 hay que volver aquí y verificar
 > si siguen presentes, marcando cada una como `resuelta`, `mitigada` o `persistente`.
 
-### N1 — Enumeración de cuentas por mensajes de login distintos · Medio · `pendiente`
-`LoginAsync` responde `"No account found with that username or email."` vs
-`"Incorrect passphrase."`. Un atacante local puede **distinguir qué usuarios/emails
-existen** en el dispositivo. Además el tiempo de respuesta difiere (si no hay cuenta,
-no se ejecuta Argon2id/PBKDF2 → respuesta más rápida = **oráculo de tiempo**).
-*Corrección:* un único mensaje genérico y ejecutar siempre un KDF "dummy" de coste
-equivalente cuando la cuenta no existe.
+### N1 — Enumeración de cuentas por mensajes de login distintos · Medio · `✅ parcial`
+`LoginAsync` respondía `"No account found..."` vs `"Incorrect passphrase."`, dejando
+**distinguir qué usuarios/emails existen** en el dispositivo.
+*Corrección aplicada:* un único mensaje genérico (`"Incorrect username/email or
+passphrase."`) en ambas ramas de fallo — cierra la fuga por **texto**. *Pendiente en esta
+rama:* el tiempo de respuesta aún difiere (sin cuenta no se ejecuta el desbloqueo PGP →
+respuesta más rápida = oráculo de tiempo). Ese lado del arreglo requiere un "trabajo
+dummy" de costo equivalente y quedó implementado sobre el esquema KEK (rama `KEK`), no
+sobre PGP, para no introducir criptografía nueva sin probar en la rama de release.
 
-### N2 — TOCTOU / carrera sin bloqueo en `accounts.json` · Medio · `pendiente`
-`LoadAllAsync` → mutar lista → `SaveAllAsync` es un **read-modify-write no atómico y sin
-lock de archivo**. Dos registros simultáneos, o dos instancias de la app, pueden pisarse
-y **perder una cuenta**. Mismo patrón afecta a `SaveAsync` del vault si hay dos ventanas.
-*Corrección:* lock de archivo (`FileStream` con `FileShare.None`) + escritura atómica
-temp→rename, o un mutex por-vault a nivel de proceso.
+### N2 — TOCTOU / carrera sin bloqueo en `accounts.json` · Medio · `✅ resuelto`
+`LoadAllAsync` → mutar lista → `SaveAllAsync` era un **read-modify-write no atómico y sin
+lock**. Dos registros simultáneos podían leer la misma lista y pisarse → **perder una cuenta**.
+*Corrección aplicada:* `AuthService` serializa el read-modify-write de `accounts.json` con
+un `SemaphoreSlim` estático (registro y actualización de `LastLogin`), re-leyendo dentro del
+lock; y `SaveAllAsync` ahora escribe atómicamente (temp→`File.Move`). Cubierto por
+`AuthServiceTests.RegisterAsync_ConcurrentRegistrations_AllPersist`.
 
-### N3 — Bomba de descompresión al desencriptar directorios · Alto · `pendiente`
-El límite de 200 MB / 1 GB es sobre el archivo **de entrada**. Un `.zip.pgp` malicioso de
-pocos MB puede expandirse a **decenas de GB** al hacer `ZipFile.ExtractToDirectory`
-(bomba zip), llenando el disco o agotando memoria → DoS. También el paquete PGP puede
-llevar un `literal data` gigante o compresión anidada.
-*Corrección:* extraer entrada por entrada verificando el tamaño total descomprimido
-acumulado contra un límite, y abortar si se excede; validar ratio de compresión.
+### N3 — Bomba de descompresión al desencriptar directorios · Alto · `✅ resuelto`
+El límite de 200 MB / 1 GB era sobre el archivo **de entrada**. Un `.zip.pgp` malicioso de
+pocos MB podía expandirse a **decenas de GB** al hacer `ZipFile.ExtractToDirectory`
+(bomba zip), llenando el disco → DoS.
+*Corrección aplicada:* `FileEncryptionService.SafeExtract` reemplaza a
+`ZipFile.ExtractToDirectory` y extrae entrada por entrada en streaming, abortando apenas
+el **total descomprimido** cruza `MaxExtractedBytes` (1 GB) o la **cantidad de entradas**
+supera `MaxExtractedEntries` (100 000). De paso agrega la guarda **zip-slip** (rechaza
+entradas cuyo path se escape del directorio destino). Cubierto por `SafeExtractTests`.
 
-### N4 — Fuga de datos por mensajes de excepción y logging · Medio · `pendiente`
-La UI muestra `ex.Message` crudo (`$"Could not unlock vault: {ex.Message}"`, etc.), que
-puede filtrar **rutas absolutas, detalles criptográficos o estructura interna**. En DEBUG,
-`builder.Logging.AddDebug()` y las DeveloperTools del WebView pueden volcar datos sensibles.
-*Corrección:* mensajes genéricos al usuario + log técnico separado sin secretos; asegurar
-que DeveloperTools y AddDebug **nunca** se compilen en Release.
+### N4 — Fuga de datos por mensajes de excepción y logging · Medio · `✅ resuelto`
+La UI mostraba `ex.Message` crudo (`$"Could not unlock vault: {ex.Message}"`, etc.), que
+podía filtrar **rutas absolutas, detalles criptográficos o estructura interna** en pantalla.
+*Corrección aplicada:* el helper `UserError.Describe(Loc, Exception)` centraliza el manejo:
+solo las excepciones **cuyo mensaje escribimos nosotros** y que no llevan rutas
+(`ArgumentException`, `InvalidOperationException`, `VaultIntegrityException`,
+`GeneratorConstraintException`) se muestran tal cual; cualquier otra (IO con rutas,
+`CryptographicException`, JSON) se colapsa a un mensaje genérico (`error.unexpected`) y el
+detalle técnico va a `Debug`, no a la pantalla. La **parte 2** (DevTools + `AddDebug` solo
+en Release) ya estaba: ambos están bajo `#if DEBUG` en `MauiProgram`.
 
 ### N5 — Permisos de archivo laxos / sin cifrado del SO en reposo · Alto · `pendiente`
 `accounts.json`, `private_key.asc` y `vault.data.pgp` se escriben con la **ACL por defecto**;
@@ -249,21 +261,24 @@ puede acabar en **swap o hibernación**. Más amplio que A3 (que era solo la pas
 sea posible, y considerar `[JsonIgnore]` + descifrado perezoso; a largo plazo, buffers
 nativos fuera del GC para los secretos calientes.
 
-### N8 — Confianza en el keyserver sin verificación de UID · Medio · `pendiente`
-`SearchByEmailAsync` descarga una clave y `KeyManagementPage` la importa **sin parsear el
-paquete PGP ni verificar que su UID coincide con el email buscado**. TLS valida el servidor
-pero no hay pinning; un keyserver comprometido o un operador malicioso podría entregar una
-**clave de recipiente falsa**, y luego el usuario cifraría archivos "para su contacto" que en
-realidad puede leer el atacante.
-*Corrección:* parsear la clave, mostrar fingerprint + UIDs y **exigir confirmación explícita**;
-verificar que algún UID contenga el email consultado antes de guardar (extiende B5).
+### N8 — Confianza en el keyserver sin verificación de UID · Medio · `✅ resuelto`
+`SearchByEmailAsync` descargaba una clave y `KeyManagementPage` la importaba **sin parsear el
+paquete PGP ni verificar que su UID coincidiera con el email buscado**; el "fingerprint" que se
+mostraba era un SHA-256 del archivo, inútil para verificación.
+*Corrección aplicada:* `IPgpService.InspectPublicKey` (vía `PgpKeyInspector` con BouncyCastle)
+parsea la clave y expone su **fingerprint PGP real** + los **UIDs**. La UI de búsqueda ahora
+muestra fingerprint (para verificación out-of-band) + identidades antes de importar, y **advierte
+si ningún UID contiene el email buscado** (o si la clave no parsea). El fingerprint del
+directorio de contactos también pasó a ser el real (long key ID) en vez del SHA del archivo.
+Cubierto por `PgpKeyInspectorTests`. *Pendiente (extiende B5):* pinning del keyserver.
 
-### N9 — Cadena de suministro sin fijar · Bajo · `pendiente`
-No hay lockfile de dependencias ni fijación de transitivas. `BouncyCastle.Cryptography`,
-`CommunityToolkit.Maui` y demás se confían implícitamente por versión. Un paquete comprometido
-tendría acceso directo a las rutinas criptográficas.
-*Corrección:* habilitar `packages.lock.json` (`RestorePackagesWithLockFile`), revisar hashes,
-y fijar versiones exactas de paquetes con superficie criptográfica.
+### N9 — Cadena de suministro sin fijar · Bajo · `✅ resuelto (parcial)`
+No había lockfile de dependencias ni fijación de transitivas. `BouncyCastle.Cryptography`,
+`CommunityToolkit.Maui` y demás se confiaban implícitamente por versión.
+*Corrección aplicada:* `Directory.Build.props` con `RestorePackagesWithLockFile=true`;
+cada proyecto genera y versiona su `packages.lock.json`, fijando el grafo transitivo con
+hashes SHA-512 por paquete. *Pendiente:* modo bloqueado en CI (`--locked-mode`) cuando
+exista pipeline.
 
 ### N10 — Persistencia del portapapeles del SO · Bajo · `pendiente`
 Aunque implementemos B2 (limpiar el portapapeles tras N segundos), el **historial del
@@ -293,14 +308,14 @@ recuperación local).
 
 | ID | Vulnerabilidad | ¿Sigue presente? | Notas |
 |----|----------------|------------------|-------|
-| N1 | Enumeración de cuentas / timing | ⬜ persistente | Fase 2 no lo resolvió: `LoginAsync` aún distingue "no account" vs "incorrect passphrase" y solo corre PGP si la cuenta existe (oráculo de tiempo). Abordar con mensaje único + verificación dummy |
-| N2 | TOCTOU en accounts.json | ⬜ pendiente | |
-| N3 | Bomba de descompresión | ⬜ pendiente | |
-| N4 | Fuga por excepciones/logging | ⬜ pendiente | |
+| N1 | Enumeración de cuentas / timing | 🟡 parcial | Mensaje unificado ✅; oráculo de tiempo sigue abierto en esta rama (PGP) — resuelto en `KEK` |
+| N2 | TOCTOU en accounts.json | ✅ resuelto | `SemaphoreSlim` en el read-modify-write + escritura atómica temp→move |
+| N3 | Bomba de descompresión | ✅ resuelto | `SafeExtract`: cap de bytes/entradas descomprimidos + guarda zip-slip |
+| N4 | Fuga por excepciones/logging | ✅ resuelto | `UserError.Describe` (whitelist de excepciones seguras + genérico para el resto); DevTools/AddDebug ya en `#if DEBUG` |
 | N5 | Permisos de archivo / DPAPI | ⬜ pendiente | |
 | N6 | Hardening WebView / CSP | ⬜ pendiente | |
 | N7 | Vault en claro en el heap | ⬜ pendiente | |
-| N8 | UID del keyserver sin verificar | ⬜ pendiente | |
-| N9 | Cadena de suministro | ⬜ pendiente | |
+| N8 | UID del keyserver sin verificar | ✅ resuelto | `InspectPublicKey`: fingerprint real + UIDs + advertencia de mismatch |
+| N9 | Cadena de suministro | ✅ resuelto (parcial) | `packages.lock.json` en todos los proyectos; falta `--locked-mode` en CI |
 | N10 | Historial de portapapeles | ⬜ pendiente | |
 | N11 | Android Auto Backup sin exclusión | ✅ resuelto | `allowBackup="false"` en el manifest |

@@ -169,7 +169,7 @@ else
         }
         catch (Exception ex)
         {
-            ShowError(ex.Message);
+            ShowError(UserError.Describe(L, ex));
         }
         finally
         {
@@ -196,7 +196,7 @@ else
         }
         catch (Exception ex)
         {
-            ShowError($"{L["enc.decryptFailed"]}: {ex.Message}");
+            ShowError($"{L["enc.decryptFailed"]}: {UserError.Describe(L, ex)}");
         }
         finally
         {

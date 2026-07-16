@@ -1,3 +1,5 @@
+using PasswordManager.Core.Models;
+
 namespace PasswordManager.Core.Interfaces
 {
     public interface IPgpService
@@ -23,5 +25,12 @@ namespace PasswordManager.Core.Interfaces
         /// protect the vault, without any separate (weaker) password hash.
         /// </summary>
         bool CanUnlockPrivateKey(string privateKeyPath, string passphrase);
+
+        /// <summary>
+        /// Parses an armored public key and returns its real PGP fingerprint and user IDs, so a
+        /// key fetched from an untrusted source (e.g. a keyserver) can be shown for out-of-band
+        /// verification before it is trusted. Throws if the input is not a valid public key.
+        /// </summary>
+        PgpKeyDetails InspectPublicKey(string armoredPublicKey);
     }
 }

@@ -3,6 +3,7 @@
 @inject NavigationManager Nav
 @inject IKeyDirectoryService KeyDir
 @inject IFilePickerService Picker
+@inject IPgpService Pgp
 @inject ToastService Toast
 @inject KeyServerService KeyServer
 @inject Loc L
@@ -74,9 +75,44 @@
 
     @if (_searchResultArmor is not null)
     {
-        <div class="alert alert-success" style="margin-bottom:0;">
+        <div class="alert @(_searchEmailMismatch ? "alert-warning" : "alert-success")" style="margin-bottom:0;">
             @L.Format("keys.foundFor", _searchEmail)
-            <div style="margin-top:8px;">
+
+            @if (_searchKeyDetails is not null)
+            {
+                <div style="margin-top:8px; font-size:12px;">
+                    <div style="color:var(--n-300); text-transform:uppercase; letter-spacing:.08em; margin-bottom:2px;">
+                        @L["keys.fingerprint"]
+                    </div>
+                    <code style="word-break:break-all;">@_searchKeyDetails.FingerprintDisplay</code>
+
+                    @if (_searchKeyDetails.UserIds.Count > 0)
+                    {
+                        <div style="color:var(--n-300); text-transform:uppercase; letter-spacing:.08em; margin:8px 0 2px;">
+                            @L["keys.identities"]
+                        </div>
+                        <ul style="margin:0; padding-left:16px;">
+                            @foreach (var uid in _searchKeyDetails.UserIds)
+                            {
+                                <li><code style="word-break:break-all;">@uid</code></li>
+                            }
+                        </ul>
+                    }
+                </div>
+
+                @if (_searchEmailMismatch)
+                {
+                    <div style="margin-top:8px; font-weight:600;">
+                        ⚠ @L.Format("keys.emailMismatch", _searchEmail)
+                    </div>
+                }
+                else
+                {
+                    <div style="margin-top:8px; color:var(--n-300);">@L["keys.verifyBeforeTrust"]</div>
+                }
+            }
+
+            <div style="margin-top:10px;">
                 <input type="text" class="input" @bind="_searchImportLabel"
                        placeholder="@L["keys.displayNamePlaceholder"]" style="margin-bottom:8px;" />
                 <button class="btn btn-primary btn-sm" @onclick="ImportSearchResult">
@@ -238,6 +274,8 @@ else
     // Keyserver search
     private string _searchEmail = string.Empty;
     private string? _searchResultArmor;
+    private PgpKeyDetails? _searchKeyDetails;
+    private bool _searchEmailMismatch;
     private string _searchImportLabel = string.Empty;
     private bool _searching;
     private bool _searchAttempted;
@@ -270,7 +308,7 @@ else
         }
         catch (Exception ex)
         {
-            Toast.Error($"Could not load key directory: {ex.Message}");
+            Toast.Error($"Could not load key directory: {UserError.Describe(L, ex)}");
             _keys = new List<PgpKeyInfo>();
         }
     }
@@ -289,7 +327,7 @@ else
         }
         catch (Exception ex)
         {
-            Toast.Error($"Could not publish your key: {ex.Message}");
+            Toast.Error($"Could not publish your key: {UserError.Describe(L, ex)}");
         }
     }
 
@@ -307,7 +345,7 @@ else
         }
         catch (Exception ex)
         {
-            Toast.Error($"Export failed: {ex.Message}");
+            Toast.Error($"Export failed: {UserError.Describe(L, ex)}");
         }
     }
 
@@ -349,7 +387,7 @@ else
         }
         catch (Exception ex)
         {
-            _importError = $"Import failed: {ex.Message}";
+            _importError = $"Import failed: {UserError.Describe(L, ex)}";
         }
         finally
         {
@@ -367,7 +405,7 @@ else
         }
         catch (Exception ex)
         {
-            Toast.Error($"Could not remove key: {ex.Message}");
+            Toast.Error($"Could not remove key: {UserError.Describe(L, ex)}");
         }
     }
 
@@ -377,6 +415,8 @@ else
     {
         _searchAttempted = true;
         _searchResultArmor = null;
+        _searchKeyDetails = null;
+        _searchEmailMismatch = false;
         _searchImportLabel = string.Empty;
 
         if (string.IsNullOrWhiteSpace(_searchEmail) || !_searchEmail.Contains('@'))
@@ -388,11 +428,27 @@ else
         {
             _searchResultArmor = await KeyServer.SearchByEmailAsync(_searchEmail);
             if (_searchResultArmor is not null)
+            {
                 _searchImportLabel = _searchEmail;
+
+                // N8: don't blindly trust a key fetched from the keyserver. Parse it and
+                // surface its real fingerprint + identities for out-of-band verification,
+                // and flag if none of its user IDs actually match the searched email.
+                try
+                {
+                    _searchKeyDetails = Pgp.InspectPublicKey(_searchResultArmor);
+                    _searchEmailMismatch = !_searchKeyDetails.HasUserIdFor(_searchEmail);
+                }
+                catch
+                {
+                    _searchKeyDetails = null;
+                    _searchEmailMismatch = true; // unparseable → treat as untrusted
+                }
+            }
         }
         catch (Exception ex)
         {
-            Toast.Error(ex.Message);
+            Toast.Error(UserError.Describe(L, ex));
         }
         finally
         {
@@ -416,13 +472,15 @@ else
 
             Toast.Success($"Added {_searchImportLabel} to your contact directory.");
             _searchResultArmor = null;
+            _searchKeyDetails = null;
+            _searchEmailMismatch = false;
             _searchEmail = _searchImportLabel = string.Empty;
             _searchAttempted = false;
             await Reload();
         }
         catch (Exception ex)
         {
-            Toast.Error($"Import failed: {ex.Message}");
+            Toast.Error($"Import failed: {UserError.Describe(L, ex)}");
         }
     }
 
@@ -467,7 +525,7 @@ else
         }
         catch (Exception ex)
         {
-            _publishError = ex.Message;
+            _publishError = UserError.Describe(L, ex);
         }
         finally
         {

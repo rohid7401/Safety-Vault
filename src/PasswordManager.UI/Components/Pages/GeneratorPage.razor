@@ -195,7 +195,7 @@
         catch (Exception ex)
         {
             _password = string.Empty;
-            Toast.Error($"{L["gen.error"]}: {ex.Message}");
+            Toast.Error($"{L["gen.error"]}: {UserError.Describe(L, ex)}");
         }
         StateHasChanged();
     }

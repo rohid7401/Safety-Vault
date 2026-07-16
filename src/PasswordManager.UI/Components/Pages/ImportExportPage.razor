@@ -147,7 +147,7 @@
         }
         catch (Exception ex)
         {
-            _exportResult = $"{L["io.exportFailed"]}: {ex.Message}";
+            _exportResult = $"{L["io.exportFailed"]}: {UserError.Describe(L, ex)}";
             _exportError = true;
         }
         finally
@@ -228,8 +228,8 @@
         catch (Exception ex)
         {
             _importResult = _importIsEncrypted
-                ? $"{L["io.importFailedEncrypted"]}: {ex.Message}"
-                : $"{L["io.importFailed"]}: {ex.Message}";
+                ? $"{L["io.importFailedEncrypted"]}: {UserError.Describe(L, ex)}"
+                : $"{L["io.importFailed"]}: {UserError.Describe(L, ex)}";
             _importError = true;
         }
         finally

@@ -1,4 +1,5 @@
 {
+  "error.unexpected": "Algo salió mal. Intentá de nuevo.",
   "common.home": "Inicio",
   "common.lockVault": "Bloquear bóveda",
   "common.add": "Añadir",
@@ -278,6 +279,9 @@
   "keys.search": "Buscar",
   "keys.searching": "Buscando...",
   "keys.foundFor": "Se encontró una clave pública para {0}.",
+  "keys.verifyBeforeTrust": "Verificá este fingerprint con tu contacto por otro canal antes de confiar en la clave.",
+  "keys.identities": "Identidades en esta clave",
+  "keys.emailMismatch": "Esta clave no incluye el email que buscaste ({0}). Agregala solo si confiás en su origen.",
   "keys.displayNamePlaceholder": "Nombre para mostrar de este contacto",
   "keys.noneFound": "No se encontró una clave publicada para ese correo en keys.openpgp.org.",
   "keys.directory": "Directorio de contactos",

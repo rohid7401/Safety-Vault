@@ -10,6 +10,12 @@ namespace PasswordManager.Infrastructure.Services
         private readonly IPgpService _pgpService;
         private readonly AuthOptions _options;
 
+        // N2: serialize the load-modify-save of accounts.json so two concurrent operations
+        // (e.g. two quick registrations) can't read the same list and clobber each other's
+        // change (lost update). Static so it holds regardless of how many AuthService
+        // instances exist in the process.
+        private static readonly SemaphoreSlim AccountsLock = new(1, 1);
+
         public AuthService(IPgpService pgpService, AuthOptions options)
         {
             _pgpService = pgpService;
@@ -45,6 +51,19 @@ namespace PasswordManager.Infrastructure.Services
             if (string.IsNullOrWhiteSpace(passphrase) || passphrase.Length < 8)
                 throw new ArgumentException("Passphrase must be at least 8 characters.");
 
+            await AccountsLock.WaitAsync();
+            try
+            {
+                return await RegisterCoreAsync(username, email, passphrase);
+            }
+            finally
+            {
+                AccountsLock.Release();
+            }
+        }
+
+        private async Task<UserAccount> RegisterCoreAsync(string username, string email, string passphrase)
+        {
             var all = await LoadAllAsync();
 
             if (all.Any(a => string.Equals(a.Username, username, StringComparison.OrdinalIgnoreCase)))
@@ -81,17 +100,41 @@ namespace PasswordManager.Infrastructure.Services
         public async Task<UserAccount> LoginAsync(string usernameOrEmail, string passphrase)
         {
             var all = await LoadAllAsync();
-            var account = all.FirstOrDefault(a => Matches(a, usernameOrEmail))
-                ?? throw new UnauthorizedAccessException("No account found with that username or email.");
+            var account = all.FirstOrDefault(a => Matches(a, usernameOrEmail));
+
+            // Anti-enumeration (N1): the same message in both failure branches, so the wording
+            // never reveals whether the account exists. (Response-time equalization for the
+            // no-account path is not done here — see SECURITY.md N1 for why.)
+            const string genericFailure = "Incorrect username/email or passphrase.";
+
+            if (account is null)
+                throw new UnauthorizedAccessException(genericFailure);
 
             // The passphrase is verified cryptographically: it must unlock the PGP private key
             // that protects the vault. No separate password hash is consulted.
             var privateKeyPath = Path.Combine(account.VaultPath, "private_key.asc");
             if (!_pgpService.CanUnlockPrivateKey(privateKeyPath, passphrase))
-                throw new UnauthorizedAccessException("Incorrect passphrase.");
+                throw new UnauthorizedAccessException(genericFailure);
 
-            account.LastLogin = DateTime.UtcNow;
-            await SaveAllAsync(all);
+            // Update LastLogin under the same lock/atomic-write path as registration (N2),
+            // re-reading inside the lock so we don't clobber a concurrent change.
+            await AccountsLock.WaitAsync();
+            try
+            {
+                var fresh = await LoadAllAsync();
+                var stored = fresh.FirstOrDefault(a => a.Username.Equals(account.Username, StringComparison.OrdinalIgnoreCase));
+                if (stored is not null)
+                {
+                    stored.LastLogin = DateTime.UtcNow;
+                    account = stored;
+                    await SaveAllAsync(fresh);
+                }
+            }
+            finally
+            {
+                AccountsLock.Release();
+            }
+
             return account;
         }
 
@@ -124,7 +167,13 @@ namespace PasswordManager.Infrastructure.Services
         private async Task SaveAllAsync(List<UserAccount> accounts)
         {
             var json = JsonSerializer.Serialize(accounts, new JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(_options.AccountsFilePath, json);
+
+            // N2: atomic write (temp file + move) so a crash mid-write never leaves a
+            // truncated / corrupt accounts.json.
+            var path = _options.AccountsFilePath;
+            var tmp = path + ".tmp";
+            await File.WriteAllTextAsync(tmp, json);
+            File.Move(tmp, path, overwrite: true);
         }
     }
 }

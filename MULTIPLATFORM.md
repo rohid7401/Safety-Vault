@@ -141,7 +141,7 @@ depende de la raíz derivada de la passphrase.
 | 0 | **Fase 0 de seguridad** — `.gitignore`, CSV injection, path traversal | — | ✅ Hecho |
 | 1 | **🔒 NO NEGOCIABLE — Fase 1 de seguridad** — escritura atómica, backup, integridad/MAC del vault, corrupto≠vacío, ACL de archivos | 0 | ✅ Hecho (incl. botón "restaurar backup" en UI) |
 | 2 | **🔒 NO NEGOCIABLE — Fase 2 de seguridad** — Argon2id, colapsar autenticación, memoria zeroizable | 1 | ✅ Hecho |
-| 2b | **🔒 NO NEGOCIABLE — Fase 2b** — migrar el candado de la bóveda de PGP a **KEK derivada de la passphrase** (Argon2id); guardar el par PGP **dentro** de la bóveda para que viaje entre dispositivos. **El par PGP se conserva** para la función de compartir archivos con terceros (cifrado asimétrico) | 2 | Pendiente (prerrequisito de multi-device) |
+| 2b | **🔒 NO NEGOCIABLE — Fase 2b** — migrar el candado de la bóveda de PGP a **KEK derivada de la passphrase** (Argon2id); guardar el par PGP **dentro** de la bóveda para que viaje entre dispositivos. **El par PGP se conserva** para la función de compartir archivos con terceros (cifrado asimétrico) | 2 | Pendiente en esta rama (en desarrollo activo en la rama `KEK`) |
 | 3 | Refactor de `FileEncryptionService` a **streams** | 1 | ✅ Servicio + picker + UI (Encrypt Files e Import/Export por streams). Directorios quedan solo-escritorio. Falta prueba en dispositivo |
 | 4 | Extraer UI a **Razor Class Library** | — | ✅ Hecho (`PasswordManager.UI` con abstracciones `IClipboardService`/`IFilePickerService`; shell MAUI las implementa) |
 | 5 | `IVaultStorage` + **merge por entrada** (Id/LastUpdateTime) | 2b | Pendiente |
