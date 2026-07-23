@@ -9,9 +9,6 @@
 
 <div class="unlock-container">
     <div class="unlock-card">
-        <div style="display:flex; justify-content:flex-end; margin-bottom:8px;">
-            <LanguageSelector />
-        </div>
         <div class="unlock-hero">
             <div class="unlock-hero-icon">
                 <Icon Name="lock-keyhole" Size="30" StrokeWidth="1.8" />
@@ -20,15 +17,18 @@
             <p class="subtitle">@L["home.subtitle"]</p>
         </div>
 
-        <div class="seg" style="margin-bottom:22px;">
-            <button class="seg-opt @(_tab == Tab.Login ? "active" : "")" type="button"
-                    @onclick="() => SwitchTab(Tab.Login)">
-                @L["home.signIn"]
-            </button>
-            <button class="seg-opt @(_tab == Tab.Register ? "active" : "")" type="button"
-                    @onclick="() => SwitchTab(Tab.Register)">
-                @L["home.createAccount"]
-            </button>
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:22px;">
+            <div class="seg" style="flex:1; margin-bottom:0;">
+                <button class="seg-opt @(_tab == Tab.Login ? "active" : "")" type="button"
+                        @onclick="() => SwitchTab(Tab.Login)">
+                    @L["home.signIn"]
+                </button>
+                <button class="seg-opt @(_tab == Tab.Register ? "active" : "")" type="button"
+                        @onclick="() => SwitchTab(Tab.Register)">
+                    @L["home.createAccount"]
+                </button>
+            </div>
+            <LanguageSelector />
         </div>
 
         @if (!string.IsNullOrEmpty(_error))

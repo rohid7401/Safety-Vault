@@ -27,6 +27,14 @@
     --font-mono: 'Source Code Pro', 'Consolas', ui-monospace, monospace;
 }
 
+/* La WebView2 de Windows (Edge/Chromium) inyecta su propio ojo de "revelar"
+   en los inputs de contraseña, que aparece duplicado junto a nuestro botón.
+   Lo ocultamos para dejar solo el ojo de la app. */
+input::-ms-reveal,
+input::-ms-clear {
+    display: none;
+}
+
 /* ── Confirmación al descartar cambios (SheetModal ConfirmClose) ── */
 /* Contiene el overlay dentro del sheet (no sobre toda la pantalla). */
 .sheet { position: relative; }

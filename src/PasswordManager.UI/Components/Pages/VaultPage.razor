@@ -83,7 +83,7 @@ else
                     {
                         var revealed = _revealed.Contains(f.Id);
                         <div class="secret-bar">
-                            <span class="secret-label"><Icon Name="@FieldIcon(f.Type)" Size="13" /> @FieldName(f)</span>
+                            <span class="secret-label"><Icon Name="@FieldIcon(f.Type)" Size="13" />@if (FieldName(f) is { Length: > 0 } fn) { <span>@fn</span>}</span>
                             <span class="secret-value" style="font-family:var(--font-mono);">
                                 @(revealed ? AppState.Service!.DecryptSecret(f) : "••••••••••")
                             </span>
@@ -383,7 +383,7 @@ else
         ? f.Label
         : f.Type switch
         {
-            CredentialFieldType.Password => L["vault.field.password"],
+            CredentialFieldType.Password => string.Empty, // the lock icon + dots are self-evident
             CredentialFieldType.Pin => "PIN",
             _ => f.Type.ToString(),
         };
