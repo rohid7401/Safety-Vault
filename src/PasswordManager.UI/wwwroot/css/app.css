@@ -164,7 +164,9 @@ h1, h2, h3, h4, h5, h6 {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 16px 16px 40px;
+    /* Bottom padding clears the iOS home indicator / rounded corners.
+       env() is 0 where there is no inset, so desktop/Android are unaffected. */
+    padding: 16px 16px calc(40px + env(safe-area-inset-bottom));
     -webkit-overflow-scrolling: touch;
 }
 .page::-webkit-scrollbar { width: 6px; }
@@ -293,6 +295,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .drawer-footer {
     padding: 12px 14px;
+    /* Keep the language row + lock button above the iOS home indicator. */
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--color-divider);
 }
 
