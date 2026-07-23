@@ -203,6 +203,62 @@ namespace PasswordManager.Core.Services
 
         public string DecryptPassword(PasswordEntry entry) => DecryptField(entry.Password);
 
+        // ─── Service entries (flexible credential model) ──────────────────────
+
+        /// <summary>
+        /// Encrypts a plaintext value into an <see cref="EncryptedField"/> for a secret
+        /// credential field. The UI builds a <see cref="ServiceEntry"/>'s secret fields with
+        /// this, then persists it via <see cref="AddServiceEntryAsync"/>.
+        /// </summary>
+        public EncryptedField EncryptValue(string plaintext)
+        {
+            ThrowIfDisposed();
+            return EncryptField(plaintext);
+        }
+
+        /// <summary>Decrypts a secret field's current value (empty when it has none).</summary>
+        public string DecryptSecret(CredentialField field)
+        {
+            ThrowIfDisposed();
+            return field.SecretValue is null ? string.Empty : DecryptField(field.SecretValue);
+        }
+
+        /// <summary>Decrypts the single-slot previous value of a rotating field, or null if none.</summary>
+        public string? DecryptPreviousSecret(CredentialField field)
+        {
+            ThrowIfDisposed();
+            return field.PreviousSecret is null ? null : DecryptField(field.PreviousSecret);
+        }
+
+        /// <summary>Persists a new service entry (its secret fields already built via <see cref="EncryptValue"/>).</summary>
+        public async Task AddServiceEntryAsync(ServiceEntry entry)
+        {
+            ThrowIfDisposed();
+            await AddEntryAsync(entry);
+        }
+
+        /// <summary>
+        /// Rotates a secret field: encrypts the new value, keeps the immediately-previous one
+        /// (single slot) when the field has a rotation policy, restarts the rotation clock, and
+        /// persists. Returns false when the entry/credential/field was not found.
+        /// </summary>
+        public async Task<bool> RotateFieldSecretAsync(Guid entryId, Guid credentialId, Guid fieldId, string newPlaintext)
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+
+            var entry = vault.Entries.OfType<ServiceEntry>().FirstOrDefault(e => e.Id == entryId && !e.IsDeleted);
+            var cred = entry?.Credentials.FirstOrDefault(c => c.Id == credentialId);
+            var field = cred?.Fields.FirstOrDefault(f => f.Id == fieldId);
+            if (entry is null || cred is null || field is null) return false;
+
+            field.SetSecret(EncryptField(newPlaintext));
+            cred.LastUpdateTime = DateTime.UtcNow;
+            entry.LastUpdateTime = DateTime.UtcNow;
+            await _repository.SaveAsync(vault);
+            return true;
+        }
+
         // ─── TOTP ────────────────────────────────────────────────────────────
 
         public async Task SetTotpSecretAsync(Guid id, string base32Secret)
