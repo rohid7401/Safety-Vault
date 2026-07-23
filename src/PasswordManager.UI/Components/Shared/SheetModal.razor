@@ -1,5 +1,6 @@
 @* Bottom sheet on mobile, centered dialog on desktop (CSS decides).
    Centered=true forces the small centered dialog everywhere (e.g. TOTP). *@
+@inject Loc L
 
 @if (Visible)
 {
@@ -17,6 +18,26 @@
             {
                 <div class="sheet-actions">@FooterContent</div>
             }
+
+            @* Anti-missclick guard: tapping outside / swiping down while there are
+               unsaved changes asks before discarding, instead of closing silently. *@
+            @if (_confirmingClose)
+            {
+                <div class="sheet-confirm" @onclick:stopPropagation="true">
+                    <div class="sheet-confirm-box">
+                        <p>@L["common.discardChanges"]</p>
+                        <div class="sheet-confirm-actions">
+                            <button class="btn btn-secondary" type="button" @onclick="KeepEditing">
+                                @L["common.keepEditing"]
+                            </button>
+                            <button class="btn btn-secondary" type="button"
+                                    style="color:var(--danger);" @onclick="ConfirmDiscard">
+                                @L["common.discard"]
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
         </div>
     </div>
 }
@@ -29,5 +50,38 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? FooterContent { get; set; }
 
-    private Task HandleBackdrop() => OnClose.InvokeAsync();
+    /// <summary>When true, dismissing via backdrop/grip asks for confirmation first.</summary>
+    [Parameter] public bool ConfirmClose { get; set; }
+
+    private bool _confirmingClose;
+    private bool _wasVisible;
+
+    protected override void OnParametersSet()
+    {
+        // Reset the confirm prompt whenever the sheet is opened or closed externally.
+        if (Visible != _wasVisible)
+        {
+            _confirmingClose = false;
+            _wasVisible = Visible;
+        }
+    }
+
+    private Task HandleBackdrop()
+    {
+        if (ConfirmClose)
+        {
+            _confirmingClose = true;
+            StateHasChanged();
+            return Task.CompletedTask;
+        }
+        return OnClose.InvokeAsync();
+    }
+
+    private void KeepEditing() => _confirmingClose = false;
+
+    private async Task ConfirmDiscard()
+    {
+        _confirmingClose = false;
+        await OnClose.InvokeAsync();
+    }
 }

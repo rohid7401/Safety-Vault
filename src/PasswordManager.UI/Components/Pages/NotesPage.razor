@@ -14,7 +14,7 @@
             <WhatsThisPill FeatureKey="notes" />
         </div>
     </div>
-    <button class="btn btn-primary" style="flex:none;" @onclick="() => _showAdd = true">
+    <button class="btn btn-primary" style="flex:none;" @onclick="OpenAddModal">
         <Icon Name="plus" Size="16" StrokeWidth="2.2" />@L["common.add"]
     </button>
 </div>
@@ -69,6 +69,7 @@ else
 
 <SheetModal Visible="@(_showAdd || _editNote is not null)"
             Title="@(_editNote is not null ? L["notes.editTitle"] : L["notes.addTitle"])"
+            ConfirmClose="@FormDirty"
             OnClose="CloseModal">
     <ChildContent>
         <div class="field">
@@ -111,6 +112,10 @@ else
     private string _formTags = string.Empty;
     private string _formError = string.Empty;
 
+    private string _formSnapshot = string.Empty;
+    private string CurrentFormSnapshot() => string.Join("", _formTitle, _formContent, _formTags);
+    private bool FormDirty => _formSnapshot != CurrentFormSnapshot();
+
     protected override async Task OnInitializedAsync()
     {
         L.OnChanged += StateHasChanged;
@@ -126,12 +131,21 @@ else
 
     private void ToggleReveal(Guid id) { if (!_revealed.Remove(id)) _revealed.Add(id); }
 
+    private void OpenAddModal()
+    {
+        _formTitle = _formContent = _formTags = _formError = string.Empty;
+        _formSnapshot = CurrentFormSnapshot();
+        _showAdd = true;
+    }
+
     private void EditNote(SecureNote note)
     {
         _editNote = note;
         _formTitle = note.Title;
         _formContent = AppState.Service!.DecryptField(note.Content);
         _formTags = string.Join(", ", note.Tags);
+        _formError = string.Empty;
+        _formSnapshot = CurrentFormSnapshot();
     }
 
     private async Task DeleteNote(Guid id)

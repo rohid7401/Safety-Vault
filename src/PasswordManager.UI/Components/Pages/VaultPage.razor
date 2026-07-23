@@ -101,6 +101,7 @@ else
 @* ───── Add / Edit sheet ───── *@
 <SheetModal Visible="@(_showAdd || _editEntry is not null)"
             Title="@(_editEntry is not null ? L["vault.editTitle"] : L["vault.addTitle"])"
+            ConfirmClose="@FormDirty"
             OnClose="CloseModal">
     <ChildContent>
         <div class="field">
@@ -218,6 +219,13 @@ else
     private string _formTotp = string.Empty;
     private string _formError = string.Empty;
 
+    // Snapshot of the form when the modal opened; the sheet asks to confirm on
+    // accidental dismiss only when the current values differ from it (dirty).
+    private string _formSnapshot = string.Empty;
+    private string CurrentFormSnapshot() =>
+        string.Join("", _formSite, _formUsername, _formEmail, _formPassword, _formTags, _formTotp);
+    private bool FormDirty => _formSnapshot != CurrentFormSnapshot();
+
     private PasswordEntry? _totpEntry;
     private string _totpCode = string.Empty;
     private int _totpRemaining;
@@ -251,8 +259,10 @@ else
 
     private void OpenAddModal()
     {
-        _showAdd = true;
+        _formSite = _formUsername = _formEmail = _formPassword = _formTags = _formTotp = _formError = string.Empty;
         _formPwVisible = false;
+        _formSnapshot = CurrentFormSnapshot();
+        _showAdd = true;
     }
 
     private void ToggleReveal(Guid id)
@@ -279,6 +289,7 @@ else
         _formTotp = AppState.Service.GetDecryptedTotpSecret(entry) ?? string.Empty;
         _formError = string.Empty;
         _formPwVisible = false;
+        _formSnapshot = CurrentFormSnapshot();
     }
 
     private async Task DeleteEntry(Guid id)

@@ -15,6 +15,9 @@
   "common.loading": "Loading...",
   "common.desktop": "Desktop",
   "common.moveToTrash": "Move to trash",
+  "common.discardChanges": "Discard changes? What you typed will be lost.",
+  "common.keepEditing": "Keep editing",
+  "common.discard": "Discard",
   "lang.title": "Language",
 
   "nav.group.vault": "Vault",

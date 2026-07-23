@@ -14,7 +14,7 @@
             <WhatsThisPill FeatureKey="cards" />
         </div>
     </div>
-    <button class="btn btn-primary" style="flex:none;" @onclick="() => _showAdd = true">
+    <button class="btn btn-primary" style="flex:none;" @onclick="OpenAddModal">
         <Icon Name="plus" Size="16" StrokeWidth="2.2" />@L["common.add"]
     </button>
 </div>
@@ -85,7 +85,7 @@ else
     }
 }
 
-<SheetModal Visible="_showAdd" Title="@L["cards.addTitle"]" OnClose="() => _showAdd = false">
+<SheetModal Visible="_showAdd" Title="@L["cards.addTitle"]" ConfirmClose="@FormDirty" OnClose="CloseModal">
     <ChildContent>
         <div class="field">
             <label>@L["cards.field.holder"]</label>
@@ -122,7 +122,7 @@ else
         }
     </ChildContent>
     <FooterContent>
-        <button class="btn btn-secondary" @onclick="() => _showAdd = false">@L["common.cancel"]</button>
+        <button class="btn btn-secondary" @onclick="CloseModal">@L["common.cancel"]</button>
         <button class="btn btn-primary" @onclick="SaveCard">@L["common.add"]</button>
     </FooterContent>
 </SheetModal>
@@ -139,6 +139,28 @@ else
     private int _formMonth = 1;
     private int _formYear = 2025;
     private string _formError = string.Empty;
+
+    private string _formSnapshot = string.Empty;
+    private string CurrentFormSnapshot() =>
+        string.Join("", _formName, _formNumber, _formCvv, _formMonth, _formYear);
+    private bool FormDirty => _formSnapshot != CurrentFormSnapshot();
+
+    private void OpenAddModal()
+    {
+        _formName = _formNumber = _formCvv = _formError = string.Empty;
+        _formMonth = 1;
+        _formYear = 2025;
+        _formSnapshot = CurrentFormSnapshot();
+        _showAdd = true;
+    }
+
+    private void CloseModal()
+    {
+        _showAdd = false;
+        _formName = _formNumber = _formCvv = _formError = string.Empty;
+        _formMonth = 1;
+        _formYear = 2025;
+    }
 
     protected override async Task OnInitializedAsync()
     {

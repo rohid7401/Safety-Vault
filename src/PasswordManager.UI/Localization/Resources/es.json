@@ -15,6 +15,9 @@
   "common.loading": "Cargando...",
   "common.desktop": "Escritorio",
   "common.moveToTrash": "Mover a la papelera",
+  "common.discardChanges": "¿Descartar cambios? Se perderá lo que escribiste.",
+  "common.keepEditing": "Seguir editando",
+  "common.discard": "Descartar",
   "lang.title": "Idioma",
 
   "nav.group.vault": "Bóveda",
