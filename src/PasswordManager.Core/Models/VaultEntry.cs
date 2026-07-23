@@ -6,6 +6,7 @@ namespace PasswordManager.Core.Models
     [JsonDerivedType(typeof(PasswordEntry), "password")]
     [JsonDerivedType(typeof(SecureNote), "note")]
     [JsonDerivedType(typeof(CardEntry), "card")]
+    [JsonDerivedType(typeof(ServiceEntry), "service")]
     public abstract class VaultEntry
     {
         public Guid Id { get; set; } = Guid.NewGuid();

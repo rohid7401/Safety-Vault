@@ -16,6 +16,8 @@ namespace PasswordManager.Core.Models
         public string? PgpPublicKeyArmored { get; set; }
         public string? PgpPrivateKeyArmored { get; set; }
 
-        public const int CurrentVersion = 4;
+        // v5 adds ServiceEntry (flexible multi-credential password entries). Old PasswordEntry
+        // entries still deserialize, so a v4 vault opens fine; new entries use ServiceEntry.
+        public const int CurrentVersion = 5;
     }
 }
