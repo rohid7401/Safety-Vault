@@ -129,7 +129,7 @@ else
     }
 }
 
-@* ───── Add / Edit sheet (simple single-credential) ───── *@
+@* ───── Add / Edit sheet (dynamic credential drafts) ───── *@
 <SheetModal Visible="@(_showAdd || _editEntry is not null)"
             Title="@(_editEntry is not null ? L["vault.editTitle"] : L["vault.addTitle"])"
             ConfirmClose="@FormDirty" OnClose="CloseModal">
@@ -139,68 +139,91 @@ else
             <input type="text" class="input" @bind="_fSite" placeholder="github.com" />
         </div>
 
-        <div class="field">
-            <label>@L["vault.field.account"]</label>
-            <div class="input-group">
-                <select class="input" style="max-width:130px;" @bind="_fIdentityType">
-                    <option value="@CredentialFieldType.Email">@L["vault.acctType.email"]</option>
-                    <option value="@CredentialFieldType.Username">@L["vault.acctType.username"]</option>
-                </select>
-                <input type="text" class="input" @bind="_fIdentity" placeholder="jane@example.com" />
-            </div>
-        </div>
-
-        <div class="field">
-            <label>@L["vault.field.password"]</label>
-            <div class="input-group">
-                <input type="@(_fPwVisible ? "text" : "password")" class="input" style="font-family:var(--font-mono);"
-                       @bind="_fPassword" placeholder="@L["vault.field.passwordPlaceholder"]" />
-                <button class="btn btn-secondary" type="button" aria-label="Reveal" @onclick="() => _fPwVisible = !_fPwVisible">
-                    <Icon Name="@(_fPwVisible ? "eye-off" : "eye")" Size="16" />
-                </button>
-                <button class="btn btn-secondary" type="button" @onclick="GeneratePassword" title="@L["vault.generateTitle"]">
-                    @L["vault.generate"]
-                </button>
-            </div>
-            @if (!string.IsNullOrEmpty(_fPassword))
-            {
-                <div class="strength-bar">
-                    @{ var s = PasswordGen.CalculateStrength(_fPassword); }
-                    <div class="strength-fill strength-@s" style="width:@(s * 12.5)%"></div>
-                </div>
-            }
-        </div>
-
         <label class="form-check" style="margin-bottom:0;">
-            <span>@L["vault.rotate.enable"]</span>
-            <input type="checkbox" @bind="_fRotate" />
+            <span>@L["vault.grouped"]</span>
+            <input type="checkbox" @bind="_draftGrouped" />
         </label>
-        @if (_fRotate)
+
+        @foreach (var cred in _draft)
         {
-            <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
-                <span style="font-size:13px; color:var(--n-400);">@L["vault.rotate.every"]</span>
-                <input type="number" class="input" style="width:70px;" min="1" max="999" @bind="_fRotateEvery" />
-                <select class="input" style="max-width:110px;" @bind="_fRotateUnit">
-                    <option value="@RotationUnit.Days">@L["vault.unit.days"]</option>
-                    <option value="@RotationUnit.Months">@L["vault.unit.months"]</option>
-                </select>
+            <div class="draft-cred">
+                @if (_draftGrouped)
+                {
+                    <div class="draft-cred-head">
+                        <input type="text" class="input" @bind="cred.Label" placeholder="@L["vault.credLabel"]" />
+                        @if (_draft.Count > 1)
+                        {
+                            <button class="btn-icon" type="button" style="color:var(--danger);" @onclick="() => RemoveCredential(cred)">
+                                <Icon Name="trash" Size="15" />
+                            </button>
+                        }
+                    </div>
+                }
+
+                @foreach (var f in cred.Fields)
+                {
+                    <div class="draft-field">
+                        <select class="input" style="max-width:118px;" @bind="f.Type">
+                            @foreach (var t in FieldTypes)
+                            {
+                                <option value="@t">@TypeName(t)</option>
+                            }
+                        </select>
+                        <div class="input-group" style="flex:1; min-width:0;">
+                            <input type="@(f.IsSecret && !f.Reveal ? "password" : "text")" class="input"
+                                   style="@(f.IsSecret ? "font-family:var(--font-mono);" : "")" @bind="f.Value"
+                                   placeholder="@TypeName(f.Type)" />
+                            @if (f.IsSecret)
+                            {
+                                <button class="btn btn-secondary" type="button" aria-label="Reveal" @onclick="() => f.Reveal = !f.Reveal">
+                                    <Icon Name="@(f.Reveal ? "eye-off" : "eye")" Size="16" />
+                                </button>
+                            }
+                            @if (f.Type is CredentialFieldType.Password or CredentialFieldType.Pin)
+                            {
+                                <button class="btn btn-secondary" type="button" @onclick="() => f.Value = SafeGenerate()">@L["vault.generate"]</button>
+                            }
+                        </div>
+                        <button class="btn-icon" type="button" aria-label="@L["vault.removeField"]" @onclick="() => RemoveField(cred, f)">
+                            <Icon Name="x" Size="15" />
+                        </button>
+                    </div>
+                    @if (f.Type is CredentialFieldType.Password or CredentialFieldType.Pin)
+                    {
+                        <div class="draft-rot">
+                            <label class="form-check" style="margin-bottom:0;">
+                                <span>@L["vault.rotate.enable"]</span>
+                                <input type="checkbox" @bind="f.Rotate" />
+                            </label>
+                            @if (f.Rotate)
+                            {
+                                <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+                                    <span style="font-size:13px; color:var(--n-400);">@L["vault.rotate.every"]</span>
+                                    <input type="number" class="input" style="width:66px;" min="1" max="999" @bind="f.Every" />
+                                    <select class="input" style="max-width:100px;" @bind="f.Unit">
+                                        <option value="@RotationUnit.Days">@L["vault.unit.days"]</option>
+                                        <option value="@RotationUnit.Months">@L["vault.unit.months"]</option>
+                                    </select>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+
+                <button class="add-btn" type="button" @onclick="() => AddField(cred)">
+                    <Icon Name="plus" Size="14" /> @L["vault.addField"]
+                </button>
             </div>
-            <small class="hint">@L["vault.rotate.hint"]</small>
+        }
+
+        @if (_draftGrouped)
+        {
+            <button class="add-btn" type="button" style="width:100%; justify-content:center;" @onclick="AddCredential">
+                <Icon Name="plus" Size="14" /> @L["vault.addAccount"]
+            </button>
         }
 
         <div class="field" style="margin-top:14px;">
-            <label style="display:flex; align-items:center; gap:8px;">
-                @L["vault.field.totp"]
-                <InfoTooltip>
-                    <strong>@L["vault.totp.whatTitle"]</strong>
-                    <p style="margin:6px 0 0 0;">@L["vault.totp.what1"]</p>
-                    <p style="margin:6px 0 0 0;">@L["vault.totp.what2"]</p>
-                </InfoTooltip>
-            </label>
-            <input type="text" class="input" @bind="_f2fa" placeholder="JBSWY3DPEHPK3PXP" />
-        </div>
-
-        <div class="field">
             <label>@L["vault.field.tags"]</label>
             <input type="text" class="input" @bind="_fTags" placeholder="@L["vault.field.tagsPlaceholder"]" />
         </div>
@@ -276,6 +299,12 @@ else
     .badge-expiry.warn { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
     .badge-expiry.danger { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
     .hint { color: var(--n-500); font-size: 12px; display: block; margin-top: 4px; }
+    .draft-cred { border: 1px solid var(--color-divider); border-radius: var(--radius-md); padding: 10px; margin-top: 10px; }
+    .draft-cred-head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+    .draft-field { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+    .draft-rot { margin: 5px 0 2px 2px; }
+    .add-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--a-400);
+               background: transparent; border: 1px dashed var(--a-900); border-radius: 8px; padding: 7px 12px; margin-top: 10px; cursor: pointer; }
 </style>
 
 @code {
@@ -283,24 +312,65 @@ else
     private string _search = string.Empty;
     private readonly HashSet<Guid> _revealed = new();
 
-    // Add / edit form (simple single credential)
+    // Add / edit form (dynamic credential drafts)
     private bool _showAdd;
     private ServiceEntry? _editEntry;
     private string _fSite = string.Empty;
-    private CredentialFieldType _fIdentityType = CredentialFieldType.Email;
-    private string _fIdentity = string.Empty;
-    private string _fPassword = string.Empty;
-    private bool _fPwVisible;
-    private bool _fRotate;
-    private int _fRotateEvery = 90;
-    private RotationUnit _fRotateUnit = RotationUnit.Days;
-    private string _f2fa = string.Empty;
     private string _fTags = string.Empty;
     private string _fError = string.Empty;
+    private bool _draftGrouped;
+    private List<CredDraft> _draft = new();
     private string _fSnapshot = string.Empty;
 
-    private string CurrentSnapshot() =>
-        string.Join("", _fSite, _fIdentityType, _fIdentity, _fPassword, _fRotate, _fRotateEvery, _fRotateUnit, _f2fa, _fTags);
+    private static readonly CredentialFieldType[] FieldTypes =
+    {
+        CredentialFieldType.Email, CredentialFieldType.Username, CredentialFieldType.Password,
+        CredentialFieldType.Pin, CredentialFieldType.Phone, CredentialFieldType.TwoFactor, CredentialFieldType.Text,
+    };
+
+    private string TypeName(CredentialFieldType t) => t switch
+    {
+        CredentialFieldType.Email => L["fieldType.email"],
+        CredentialFieldType.Username => L["fieldType.username"],
+        CredentialFieldType.Password => L["fieldType.password"],
+        CredentialFieldType.Pin => L["fieldType.pin"],
+        CredentialFieldType.Phone => L["fieldType.phone"],
+        CredentialFieldType.TwoFactor => L["fieldType.twofa"],
+        _ => L["fieldType.text"],
+    };
+
+    private sealed class FieldDraft
+    {
+        public Guid? SourceId;
+        public CredentialFieldType Type;
+        public string Label = string.Empty;
+        public string Value = string.Empty;
+        public bool Reveal;
+        public bool Rotate;
+        public int Every = 90;
+        public RotationUnit Unit = RotationUnit.Days;
+        public bool IsSecret => CredentialField.IsSecretByDefault(Type);
+    }
+
+    private sealed class CredDraft
+    {
+        public string Label = string.Empty;
+        public List<FieldDraft> Fields = new();
+    }
+
+    private string CurrentSnapshot()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append(_fSite).Append('|').Append(_fTags).Append('|').Append(_draftGrouped);
+        foreach (var c in _draft)
+        {
+            sb.Append("//").Append(c.Label);
+            foreach (var f in c.Fields)
+                sb.Append('/').Append(f.Type).Append(':').Append(f.Value).Append(':').Append(f.Label)
+                  .Append(':').Append(f.Rotate).Append(':').Append(f.Every).Append(':').Append(f.Unit);
+        }
+        return sb.ToString();
+    }
     private bool FormDirty => _fSnapshot != CurrentSnapshot();
 
     // Rotate modal
@@ -398,15 +468,17 @@ else
         Toast.Success(L["toast.passwordCopied"]);
     }
 
-    // ─── Add / edit ──────────────────────────────────────────────────────
+    // ─── Add / edit (dynamic drafts) ─────────────────────────────────────
 
     private void OpenAddModal()
     {
-        _fSite = _fIdentity = _fPassword = _f2fa = _fTags = _fError = string.Empty;
-        _fIdentityType = CredentialFieldType.Email;
-        _fPwVisible = _fRotate = false;
-        _fRotateEvery = 90;
-        _fRotateUnit = RotationUnit.Days;
+        _editEntry = null;
+        _fSite = _fTags = _fError = string.Empty;
+        _draftGrouped = false;
+        _draft = new List<CredDraft>
+        {
+            new() { Fields = { new FieldDraft { Type = CredentialFieldType.Email }, new FieldDraft { Type = CredentialFieldType.Password } } },
+        };
         _fSnapshot = CurrentSnapshot();
         _showAdd = true;
     }
@@ -417,50 +489,50 @@ else
         _fSite = entry.Site;
         _fTags = string.Join(", ", entry.Tags);
         _fError = string.Empty;
-        _fPwVisible = false;
-
-        var cred = entry.Credentials.FirstOrDefault() ?? new Credential();
-        var id = cred.Fields.FirstOrDefault(f => !f.IsSecret &&
-            f.Type is CredentialFieldType.Email or CredentialFieldType.Username);
-        _fIdentityType = id?.Type ?? CredentialFieldType.Email;
-        _fIdentity = id?.PlainValue ?? string.Empty;
-
-        var pw = cred.Fields.FirstOrDefault(f => f.Type == CredentialFieldType.Password);
-        _fPassword = pw is null ? string.Empty : AppState.Service!.DecryptSecret(pw);
-        _fRotate = pw?.Rotation is not null;
-        _fRotateEvery = pw?.Rotation?.Interval ?? 90;
-        _fRotateUnit = pw?.Rotation?.Unit ?? RotationUnit.Days;
-
-        var tfa = cred.Fields.FirstOrDefault(f => f.Type == CredentialFieldType.TwoFactor);
-        _f2fa = tfa is null ? string.Empty : AppState.Service!.DecryptSecret(tfa);
-
+        _draftGrouped = entry.Grouped && entry.Credentials.Count > 1;
+        _draft = entry.Credentials.Select(c => new CredDraft
+        {
+            Label = c.Label,
+            Fields = c.Fields.Select(f => new FieldDraft
+            {
+                SourceId = f.Id,
+                Type = f.Type,
+                Label = f.Label,
+                Value = f.IsSecret ? AppState.Service!.DecryptSecret(f) : f.PlainValue,
+                Rotate = f.Rotation is not null,
+                Every = f.Rotation?.Interval ?? 90,
+                Unit = f.Rotation?.Unit ?? RotationUnit.Days,
+            }).ToList(),
+        }).ToList();
+        if (_draft.Count == 0)
+            _draft.Add(new CredDraft { Fields = { new FieldDraft { Type = CredentialFieldType.Email } } });
         _fSnapshot = CurrentSnapshot();
     }
 
-    private void GeneratePassword()
+    private void AddField(CredDraft c) => c.Fields.Add(new FieldDraft { Type = CredentialFieldType.Text });
+    private void RemoveField(CredDraft c, FieldDraft f) => c.Fields.Remove(f);
+    private void AddCredential() => _draft.Add(new CredDraft
     {
-        _fPassword = SafeGenerate();
-        if (string.IsNullOrEmpty(_fPassword)) Toast.Warning(L["vault.generateConflict"]);
-    }
+        Fields = { new FieldDraft { Type = CredentialFieldType.Email }, new FieldDraft { Type = CredentialFieldType.Password } },
+    });
+    private void RemoveCredential(CredDraft c) { if (_draft.Count > 1) _draft.Remove(c); }
 
     private string SafeGenerate()
     {
         try { return PasswordGen.Generate(GenPrefs.Options); }
-        catch (PasswordManager.Core.Exceptions.GeneratorConstraintException) { return string.Empty; }
+        catch (PasswordManager.Core.Exceptions.GeneratorConstraintException) { Toast.Warning(L["vault.generateConflict"]); return string.Empty; }
     }
-
-    private RotationPolicy? BuildRotation() =>
-        _fRotate ? new RotationPolicy { Interval = Math.Max(1, _fRotateEvery), Unit = _fRotateUnit, LastChanged = DateTime.UtcNow } : null;
 
     private async Task SaveEntry()
     {
         _fError = string.Empty;
         if (string.IsNullOrWhiteSpace(_fSite)) { _fError = L["vault.err.siteRequired"]; return; }
-        if (string.IsNullOrWhiteSpace(_fPassword)) { _fError = L["vault.err.passwordRequired"]; return; }
 
         var svc = AppState.Service!;
-        var tags = _fTags.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
+        var creds = BuildCredentials(svc, _editEntry);
+        if (creds.Count == 0) { _fError = L["vault.err.needField"]; return; }
 
+        var tags = _fTags.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
         try
         {
             if (_editEntry is not null)
@@ -470,17 +542,13 @@ else
                     var se = (ServiceEntry)e;
                     se.Site = _fSite;
                     se.Tags = tags;
-                    var cred = se.Credentials.FirstOrDefault();
-                    if (cred is null) { cred = new Credential(); se.Credentials.Add(cred); }
-                    ApplyFormToCredential(svc, cred);
-                    cred.LastUpdateTime = DateTime.UtcNow;
+                    se.Grouped = _draftGrouped;
+                    se.Credentials = creds;
                 });
             }
             else
             {
-                var cred = new Credential();
-                ApplyFormToCredential(svc, cred);
-                await svc.AddServiceEntryAsync(new ServiceEntry { Site = _fSite, Tags = tags, Credentials = { cred } });
+                await svc.AddServiceEntryAsync(new ServiceEntry { Site = _fSite, Tags = tags, Grouped = _draftGrouped, Credentials = creds });
             }
 
             var wasEdit = _editEntry is not null;
@@ -494,49 +562,62 @@ else
         }
     }
 
-    /// <summary>Writes the simple form back onto a credential, preserving field ids and rotation history.</summary>
-    private void ApplyFormToCredential(PasswordManager.Core.Services.PasswordManagerService svc, Credential cred)
+    /// <summary>
+    /// Converts the drafts into credentials, encrypting secret values. On edit it matches fields
+    /// by their source id to preserve rotation history (SetSecret only when the value changed) and
+    /// the rotation clock when nothing changed.
+    /// </summary>
+    private List<Credential> BuildCredentials(PasswordManager.Core.Services.PasswordManagerService svc, ServiceEntry? existing)
     {
-        // Identity (email/username)
-        var id = cred.Fields.FirstOrDefault(f => !f.IsSecret && f.Type is CredentialFieldType.Email or CredentialFieldType.Username);
-        if (string.IsNullOrWhiteSpace(_fIdentity))
-        {
-            if (id is not null) cred.Fields.Remove(id);
-        }
-        else
-        {
-            if (id is null) { id = new CredentialField(); cred.Fields.Add(id); }
-            id.Type = _fIdentityType;
-            id.IsSecret = false;
-            id.PlainValue = _fIdentity.Trim();
-        }
+        var existingFields = existing?.Credentials.SelectMany(c => c.Fields).ToDictionary(f => f.Id);
+        var result = new List<Credential>();
 
-        // Password (keeps rotation history via SetSecret when the value changed)
-        var pw = cred.Fields.FirstOrDefault(f => f.Type == CredentialFieldType.Password);
-        if (pw is null) { pw = new CredentialField { Type = CredentialFieldType.Password, IsSecret = true }; cred.Fields.Add(pw); }
-        pw.Rotation = BuildRotation();
-        var changed = pw.SecretValue is null || svc.DecryptSecret(pw) != _fPassword;
-        if (changed) pw.SetSecret(svc.EncryptValue(_fPassword));
+        foreach (var cd in _draft)
+        {
+            var cred = new Credential { Label = cd.Label };
+            foreach (var fd in cd.Fields)
+            {
+                if (string.IsNullOrWhiteSpace(fd.Value)) continue;
+                var field = new CredentialField { Type = fd.Type, Label = fd.Label, IsSecret = fd.IsSecret };
 
-        // 2FA
-        var tfa = cred.Fields.FirstOrDefault(f => f.Type == CredentialFieldType.TwoFactor);
-        if (string.IsNullOrWhiteSpace(_f2fa))
-        {
-            if (tfa is not null) cred.Fields.Remove(tfa);
+                if (!fd.IsSecret)
+                {
+                    field.PlainValue = fd.Value.Trim();
+                }
+                else
+                {
+                    CredentialField? src = null;
+                    if (fd.SourceId is Guid sid && existingFields is not null) existingFields.TryGetValue(sid, out src);
+
+                    if (fd.Type is CredentialFieldType.Password or CredentialFieldType.Pin && fd.Rotate)
+                        field.Rotation = new RotationPolicy { Interval = Math.Max(1, fd.Every), Unit = fd.Unit, LastChanged = src?.Rotation?.LastChanged ?? DateTime.UtcNow };
+
+                    if (src is not null)
+                    {
+                        field.Id = src.Id;
+                        field.SecretValue = src.SecretValue;
+                        field.PreviousSecret = src.PreviousSecret;
+                        if (src.SecretValue is null || svc.DecryptSecret(src) != fd.Value)
+                            field.SetSecret(svc.EncryptValue(fd.Value));
+                    }
+                    else
+                    {
+                        field.SetSecret(svc.EncryptValue(fd.Value));
+                    }
+                }
+                cred.Fields.Add(field);
+            }
+            if (cred.Fields.Count > 0) result.Add(cred);
         }
-        else
-        {
-            if (tfa is null) { tfa = new CredentialField { Type = CredentialFieldType.TwoFactor, IsSecret = true }; cred.Fields.Add(tfa); }
-            tfa.SecretValue = svc.EncryptValue(_f2fa.Trim());
-        }
+        return result;
     }
 
     private void CloseModal()
     {
         _showAdd = false;
         _editEntry = null;
-        _fSite = _fIdentity = _fPassword = _f2fa = _fTags = _fError = string.Empty;
-        _fPwVisible = _fRotate = false;
+        _fSite = _fTags = _fError = string.Empty;
+        _draft = new List<CredDraft>();
     }
 
     private async Task DeleteEntry(Guid id)
