@@ -1,10 +1,10 @@
 namespace PasswordManager.Core.Models
 {
     /// <summary>
-    /// A service/app card holding one or more <see cref="Credential"/>s. Replaces the fixed
-    /// Site/Username/Email/Password shape of <see cref="PasswordEntry"/> with an arbitrary
-    /// combination of typed fields per credential, so one card can hold several accounts of the
-    /// same service (grouped) — or a single simple login, which stays fast to create.
+    /// A service/app card holding one or more <see cref="Credential"/>s. Instead of a fixed
+    /// Site/Username/Email/Password shape, each credential is an arbitrary combination of typed
+    /// fields, so one card can hold several accounts of the same service (grouped) — or a single
+    /// simple login, which stays fast to create.
     /// </summary>
     public class ServiceEntry : VaultEntry
     {

@@ -26,6 +26,36 @@ namespace PasswordManager.Tests.Services
             return PasswordManagerService.CreateAsync(repository, new AesService(), (byte[])_fieldKey.Clone());
         }
 
+        // ─── Helpers: build/read a simple single-credential service entry ─────
+
+        private static async Task<ServiceEntry> AddPwAsync(
+            PasswordManagerService svc, string site, string password = "pass",
+            string username = "", string[]? tags = null)
+        {
+            var cred = new Credential();
+            if (!string.IsNullOrEmpty(username))
+                cred.Fields.Add(new CredentialField { Type = CredentialFieldType.Username, PlainValue = username });
+            cred.Fields.Add(new CredentialField
+            {
+                Type = CredentialFieldType.Password,
+                IsSecret = true,
+                SecretValue = svc.EncryptValue(password),
+            });
+
+            var entry = new ServiceEntry { Site = site };
+            if (tags != null) entry.Tags.AddRange(tags);
+            entry.Credentials.Add(cred);
+
+            await svc.AddServiceEntryAsync(entry);
+            return entry;
+        }
+
+        private static CredentialField PwField(ServiceEntry e) =>
+            e.Credentials[0].Fields.First(f => f.Type == CredentialFieldType.Password);
+
+        private static string Pw(PasswordManagerService svc, ServiceEntry e) =>
+            svc.DecryptSecret(PwField(e));
+
         // ─── Initialization ──────────────────────────────────────────────────
 
         [Fact]
@@ -39,7 +69,7 @@ namespace PasswordManager.Tests.Services
         public async Task GetAllEntriesAsync_WrongBlobKey_ThrowsVaultIntegrityException()
         {
             await using (var svc = await CreateServiceAsync())
-                await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "s.com" }, "pass");
+                await AddPwAsync(svc, "s.com");
 
             var wrongRepo = new KekVaultRepository(RandomNumberGenerator.GetBytes(32), _dataDir);
             await using var wrongSvc = await PasswordManagerService.CreateAsync(
@@ -98,39 +128,40 @@ namespace PasswordManager.Tests.Services
             Assert.Empty(await svc.GetAllEntriesAsync());
         }
 
-        // ─── Add password ────────────────────────────────────────────────────
+        // ─── Add service entry ───────────────────────────────────────────────
 
         [Fact]
-        public async Task AddPasswordEntryAsync_PersistsEntry()
+        public async Task AddServiceEntryAsync_PersistsEntry()
         {
             await using var svc = await CreateServiceAsync();
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "example.com", Username = "alice" }, "secret123");
+            await AddPwAsync(svc, "example.com", "secret123", username: "alice");
 
             var all = await svc.GetAllEntriesAsync();
             Assert.Single(all);
-            var pwd = Assert.IsType<PasswordEntry>(all[0]);
-            Assert.Equal("example.com", pwd.Site);
+            var entry = Assert.IsType<ServiceEntry>(all[0]);
+            Assert.Equal("example.com", entry.Site);
         }
 
         [Fact]
-        public async Task AddPasswordEntryAsync_EncryptsWithGcm()
+        public async Task AddServiceEntryAsync_EncryptsPasswordWithGcm()
         {
             await using var svc = await CreateServiceAsync();
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "s.com" }, "plaintext");
+            await AddPwAsync(svc, "s.com", "plaintext");
 
-            var pwd = (await svc.GetEntriesAsync<PasswordEntry>())[0];
-            Assert.NotEqual("plaintext", pwd.Password.CipherText);
-            Assert.False(string.IsNullOrEmpty(pwd.Password.Nonce));
-            Assert.False(string.IsNullOrEmpty(pwd.Password.Tag));
+            var entry = (await svc.GetEntriesAsync<ServiceEntry>())[0];
+            var field = PwField(entry);
+            Assert.NotEqual("plaintext", field.SecretValue!.CipherText);
+            Assert.False(string.IsNullOrEmpty(field.SecretValue.Nonce));
+            Assert.False(string.IsNullOrEmpty(field.SecretValue.Tag));
         }
 
         [Fact]
-        public async Task AddPasswordEntryAsync_MultipleEntries()
+        public async Task AddServiceEntryAsync_MultipleEntries()
         {
             await using var svc = await CreateServiceAsync();
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "a.com" }, "p1");
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "b.com" }, "p2");
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "c.com" }, "p3");
+            await AddPwAsync(svc, "a.com", "p1");
+            await AddPwAsync(svc, "b.com", "p2");
+            await AddPwAsync(svc, "c.com", "p3");
 
             Assert.Equal(3, (await svc.GetAllEntriesAsync()).Count);
         }
@@ -177,13 +208,13 @@ namespace PasswordManager.Tests.Services
         public async Task GetAllEntriesAsync_ReturnsMixedTypes()
         {
             await using var svc = await CreateServiceAsync();
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "git.com" }, "p");
+            await AddPwAsync(svc, "git.com", "p");
             await svc.AddSecureNoteAsync(new SecureNote { Title = "Note" }, "text");
             await svc.AddCardEntryAsync(new CardEntry { CardholderName = "Jane" }, "4111", "999");
 
             var all = await svc.GetAllEntriesAsync();
             Assert.Equal(3, all.Count);
-            Assert.Single(all.OfType<PasswordEntry>());
+            Assert.Single(all.OfType<ServiceEntry>());
             Assert.Single(all.OfType<SecureNote>());
             Assert.Single(all.OfType<CardEntry>());
         }
@@ -192,11 +223,11 @@ namespace PasswordManager.Tests.Services
         public async Task GetEntriesAsync_FiltersByType()
         {
             await using var svc = await CreateServiceAsync();
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "a.com" }, "p1");
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "b.com" }, "p2");
+            await AddPwAsync(svc, "a.com", "p1");
+            await AddPwAsync(svc, "b.com", "p2");
             await svc.AddSecureNoteAsync(new SecureNote { Title = "Note" }, "text");
 
-            Assert.Equal(2, (await svc.GetEntriesAsync<PasswordEntry>()).Count);
+            Assert.Equal(2, (await svc.GetEntriesAsync<ServiceEntry>()).Count);
             Assert.Single(await svc.GetEntriesAsync<SecureNote>());
             Assert.Empty(await svc.GetEntriesAsync<CardEntry>());
         }
@@ -207,10 +238,9 @@ namespace PasswordManager.Tests.Services
         public async Task Tags_PersistOnEntries()
         {
             await using var svc = await CreateServiceAsync();
-            var entry = new PasswordEntry { Site = "work.com", Tags = { "work", "dev" } };
-            await svc.AddPasswordEntryAsync(entry, "pass");
+            await AddPwAsync(svc, "work.com", "pass", tags: new[] { "work", "dev" });
 
-            var stored = (await svc.GetEntriesAsync<PasswordEntry>())[0];
+            var stored = (await svc.GetEntriesAsync<ServiceEntry>())[0];
             Assert.Equal(2, stored.Tags.Count);
             Assert.Contains("work", stored.Tags);
             Assert.Contains("dev", stored.Tags);
@@ -220,8 +250,8 @@ namespace PasswordManager.Tests.Services
         public async Task FindEntriesAsync_ByTag()
         {
             await using var svc = await CreateServiceAsync();
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "a.com", Tags = { "personal" } }, "p1");
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "b.com", Tags = { "work" } }, "p2");
+            await AddPwAsync(svc, "a.com", "p1", tags: new[] { "personal" });
+            await AddPwAsync(svc, "b.com", "p2", tags: new[] { "work" });
             await svc.AddSecureNoteAsync(new SecureNote { Title = "N", Tags = { "work" } }, "t");
 
             var workEntries = await svc.FindEntriesAsync(e => e.Tags.Contains("work"));
@@ -231,24 +261,24 @@ namespace PasswordManager.Tests.Services
         // ─── Decrypt ─────────────────────────────────────────────────────────
 
         [Fact]
-        public async Task DecryptPassword_ReturnsOriginalPlaintext()
+        public async Task DecryptSecret_ReturnsOriginalPlaintext()
         {
             await using var svc = await CreateServiceAsync();
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "s.com" }, "my-secret-password");
+            var entry = await AddPwAsync(svc, "s.com", "my-secret-password");
 
-            var pwd = (await svc.GetEntriesAsync<PasswordEntry>())[0];
-            Assert.Equal("my-secret-password", svc.DecryptPassword(pwd));
+            var stored = (await svc.GetEntriesAsync<ServiceEntry>())[0];
+            Assert.Equal("my-secret-password", Pw(svc, stored));
         }
 
         [Fact]
-        public async Task DecryptPassword_UnicodePlaintext_RoundTrips()
+        public async Task DecryptSecret_UnicodePlaintext_RoundTrips()
         {
             await using var svc = await CreateServiceAsync();
             const string unicode = "P@ñoño-🔐-Ünïcödé-密码";
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "s.com" }, unicode);
+            await AddPwAsync(svc, "s.com", unicode);
 
-            var pwd = (await svc.GetEntriesAsync<PasswordEntry>())[0];
-            Assert.Equal(unicode, svc.DecryptPassword(pwd));
+            var stored = (await svc.GetEntriesAsync<ServiceEntry>())[0];
+            Assert.Equal(unicode, Pw(svc, stored));
         }
 
         // ─── Get by ID ───────────────────────────────────────────────────────
@@ -257,12 +287,11 @@ namespace PasswordManager.Tests.Services
         public async Task GetEntryByIdAsync_ExistingId_ReturnsEntry()
         {
             await using var svc = await CreateServiceAsync();
-            var entry = new PasswordEntry { Site = "find.me" };
-            await svc.AddPasswordEntryAsync(entry, "pass");
+            var entry = await AddPwAsync(svc, "find.me");
 
             var found = await svc.GetEntryByIdAsync(entry.Id);
             Assert.NotNull(found);
-            Assert.Equal("find.me", Assert.IsType<PasswordEntry>(found).Site);
+            Assert.Equal("find.me", Assert.IsType<ServiceEntry>(found).Site);
         }
 
         [Fact]
@@ -278,11 +307,11 @@ namespace PasswordManager.Tests.Services
         public async Task FindEntriesAsync_MatchingPredicate()
         {
             await using var svc = await CreateServiceAsync();
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "github.com" }, "p1");
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "gitlab.com" }, "p2");
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "amazon.com" }, "p3");
+            await AddPwAsync(svc, "github.com", "p1");
+            await AddPwAsync(svc, "gitlab.com", "p2");
+            await AddPwAsync(svc, "amazon.com", "p3");
 
-            var git = await svc.FindEntriesAsync(e => e is PasswordEntry p && p.Site.StartsWith("git"));
+            var git = await svc.FindEntriesAsync(e => e is ServiceEntry p && p.Site.StartsWith("git"));
             Assert.Equal(2, git.Count);
         }
 
@@ -292,12 +321,11 @@ namespace PasswordManager.Tests.Services
         public async Task UpdateEntryAsync_ModifiesField()
         {
             await using var svc = await CreateServiceAsync();
-            var entry = new PasswordEntry { Site = "old.com" };
-            await svc.AddPasswordEntryAsync(entry, "pass");
+            var entry = await AddPwAsync(svc, "old.com");
 
-            await svc.UpdateEntryAsync(entry.Id, e => ((PasswordEntry)e).Site = "new.com");
+            await svc.UpdateEntryAsync(entry.Id, e => ((ServiceEntry)e).Site = "new.com");
 
-            var updated = Assert.IsType<PasswordEntry>(await svc.GetEntryByIdAsync(entry.Id));
+            var updated = Assert.IsType<ServiceEntry>(await svc.GetEntryByIdAsync(entry.Id));
             Assert.Equal("new.com", updated.Site);
         }
 
@@ -309,18 +337,31 @@ namespace PasswordManager.Tests.Services
             Assert.Null(ex);
         }
 
-        // ─── Change password ─────────────────────────────────────────────────
+        // ─── Rotate field secret ─────────────────────────────────────────────
 
         [Fact]
-        public async Task ChangePasswordAsync_UpdatesDecryptedPassword()
+        public async Task RotateFieldSecretAsync_UpdatesDecryptedPassword()
         {
             await using var svc = await CreateServiceAsync();
-            var entry = new PasswordEntry { Site = "s.com" };
-            await svc.AddPasswordEntryAsync(entry, "old-password");
-            await svc.ChangePasswordAsync(entry.Id, "new-password");
+            var entry = await AddPwAsync(svc, "s.com", "old-password");
+            var cred = entry.Credentials[0];
+            var field = PwField(entry);
 
-            var pwd = Assert.IsType<PasswordEntry>(await svc.GetEntryByIdAsync(entry.Id));
-            Assert.Equal("new-password", svc.DecryptPassword(pwd));
+            var ok = await svc.RotateFieldSecretAsync(entry.Id, cred.Id, field.Id, "new-password");
+            Assert.True(ok);
+
+            var stored = Assert.IsType<ServiceEntry>(await svc.GetEntryByIdAsync(entry.Id));
+            Assert.Equal("new-password", Pw(svc, stored));
+        }
+
+        [Fact]
+        public async Task RotateFieldSecretAsync_UnknownIds_ReturnsFalse()
+        {
+            await using var svc = await CreateServiceAsync();
+            var entry = await AddPwAsync(svc, "s.com");
+
+            var ok = await svc.RotateFieldSecretAsync(entry.Id, Guid.NewGuid(), Guid.NewGuid(), "x");
+            Assert.False(ok);
         }
 
         // ─── Soft delete ─────────────────────────────────────────────────────
@@ -329,8 +370,7 @@ namespace PasswordManager.Tests.Services
         public async Task DeleteEntryAsync_SoftDeletesEntry()
         {
             await using var svc = await CreateServiceAsync();
-            var entry = new PasswordEntry { Site = "delete.me" };
-            await svc.AddPasswordEntryAsync(entry, "pass");
+            var entry = await AddPwAsync(svc, "delete.me");
 
             await svc.DeleteEntryAsync(entry.Id);
 
@@ -346,8 +386,7 @@ namespace PasswordManager.Tests.Services
         public async Task RestoreEntryAsync_RestoresSoftDeletedEntry()
         {
             await using var svc = await CreateServiceAsync();
-            var entry = new PasswordEntry { Site = "restore.me" };
-            await svc.AddPasswordEntryAsync(entry, "pass");
+            var entry = await AddPwAsync(svc, "restore.me");
             await svc.DeleteEntryAsync(entry.Id);
 
             await svc.RestoreEntryAsync(entry.Id);
@@ -360,9 +399,8 @@ namespace PasswordManager.Tests.Services
         public async Task PurgeDeletedAsync_PermanentlyRemovesDeletedEntries()
         {
             await using var svc = await CreateServiceAsync();
-            await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "keep.me" }, "p1");
-            var toDelete = new PasswordEntry { Site = "purge.me" };
-            await svc.AddPasswordEntryAsync(toDelete, "p2");
+            await AddPwAsync(svc, "keep.me", "p1");
+            var toDelete = await AddPwAsync(svc, "purge.me", "p2");
             await svc.DeleteEntryAsync(toDelete.Id);
 
             await svc.PurgeDeletedAsync();
@@ -385,8 +423,7 @@ namespace PasswordManager.Tests.Services
         public async Task SetExpireTimeAsync_PersistsExpiration()
         {
             await using var svc = await CreateServiceAsync();
-            var entry = new PasswordEntry { Site = "expiring.com" };
-            await svc.AddPasswordEntryAsync(entry, "pass");
+            var entry = await AddPwAsync(svc, "expiring.com");
 
             var expiry = DateTime.UtcNow.AddDays(30);
             await svc.SetExpireTimeAsync(entry.Id, expiry);
@@ -402,12 +439,12 @@ namespace PasswordManager.Tests.Services
         public async Task Entries_PersistAcrossServiceInstances()
         {
             await using (var svc = await CreateServiceAsync())
-                await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "persist.com", Username = "bob" }, "abc");
+                await AddPwAsync(svc, "persist.com", "abc", username: "bob");
 
             await using var svc2 = await CreateServiceAsync();
             var all = await svc2.GetAllEntriesAsync();
             Assert.Single(all);
-            Assert.Equal("persist.com", Assert.IsType<PasswordEntry>(all[0]).Site);
+            Assert.Equal("persist.com", Assert.IsType<ServiceEntry>(all[0]).Site);
         }
 
         [Fact]
@@ -415,7 +452,7 @@ namespace PasswordManager.Tests.Services
         {
             await using (var svc = await CreateServiceAsync())
             {
-                await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "a.com" }, "p");
+                await AddPwAsync(svc, "a.com", "p");
                 await svc.AddSecureNoteAsync(new SecureNote { Title = "N" }, "text");
                 await svc.AddCardEntryAsync(new CardEntry { CardholderName = "J" }, "4111", "123");
             }
@@ -423,7 +460,7 @@ namespace PasswordManager.Tests.Services
             await using var svc2 = await CreateServiceAsync();
             var all = await svc2.GetAllEntriesAsync();
             Assert.Equal(3, all.Count);
-            Assert.Single(all.OfType<PasswordEntry>());
+            Assert.Single(all.OfType<ServiceEntry>());
             Assert.Single(all.OfType<SecureNote>());
             Assert.Single(all.OfType<CardEntry>());
 

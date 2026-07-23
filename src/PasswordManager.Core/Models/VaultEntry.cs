@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 namespace PasswordManager.Core.Models
 {
     [JsonPolymorphic(TypeDiscriminatorPropertyName = "$type")]
-    [JsonDerivedType(typeof(PasswordEntry), "password")]
     [JsonDerivedType(typeof(SecureNote), "note")]
     [JsonDerivedType(typeof(CardEntry), "card")]
     [JsonDerivedType(typeof(ServiceEntry), "service")]

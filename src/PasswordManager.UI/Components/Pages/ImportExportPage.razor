@@ -121,7 +121,7 @@
 
         try
         {
-            var portable = await AppState.Service!.ExportPasswordEntriesAsync();
+            var portable = await AppState.Service!.ExportEntriesAsync();
             var csv = ImportExport.ExportToCsv(portable);
             var plaintext = System.Text.Encoding.UTF8.GetBytes(csv);
 
@@ -222,7 +222,7 @@
                 return;
             }
 
-            await AppState.Service!.ImportPasswordEntriesAsync(entries);
+            await AppState.Service!.ImportEntriesAsync(entries);
             _importResult = L.Format("io.importOk", entries.Count);
         }
         catch (Exception ex)

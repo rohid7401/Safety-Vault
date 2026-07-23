@@ -87,13 +87,6 @@ namespace PasswordManager.Core.Services
 
         // ─── Add entries ─────────────────────────────────────────────────────
 
-        public async Task AddPasswordEntryAsync(PasswordEntry entry, string plainPassword)
-        {
-            ThrowIfDisposed();
-            entry.Password = EncryptField(plainPassword);
-            await AddEntryAsync(entry);
-        }
-
         public async Task AddSecureNoteAsync(SecureNote note, string plainContent)
         {
             ThrowIfDisposed();
@@ -128,18 +121,6 @@ namespace PasswordManager.Core.Services
             if (entry is null) return;
 
             updateAction(entry);
-            entry.LastUpdateTime = DateTime.UtcNow;
-            await _repository.SaveAsync(vault);
-        }
-
-        public async Task ChangePasswordAsync(Guid id, string newPlainPassword)
-        {
-            ThrowIfDisposed();
-            var vault = await _repository.LoadAsync();
-            var entry = vault.Entries.OfType<PasswordEntry>().FirstOrDefault(e => e.Id == id && !e.IsDeleted);
-            if (entry is null) return;
-
-            entry.Password = EncryptField(newPlainPassword);
             entry.LastUpdateTime = DateTime.UtcNow;
             await _repository.SaveAsync(vault);
         }
@@ -201,8 +182,6 @@ namespace PasswordManager.Core.Services
             return _aesService.Decrypt(field.CipherText, _aesKey!, field.Nonce, field.Tag);
         }
 
-        public string DecryptPassword(PasswordEntry entry) => DecryptField(entry.Password);
-
         // ─── Service entries (flexible credential model) ──────────────────────
 
         /// <summary>
@@ -259,76 +238,70 @@ namespace PasswordManager.Core.Services
             return true;
         }
 
-        // ─── TOTP ────────────────────────────────────────────────────────────
+        // ─── Export / Import (flat portable shape) ────────────────────────────
 
-        public async Task SetTotpSecretAsync(Guid id, string base32Secret)
+        /// <summary>
+        /// Flattens every <see cref="ServiceEntry"/> credential into a portable row (one row per
+        /// credential). The portable/CSV shape is intentionally flat — email, username, the first
+        /// password and the first 2FA secret — so it interops with other managers; richer fields
+        /// (PIN, phone, extra passwords) are not represented in a plaintext export.
+        /// </summary>
+        public async Task<List<PortableEntry>> ExportEntriesAsync()
         {
             ThrowIfDisposed();
-            var vault = await _repository.LoadAsync();
-            var entry = vault.Entries.OfType<PasswordEntry>().FirstOrDefault(e => e.Id == id && !e.IsDeleted);
-            if (entry is null) return;
+            var services = await GetEntriesAsync<ServiceEntry>();
 
-            entry.TotpSecret = EncryptField(base32Secret);
-            entry.LastUpdateTime = DateTime.UtcNow;
-            await _repository.SaveAsync(vault);
-        }
-
-        public async Task RemoveTotpSecretAsync(Guid id)
-        {
-            ThrowIfDisposed();
-            var vault = await _repository.LoadAsync();
-            var entry = vault.Entries.OfType<PasswordEntry>().FirstOrDefault(e => e.Id == id && !e.IsDeleted);
-            if (entry is null) return;
-
-            entry.TotpSecret = null;
-            entry.LastUpdateTime = DateTime.UtcNow;
-            await _repository.SaveAsync(vault);
-        }
-
-        public string? GetDecryptedTotpSecret(PasswordEntry entry)
-        {
-            ThrowIfDisposed();
-            if (entry.TotpSecret is null) return null;
-            return DecryptField(entry.TotpSecret);
-        }
-
-        // ─── Export / Import ─────────────────────────────────────────────────
-
-        public async Task<List<PortableEntry>> ExportPasswordEntriesAsync()
-        {
-            ThrowIfDisposed();
-            var entries = await GetEntriesAsync<PasswordEntry>();
-            return entries.Select(e => new PortableEntry
+            var list = new List<PortableEntry>();
+            foreach (var svc in services)
             {
-                Site = e.Site,
-                Username = e.Username,
-                Email = e.Email,
-                Password = DecryptPassword(e),
-                TotpSecret = GetDecryptedTotpSecret(e),
-                Tags = new List<string>(e.Tags),
-            }).ToList();
+                foreach (var cred in svc.Credentials)
+                {
+                    list.Add(new PortableEntry
+                    {
+                        Site = svc.Site,
+                        Username = FirstPlain(cred, CredentialFieldType.Username),
+                        Email = FirstPlain(cred, CredentialFieldType.Email),
+                        Password = FirstSecret(cred, CredentialFieldType.Password),
+                        TotpSecret = FirstSecretOrNull(cred, CredentialFieldType.TwoFactor),
+                        Tags = new List<string>(svc.Tags),
+                    });
+                }
+            }
+            return list;
         }
 
-        public async Task ImportPasswordEntriesAsync(IReadOnlyList<PortableEntry> portableEntries)
+        /// <summary>
+        /// Imports portable rows (CSV / Bitwarden, including exports from the older
+        /// PasswordEntry-based versions) as <see cref="ServiceEntry"/>s — one entry with a single
+        /// credential per row, mapping email/username to clear fields and password/2FA to secrets.
+        /// </summary>
+        public async Task ImportEntriesAsync(IReadOnlyList<PortableEntry> portableEntries)
         {
             ThrowIfDisposed();
             var vault = await _repository.LoadAsync();
 
             foreach (var portable in portableEntries)
             {
-                var entry = new PasswordEntry
+                var cred = new Credential();
+
+                if (!string.IsNullOrEmpty(portable.Email))
+                    cred.Fields.Add(PlainField(CredentialFieldType.Email, portable.Email));
+                if (!string.IsNullOrEmpty(portable.Username))
+                    cred.Fields.Add(PlainField(CredentialFieldType.Username, portable.Username));
+
+                cred.Fields.Add(SecretField(CredentialFieldType.Password, portable.Password));
+
+                if (!string.IsNullOrEmpty(portable.TotpSecret))
+                    cred.Fields.Add(SecretField(CredentialFieldType.TwoFactor, portable.TotpSecret));
+
+                var entry = new ServiceEntry
                 {
                     Site = portable.Site,
-                    Username = portable.Username,
-                    Email = portable.Email,
-                    Password = EncryptField(portable.Password),
                     Tags = new List<string>(portable.Tags),
+                    Credentials = { cred },
                     CreationTime = DateTime.UtcNow,
                     LastUpdateTime = DateTime.UtcNow,
                 };
-
-                if (!string.IsNullOrEmpty(portable.TotpSecret))
-                    entry.TotpSecret = EncryptField(portable.TotpSecret);
 
                 vault.Entries.Add(entry);
             }
@@ -338,12 +311,68 @@ namespace PasswordManager.Core.Services
 
         // ─── Audit ───────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Audits every password field across all service entries. Each password field becomes an
+        /// <see cref="AuditItem"/> (decrypted here), with its expiry resolved from the field's
+        /// rotation policy or, failing that, the entry-level expiry.
+        /// </summary>
         public async Task<AuditReport> AuditVaultAsync(IVaultAuditor auditor)
         {
             ThrowIfDisposed();
-            var entries = await GetEntriesAsync<PasswordEntry>();
-            return auditor.Audit(entries, DecryptPassword);
+            var services = await GetEntriesAsync<ServiceEntry>();
+
+            var items = new List<AuditItem>();
+            foreach (var svc in services)
+            {
+                foreach (var cred in svc.Credentials)
+                {
+                    foreach (var field in cred.Fields.Where(f => f.Type == CredentialFieldType.Password))
+                    {
+                        items.Add(new AuditItem
+                        {
+                            EntryId = svc.Id,
+                            Label = AuditLabel(svc, cred),
+                            Password = DecryptSecret(field),
+                            ExpiresAt = field.Rotation?.ExpiresAt ?? svc.ExpireTime,
+                        });
+                    }
+                }
+            }
+
+            return auditor.Audit(items);
         }
+
+        private static string AuditLabel(ServiceEntry svc, Credential cred) =>
+            string.IsNullOrEmpty(cred.Label) ? svc.Site : $"{svc.Site} · {cred.Label}";
+
+        private static string FirstPlain(Credential cred, CredentialFieldType type) =>
+            cred.Fields.FirstOrDefault(f => f.Type == type && !f.IsSecret)?.PlainValue ?? string.Empty;
+
+        private string FirstSecret(Credential cred, CredentialFieldType type)
+        {
+            var field = cred.Fields.FirstOrDefault(f => f.Type == type && f.IsSecret);
+            return field is null ? string.Empty : DecryptSecret(field);
+        }
+
+        private string? FirstSecretOrNull(Credential cred, CredentialFieldType type)
+        {
+            var value = FirstSecret(cred, type);
+            return string.IsNullOrEmpty(value) ? null : value;
+        }
+
+        private CredentialField PlainField(CredentialFieldType type, string value) => new()
+        {
+            Type = type,
+            IsSecret = false,
+            PlainValue = value,
+        };
+
+        private CredentialField SecretField(CredentialFieldType type, string plaintext) => new()
+        {
+            Type = type,
+            IsSecret = true,
+            SecretValue = EncryptField(plaintext),
+        };
 
         // ─── Vault integrity / recovery ──────────────────────────────────────
 

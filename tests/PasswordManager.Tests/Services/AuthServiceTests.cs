@@ -134,7 +134,16 @@ namespace PasswordManager.Tests.Services
             var account = await auth.RegisterAsync("bob", "bob@example.com", Passphrase);
 
             await using (var svc = await UnlockLikeHomeRazorAsync(account.VaultPath, Passphrase))
-                await svc.AddPasswordEntryAsync(new PasswordEntry { Site = "example.com" }, "s3cret");
+            {
+                var cred = new Credential();
+                cred.Fields.Add(new CredentialField
+                {
+                    Type = CredentialFieldType.Password,
+                    IsSecret = true,
+                    SecretValue = svc.EncryptValue("s3cret"),
+                });
+                await svc.AddServiceEntryAsync(new ServiceEntry { Site = "example.com", Credentials = { cred } });
+            }
 
             // Simulate a fresh app launch: log in again, independently re-deriving everything.
             var reloadedAccount = await auth.LoginAsync("bob", Passphrase);
@@ -143,7 +152,8 @@ namespace PasswordManager.Tests.Services
 
             var entries = await svc2.GetAllEntriesAsync();
             Assert.Single(entries);
-            Assert.Equal("s3cret", svc2.DecryptPassword((PasswordEntry)entries[0]));
+            var entry = Assert.IsType<ServiceEntry>(entries[0]);
+            Assert.Equal("s3cret", svc2.DecryptSecret(entry.Credentials[0].Fields[0]));
 
             Assert.True(File.Exists(Path.Combine(reloadedAccount.VaultPath, "public_key.asc")));
             Assert.True(File.Exists(Path.Combine(reloadedAccount.VaultPath, "private_key.asc")));

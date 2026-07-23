@@ -78,7 +78,7 @@ namespace PasswordManager.Console
         private static async Task ListAllPasswords(PasswordManagerService service)
         {
             System.Console.WriteLine("\n--- Saved Passwords ---");
-            var entries = await service.GetEntriesAsync<PasswordEntry>();
+            var entries = await service.GetEntriesAsync<ServiceEntry>();
 
             if (!entries.Any())
             {
@@ -91,11 +91,22 @@ namespace PasswordManager.Console
                 System.Console.ForegroundColor = ConsoleColor.Yellow;
                 System.Console.WriteLine($"Site:     {entry.Site}");
                 System.Console.ResetColor();
-                System.Console.WriteLine($"Username: {entry.Username}");
-                System.Console.WriteLine($"Email:    {entry.Email}");
-                System.Console.ForegroundColor = ConsoleColor.Cyan;
-                System.Console.WriteLine($"Password: {service.DecryptPassword(entry)}");
-                System.Console.ResetColor();
+
+                foreach (var cred in entry.Credentials)
+                {
+                    if (!string.IsNullOrEmpty(cred.Label))
+                        System.Console.WriteLine($"  [{cred.Label}]");
+
+                    foreach (var field in cred.Fields)
+                    {
+                        var label = string.IsNullOrEmpty(field.Label) ? field.Type.ToString() : field.Label;
+                        var value = field.IsSecret ? service.DecryptSecret(field) : field.PlainValue;
+                        if (field.IsSecret) System.Console.ForegroundColor = ConsoleColor.Cyan;
+                        System.Console.WriteLine($"  {label,-10}: {value}");
+                        if (field.IsSecret) System.Console.ResetColor();
+                    }
+                }
+
                 if (entry.Tags.Count > 0)
                     System.Console.WriteLine($"Tags:     {string.Join(", ", entry.Tags)}");
                 System.Console.WriteLine(new string('-', 30));
@@ -105,23 +116,37 @@ namespace PasswordManager.Console
         private static async Task AddNewPassword(PasswordManagerService service)
         {
             System.Console.WriteLine("\n--- Add New Entry ---");
-            var entry = new PasswordEntry();
+            var entry = new ServiceEntry();
 
             System.Console.Write("Site/Application: ");
             entry.Site = System.Console.ReadLine() ?? string.Empty;
 
-            System.Console.Write("Username: ");
-            entry.Username = System.Console.ReadLine() ?? string.Empty;
+            var cred = new Credential();
+
+            System.Console.Write("Username (optional): ");
+            var username = System.Console.ReadLine() ?? string.Empty;
+            if (!string.IsNullOrEmpty(username))
+                cred.Fields.Add(new CredentialField { Type = CredentialFieldType.Username, PlainValue = username });
 
             System.Console.Write("Email (optional): ");
-            entry.Email = System.Console.ReadLine() ?? string.Empty;
+            var email = System.Console.ReadLine() ?? string.Empty;
+            if (!string.IsNullOrEmpty(email))
+                cred.Fields.Add(new CredentialField { Type = CredentialFieldType.Email, PlainValue = email });
 
             System.Console.Write("Password: ");
             string plain = System.Console.ReadLine() ?? string.Empty;
+            cred.Fields.Add(new CredentialField
+            {
+                Type = CredentialFieldType.Password,
+                IsSecret = true,
+                SecretValue = service.EncryptValue(plain),
+            });
+
+            entry.Credentials.Add(cred);
 
             try
             {
-                await service.AddPasswordEntryAsync(entry, plain);
+                await service.AddServiceEntryAsync(entry);
                 WriteSuccess("Entry added successfully!");
             }
             catch (Exception ex)

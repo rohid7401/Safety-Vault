@@ -72,17 +72,17 @@ namespace PasswordManager.Tests.Models
         }
 
         [Fact]
-        public void OldPasswordEntry_StillDeserializes_AlongsideServiceEntry()
+        public void ServiceEntry_CoexistsWithOtherEntryTypes()
         {
             var vault = new VaultData();
-            vault.Entries.Add(new PasswordEntry { Site = "legacy.com", Password = Enc("x") });
             vault.Entries.Add(new ServiceEntry { Site = "new.com" });
+            vault.Entries.Add(new SecureNote { Label = "note" });
 
             var json = JsonSerializer.Serialize(vault);
             var back = JsonSerializer.Deserialize<VaultData>(json)!;
 
-            Assert.Single(back.Entries.OfType<PasswordEntry>());
             Assert.Single(back.Entries.OfType<ServiceEntry>());
+            Assert.Single(back.Entries.OfType<SecureNote>());
         }
 
         // ─── Rotation history (single slot) ──────────────────────────────────

@@ -8,10 +8,13 @@ namespace PasswordManager.Tests.Services
     {
         private readonly VaultAuditor _auditor = new(new PasswordGenerator());
 
+        private static AuditItem Item(string password, DateTime? expiresAt = null, string label = "test.com") =>
+            new() { EntryId = Guid.NewGuid(), Label = label, Password = password, ExpiresAt = expiresAt };
+
         [Fact]
         public void Audit_EmptyList_ReturnsEmptyReport()
         {
-            var report = _auditor.Audit(Array.Empty<PasswordEntry>(), _ => "");
+            var report = _auditor.Audit(Array.Empty<AuditItem>());
             Assert.Equal(0, report.TotalPasswords);
             Assert.Empty(report.Issues);
         }
@@ -19,12 +22,7 @@ namespace PasswordManager.Tests.Services
         [Fact]
         public void Audit_WeakPassword_DetectsWeakness()
         {
-            var entries = new[]
-            {
-                new PasswordEntry { Site = "test.com" }
-            };
-
-            var report = _auditor.Audit(entries, _ => "abc");
+            var report = _auditor.Audit(new[] { Item("abc") });
 
             Assert.Equal(1, report.WeakCount);
             Assert.Contains(report.Issues, i => i.Type == AuditIssueType.WeakPassword);
@@ -33,12 +31,7 @@ namespace PasswordManager.Tests.Services
         [Fact]
         public void Audit_StrongPassword_NoWeaknessIssues()
         {
-            var entries = new[]
-            {
-                new PasswordEntry { Site = "test.com" }
-            };
-
-            var report = _auditor.Audit(entries, _ => "Str0ng!P@ssw0rd#2024XyZ");
+            var report = _auditor.Audit(new[] { Item("Str0ng!P@ssw0rd#2024XyZ") });
 
             Assert.Equal(0, report.WeakCount);
             Assert.DoesNotContain(report.Issues, i => i.Type == AuditIssueType.WeakPassword);
@@ -47,14 +40,12 @@ namespace PasswordManager.Tests.Services
         [Fact]
         public void Audit_ReusedPasswords_DetectsReuse()
         {
-            var entries = new[]
+            var report = _auditor.Audit(new[]
             {
-                new PasswordEntry { Site = "site1.com" },
-                new PasswordEntry { Site = "site2.com" },
-                new PasswordEntry { Site = "site3.com" }
-            };
-
-            var report = _auditor.Audit(entries, _ => "SamePassword123!");
+                Item("SamePassword123!", label: "site1.com"),
+                Item("SamePassword123!", label: "site2.com"),
+                Item("SamePassword123!", label: "site3.com"),
+            });
 
             Assert.Equal(3, report.ReusedCount);
             Assert.Contains(report.Issues, i => i.Type == AuditIssueType.ReusedPassword);
@@ -63,16 +54,23 @@ namespace PasswordManager.Tests.Services
         [Fact]
         public void Audit_UniquePasswords_NoReuseIssues()
         {
-            var passwords = new Dictionary<Guid, string>();
-            var entries = new[]
+            var report = _auditor.Audit(new[]
             {
-                new PasswordEntry { Site = "site1.com" },
-                new PasswordEntry { Site = "site2.com" }
-            };
-            passwords[entries[0].Id] = "UniquePass1!Xyz";
-            passwords[entries[1].Id] = "UniquePass2!Abc";
+                Item("UniquePass1!Xyz", label: "site1.com"),
+                Item("UniquePass2!Abc", label: "site2.com"),
+            });
 
-            var report = _auditor.Audit(entries, e => passwords[e.Id]);
+            Assert.Equal(0, report.ReusedCount);
+        }
+
+        [Fact]
+        public void Audit_EmptyPasswords_NotFlaggedAsReused()
+        {
+            var report = _auditor.Audit(new[]
+            {
+                Item("", label: "a.com"),
+                Item("", label: "b.com"),
+            });
 
             Assert.Equal(0, report.ReusedCount);
         }
@@ -80,16 +78,10 @@ namespace PasswordManager.Tests.Services
         [Fact]
         public void Audit_ExpiredEntry_DetectsExpiration()
         {
-            var entries = new[]
+            var report = _auditor.Audit(new[]
             {
-                new PasswordEntry
-                {
-                    Site = "expired.com",
-                    ExpireTime = DateTime.UtcNow.AddDays(-30)
-                }
-            };
-
-            var report = _auditor.Audit(entries, _ => "Str0ng!P@ssw0rd#2024XyZ");
+                Item("Str0ng!P@ssw0rd#2024XyZ", DateTime.UtcNow.AddDays(-30), "expired.com"),
+            });
 
             Assert.Equal(1, report.ExpiredCount);
             Assert.Contains(report.Issues, i => i.Type == AuditIssueType.ExpiredEntry);
@@ -98,16 +90,10 @@ namespace PasswordManager.Tests.Services
         [Fact]
         public void Audit_FutureExpiry_NoExpirationIssues()
         {
-            var entries = new[]
+            var report = _auditor.Audit(new[]
             {
-                new PasswordEntry
-                {
-                    Site = "valid.com",
-                    ExpireTime = DateTime.UtcNow.AddDays(90)
-                }
-            };
-
-            var report = _auditor.Audit(entries, _ => "Str0ng!P@ssw0rd#2024XyZ");
+                Item("Str0ng!P@ssw0rd#2024XyZ", DateTime.UtcNow.AddDays(90), "valid.com"),
+            });
 
             Assert.Equal(0, report.ExpiredCount);
         }
@@ -115,23 +101,13 @@ namespace PasswordManager.Tests.Services
         [Fact]
         public void Audit_MultipleIssues_ReportsAll()
         {
-            var entries = new[]
+            var report = _auditor.Audit(new[]
             {
-                new PasswordEntry { Site = "weak.com" },
-                new PasswordEntry { Site = "reused1.com" },
-                new PasswordEntry { Site = "reused2.com" },
-                new PasswordEntry { Site = "expired.com", ExpireTime = DateTime.UtcNow.AddDays(-1) }
-            };
-
-            var passwords = new Dictionary<Guid, string>
-            {
-                [entries[0].Id] = "123",
-                [entries[1].Id] = "SharedPass!Xyz1",
-                [entries[2].Id] = "SharedPass!Xyz1",
-                [entries[3].Id] = "Str0ng!P@ssw0rd#2024XyZ"
-            };
-
-            var report = _auditor.Audit(entries, e => passwords[e.Id]);
+                Item("123", label: "weak.com"),
+                Item("SharedPass!Xyz1", label: "reused1.com"),
+                Item("SharedPass!Xyz1", label: "reused2.com"),
+                Item("Str0ng!P@ssw0rd#2024XyZ", DateTime.UtcNow.AddDays(-1), "expired.com"),
+            });
 
             Assert.Equal(4, report.TotalPasswords);
             Assert.True(report.WeakCount > 0);

@@ -12,36 +12,29 @@ namespace PasswordManager.Infrastructure.Services
             _passwordGenerator = passwordGenerator;
         }
 
-        public AuditReport Audit(IReadOnlyList<PasswordEntry> entries, Func<PasswordEntry, string> decryptor)
+        public AuditReport Audit(IReadOnlyList<AuditItem> items)
         {
-            var report = new AuditReport { TotalPasswords = entries.Count };
-            var decryptedPasswords = new Dictionary<Guid, string>();
+            var report = new AuditReport { TotalPasswords = items.Count };
 
-            foreach (var entry in entries)
-                decryptedPasswords[entry.Id] = decryptor(entry);
-
-            CheckWeakPasswords(entries, decryptedPasswords, report);
-            CheckReusedPasswords(entries, decryptedPasswords, report);
-            CheckExpiredEntries(entries, report);
+            CheckWeakPasswords(items, report);
+            CheckReusedPasswords(items, report);
+            CheckExpiredEntries(items, report);
 
             return report;
         }
 
-        private void CheckWeakPasswords(
-            IReadOnlyList<PasswordEntry> entries,
-            Dictionary<Guid, string> passwords,
-            AuditReport report)
+        private void CheckWeakPasswords(IReadOnlyList<AuditItem> items, AuditReport report)
         {
-            foreach (var entry in entries)
+            foreach (var item in items)
             {
-                var strength = _passwordGenerator.CalculateStrength(passwords[entry.Id]);
+                var strength = _passwordGenerator.CalculateStrength(item.Password);
                 if (strength >= 5) continue;
 
                 report.WeakCount++;
                 report.Issues.Add(new AuditIssue
                 {
-                    EntryId = entry.Id,
-                    EntryLabel = entry.Site,
+                    EntryId = item.EntryId,
+                    EntryLabel = item.Label,
                     Type = AuditIssueType.WeakPassword,
                     Severity = strength <= 2 ? AuditSeverity.Critical : AuditSeverity.High,
                     Description = $"Password strength: {strength}/8"
@@ -49,24 +42,22 @@ namespace PasswordManager.Infrastructure.Services
             }
         }
 
-        private static void CheckReusedPasswords(
-            IReadOnlyList<PasswordEntry> entries,
-            Dictionary<Guid, string> passwords,
-            AuditReport report)
+        private static void CheckReusedPasswords(IReadOnlyList<AuditItem> items, AuditReport report)
         {
-            var grouped = entries
-                .GroupBy(e => passwords[e.Id])
+            var grouped = items
+                .Where(i => !string.IsNullOrEmpty(i.Password))
+                .GroupBy(i => i.Password)
                 .Where(g => g.Count() > 1);
 
             foreach (var group in grouped)
             {
-                foreach (var entry in group)
+                foreach (var item in group)
                 {
                     report.ReusedCount++;
                     report.Issues.Add(new AuditIssue
                     {
-                        EntryId = entry.Id,
-                        EntryLabel = entry.Site,
+                        EntryId = item.EntryId,
+                        EntryLabel = item.Label,
                         Type = AuditIssueType.ReusedPassword,
                         Severity = AuditSeverity.High,
                         Description = $"Password shared with {group.Count() - 1} other entries"
@@ -75,21 +66,21 @@ namespace PasswordManager.Infrastructure.Services
             }
         }
 
-        private static void CheckExpiredEntries(IReadOnlyList<PasswordEntry> entries, AuditReport report)
+        private static void CheckExpiredEntries(IReadOnlyList<AuditItem> items, AuditReport report)
         {
             var now = DateTime.UtcNow;
-            foreach (var entry in entries)
+            foreach (var item in items)
             {
-                if (entry.ExpireTime.HasValue && entry.ExpireTime.Value < now)
+                if (item.ExpiresAt.HasValue && item.ExpiresAt.Value < now)
                 {
                     report.ExpiredCount++;
                     report.Issues.Add(new AuditIssue
                     {
-                        EntryId = entry.Id,
-                        EntryLabel = entry.Site,
+                        EntryId = item.EntryId,
+                        EntryLabel = item.Label,
                         Type = AuditIssueType.ExpiredEntry,
                         Severity = AuditSeverity.Medium,
-                        Description = $"Expired on {entry.ExpireTime.Value:yyyy-MM-dd}"
+                        Description = $"Expired on {item.ExpiresAt.Value:yyyy-MM-dd}"
                     });
                 }
             }
