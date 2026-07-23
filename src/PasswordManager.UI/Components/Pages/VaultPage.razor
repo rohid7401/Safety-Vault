@@ -14,9 +14,7 @@
 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;">
     <div style="flex:1;">
         <p style="margin:0; font-size:13px; color:var(--n-400);">@L.Format("vault.count", _entries.Count)</p>
-        <div style="margin-top:6px;">
-            <WhatsThisPill FeatureKey="passwords" />
-        </div>
+        <div style="margin-top:6px;"><WhatsThisPill FeatureKey="passwords" /></div>
     </div>
     <button class="btn btn-primary" style="flex:none;" @onclick="OpenAddModal">
         <Icon Name="plus" Size="16" StrokeWidth="2.2" />@L["common.add"]
@@ -25,11 +23,10 @@
 
 <div class="search-box">
     <span class="search-icon"><Icon Name="search" Size="17" /></span>
-    <input type="text" placeholder="@L["vault.searchPlaceholder"]"
-           @bind="_search" @bind:event="oninput" />
+    <input type="text" placeholder="@L["vault.searchPlaceholder"]" @bind="_search" @bind:event="oninput" />
 </div>
 
-@if (FilteredEntries.Count == 0)
+@if (!Cards().Any())
 {
     <div class="empty-state">
         <div class="icon-circle"><Icon Name="lock" Size="30" StrokeWidth="1.8" /></div>
@@ -39,113 +36,159 @@
 }
 else
 {
-    @foreach (var entry in FilteredEntries)
+    @foreach (var card in Cards())
     {
+        var worst = WorstStatus(card.Credentials);
         <div class="card">
             <div style="display:flex; align-items:center; gap:12px;">
-                <div class="entry-icon">
-                    <Icon Name="lock" Size="15" StrokeWidth="1.8" />
-                </div>
+                <div class="entry-icon"><Icon Name="lock" Size="15" StrokeWidth="1.8" /></div>
                 <div style="flex:1; min-width:0;">
-                    <div class="card-title" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@entry.Site</div>
-                    <div class="card-subtitle" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                        @entry.Username@(!string.IsNullOrEmpty(entry.Email) ? $" · {entry.Email}" : "")
-                    </div>
+                    <div class="card-title" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@card.Entry.Site</div>
+                    @if (card.Credentials.Count == 1 && !string.IsNullOrEmpty(card.Credentials[0].Label))
+                    {
+                        <div class="card-subtitle">@card.Credentials[0].Label</div>
+                    }
                 </div>
-                <button class="btn-icon" type="button" aria-label="Copy" title="Copy password"
-                        @onclick="() => CopyPassword(entry)">
-                    <Icon Name="copy" Size="16" StrokeWidth="1.8" />
-                </button>
-                <button class="btn-icon" type="button" aria-label="Edit" title="Edit"
-                        @onclick="() => EditEntry(entry)">
+                @if (worst == ExpiryStatus.Expired)
+                {
+                    <span class="badge-expiry danger"><Icon Name="alert" Size="12" /> @L["vault.badge.expired"]</span>
+                }
+                else if (worst == ExpiryStatus.DueSoon)
+                {
+                    <span class="badge-expiry warn"><Icon Name="clock" Size="12" /> @L["vault.badge.dueSoon"]</span>
+                }
+                <button class="btn-icon" type="button" aria-label="Edit" title="Edit" @onclick="() => EditEntry(card.Entry)">
                     <Icon Name="edit" Size="16" StrokeWidth="1.8" />
                 </button>
-                <button class="btn-icon" type="button" aria-label="Delete" title="Move to trash"
-                        style="color:var(--danger);"
-                        @onclick="() => DeleteEntry(entry.Id)">
+                <button class="btn-icon" type="button" aria-label="Delete" title="@L["common.moveToTrash"]"
+                        style="color:var(--danger);" @onclick="() => DeleteEntry(card.Entry.Id)">
                     <Icon Name="trash" Size="16" StrokeWidth="1.8" />
                 </button>
             </div>
-            <div class="masked-value">
-                @if (_revealed.Contains(entry.Id))
-                {
-                    <span class="value revealed">@AppState.Service!.DecryptPassword(entry)</span>
-                }
-                else
-                {
-                    <span class="value">••••••••••••</span>
-                }
-                <button class="reveal-btn" type="button" @onclick="() => ToggleReveal(entry.Id)">
-                    @(_revealed.Contains(entry.Id) ? L["common.hide"] : L["common.show"])
-                </button>
-            </div>
-            @if (entry.TotpSecret is not null || entry.Tags.Count > 0)
+
+            @foreach (var cred in card.Credentials)
             {
-                <div class="tag-group">
-                    @if (entry.TotpSecret is not null)
+                <div class="cred @(card.Credentials.Count > 1 ? "cred-grouped" : "")">
+                    @if (card.Credentials.Count > 1 && !string.IsNullOrEmpty(cred.Label))
                     {
-                        <button class="tag-2fa" type="button" @onclick="() => ShowTotp(entry)">
-                            <Icon Name="clock" Size="12" />2FA
-                        </button>
+                        <div class="cred-label">@cred.Label</div>
                     }
-                    @foreach (var tag in entry.Tags)
+
+                    @foreach (var f in cred.Fields.Where(f => !f.IsSecret && !string.IsNullOrEmpty(f.PlainValue)))
                     {
-                        <span class="tag">@tag</span>
+                        <div class="cred-identity"><Icon Name="@FieldIcon(f.Type)" Size="13" /> <span>@f.PlainValue</span></div>
+                    }
+
+                    @foreach (var f in cred.Fields.Where(f => f.IsSecret && f.Type != CredentialFieldType.TwoFactor))
+                    {
+                        var revealed = _revealed.Contains(f.Id);
+                        <div class="secret-bar">
+                            <span class="secret-label"><Icon Name="@FieldIcon(f.Type)" Size="13" /> @FieldName(f)</span>
+                            <span class="secret-value" style="font-family:var(--font-mono);">
+                                @(revealed ? AppState.Service!.DecryptSecret(f) : "••••••••••")
+                            </span>
+                            <button class="btn-icon" type="button" aria-label="Reveal" @onclick="() => ToggleReveal(f.Id)">
+                                <Icon Name="@(revealed ? "eye-off" : "eye")" Size="16" StrokeWidth="1.8" />
+                            </button>
+                            <button class="btn-icon" type="button" aria-label="Copy" @onclick="() => CopySecret(f)">
+                                <Icon Name="copy" Size="16" StrokeWidth="1.8" />
+                            </button>
+                        </div>
+                        @if (f.Rotation is not null)
+                        {
+                            var st = f.GetExpiryStatus(DateTime.UtcNow);
+                            var days = (int)Math.Ceiling((f.Rotation.ExpiresAt - DateTime.UtcNow).TotalDays);
+                            <div class="rot-row">
+                                <span class="rot-status @(st == ExpiryStatus.Expired ? "danger" : st == ExpiryStatus.DueSoon ? "warn" : "muted")">
+                                    <Icon Name="refresh" Size="12" />
+                                    @(st == ExpiryStatus.Expired ? L.Format("vault.expiry.overdue", -days) : L.Format("vault.expiry.inDays", days))
+                                </span>
+                                <button class="btn-mini" type="button" @onclick="() => OpenRotate(card.Entry.Id, cred.Id, f.Id)">
+                                    @L["vault.rotate.now"]
+                                </button>
+                            </div>
+                        }
+                    }
+
+                    @foreach (var f in cred.Fields.Where(f => f.Type == CredentialFieldType.TwoFactor))
+                    {
+                        <div class="cred-identity">
+                            <button class="tag-2fa" type="button" @onclick="() => ShowTotp(card.Entry.Site, f)">
+                                <Icon Name="shield-check" Size="12" />@L["vault.twofa"]
+                            </button>
+                        </div>
                     }
                 </div>
+            }
+
+            @if (card.Entry.Tags.Count > 0)
+            {
+                <div class="tag-group">@foreach (var tag in card.Entry.Tags) { <span class="tag">@tag</span> }</div>
             }
         </div>
     }
 }
 
-@* ───── Add / Edit sheet ───── *@
+@* ───── Add / Edit sheet (simple single-credential) ───── *@
 <SheetModal Visible="@(_showAdd || _editEntry is not null)"
             Title="@(_editEntry is not null ? L["vault.editTitle"] : L["vault.addTitle"])"
-            ConfirmClose="@FormDirty"
-            OnClose="CloseModal">
+            ConfirmClose="@FormDirty" OnClose="CloseModal">
     <ChildContent>
         <div class="field">
             <label>@L["vault.field.site"]</label>
-            <input type="text" class="input" @bind="_formSite" placeholder="github.com" />
+            <input type="text" class="input" @bind="_fSite" placeholder="github.com" />
         </div>
 
         <div class="field">
-            <label>@L["vault.field.username"]</label>
-            <input type="text" class="input" @bind="_formUsername" placeholder="jane.doe" />
-        </div>
-
-        <div class="field">
-            <label>@L["vault.field.email"]</label>
-            <input type="text" class="input" @bind="_formEmail" placeholder="jane@example.com" />
+            <label>@L["vault.field.account"]</label>
+            <div class="input-group">
+                <select class="input" style="max-width:130px;" @bind="_fIdentityType">
+                    <option value="@CredentialFieldType.Email">@L["vault.acctType.email"]</option>
+                    <option value="@CredentialFieldType.Username">@L["vault.acctType.username"]</option>
+                </select>
+                <input type="text" class="input" @bind="_fIdentity" placeholder="jane@example.com" />
+            </div>
         </div>
 
         <div class="field">
             <label>@L["vault.field.password"]</label>
             <div class="input-group">
-                <input type="@(_formPwVisible ? "text" : "password")" class="input"
-                       style="font-family:var(--font-mono);" @bind="_formPassword" placeholder="@L["vault.field.passwordPlaceholder"]" />
-                <button class="btn btn-secondary" type="button" @onclick="() => _formPwVisible = !_formPwVisible">
-                    @(_formPwVisible ? L["common.hide"] : L["common.show"])
+                <input type="@(_fPwVisible ? "text" : "password")" class="input" style="font-family:var(--font-mono);"
+                       @bind="_fPassword" placeholder="@L["vault.field.passwordPlaceholder"]" />
+                <button class="btn btn-secondary" type="button" aria-label="Reveal" @onclick="() => _fPwVisible = !_fPwVisible">
+                    <Icon Name="@(_fPwVisible ? "eye-off" : "eye")" Size="16" />
                 </button>
                 <button class="btn btn-secondary" type="button" @onclick="GeneratePassword" title="@L["vault.generateTitle"]">
                     @L["vault.generate"]
                 </button>
             </div>
-            @if (!string.IsNullOrEmpty(_formPassword))
+            @if (!string.IsNullOrEmpty(_fPassword))
             {
                 <div class="strength-bar">
-                    @{ var s = PasswordGen.CalculateStrength(_formPassword); }
+                    @{ var s = PasswordGen.CalculateStrength(_fPassword); }
                     <div class="strength-fill strength-@s" style="width:@(s * 12.5)%"></div>
                 </div>
             }
         </div>
 
-        <div class="field">
-            <label>@L["vault.field.tags"]</label>
-            <input type="text" class="input" @bind="_formTags" placeholder="@L["vault.field.tagsPlaceholder"]" />
-        </div>
+        <label class="form-check" style="margin-bottom:0;">
+            <span>@L["vault.rotate.enable"]</span>
+            <input type="checkbox" @bind="_fRotate" />
+        </label>
+        @if (_fRotate)
+        {
+            <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+                <span style="font-size:13px; color:var(--n-400);">@L["vault.rotate.every"]</span>
+                <input type="number" class="input" style="width:70px;" min="1" max="999" @bind="_fRotateEvery" />
+                <select class="input" style="max-width:110px;" @bind="_fRotateUnit">
+                    <option value="@RotationUnit.Days">@L["vault.unit.days"]</option>
+                    <option value="@RotationUnit.Months">@L["vault.unit.months"]</option>
+                </select>
+            </div>
+            <small class="hint">@L["vault.rotate.hint"]</small>
+        }
 
-        <div class="field">
+        <div class="field" style="margin-top:14px;">
             <label style="display:flex; align-items:center; gap:8px;">
                 @L["vault.field.totp"]
                 <InfoTooltip>
@@ -154,37 +197,56 @@ else
                     <p style="margin:6px 0 0 0;">@L["vault.totp.what2"]</p>
                 </InfoTooltip>
             </label>
-            <input type="text" class="input" @bind="_formTotp" placeholder="JBSWY3DPEHPK3PXP" />
+            <input type="text" class="input" @bind="_f2fa" placeholder="JBSWY3DPEHPK3PXP" />
         </div>
 
-        @if (!string.IsNullOrEmpty(_formError))
+        <div class="field">
+            <label>@L["vault.field.tags"]</label>
+            <input type="text" class="input" @bind="_fTags" placeholder="@L["vault.field.tagsPlaceholder"]" />
+        </div>
+
+        @if (!string.IsNullOrEmpty(_fError))
         {
-            <div class="alert alert-danger">@_formError</div>
+            <div class="alert alert-danger">@_fError</div>
         }
     </ChildContent>
     <FooterContent>
         <button class="btn btn-secondary" @onclick="CloseModal">@L["common.cancel"]</button>
-        <button class="btn btn-primary" @onclick="SaveEntry">
-            @(_editEntry is not null ? L["common.update"] : L["common.add"])
-        </button>
+        <button class="btn btn-primary" @onclick="SaveEntry">@(_editEntry is not null ? L["common.update"] : L["common.add"])</button>
+    </FooterContent>
+</SheetModal>
+
+@* ───── Rotate sheet ───── *@
+<SheetModal Visible="@(_rotateTarget is not null)" Title="@L["vault.rotate.title"]" OnClose="() => _rotateTarget = null">
+    <ChildContent>
+        <div class="field" style="margin-bottom:0;">
+            <label>@L["vault.rotate.newPassword"]</label>
+            <div class="input-group">
+                <input type="@(_rotatePwVisible ? "text" : "password")" class="input" style="font-family:var(--font-mono);"
+                       @bind="_rotateNew" placeholder="@L["vault.field.passwordPlaceholder"]" />
+                <button class="btn btn-secondary" type="button" @onclick="() => _rotatePwVisible = !_rotatePwVisible">
+                    <Icon Name="@(_rotatePwVisible ? "eye-off" : "eye")" Size="16" />
+                </button>
+                <button class="btn btn-secondary" type="button" @onclick="() => _rotateNew = SafeGenerate()">@L["vault.generate"]</button>
+            </div>
+        </div>
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="() => _rotateTarget = null">@L["common.cancel"]</button>
+        <button class="btn btn-primary" @onclick="ConfirmRotate">@L["vault.rotate.confirm"]</button>
     </FooterContent>
 </SheetModal>
 
 @* ───── TOTP viewer ───── *@
-<SheetModal Visible="@(_totpEntry is not null)" Centered="true" OnClose="CloseTotp">
+<SheetModal Visible="@(_totpSecret is not null)" Centered="true" OnClose="CloseTotp">
     <ChildContent>
-        @if (_totpEntry is not null)
+        @if (_totpSecret is not null)
         {
             <div style="text-align:center;">
                 <div style="font-size:12px; color:var(--n-400); margin-bottom:4px;">@L["vault.totp.codeFor"]</div>
-                <div style="font-size:16px; font-weight:600; margin-bottom:18px;">@_totpEntry.Site</div>
+                <div style="font-size:16px; font-weight:600; margin-bottom:18px;">@_totpLabel</div>
                 <div class="totp-code">@_totpCode</div>
                 <div class="totp-timer">@L.Format("vault.totp.remaining", _totpRemaining)</div>
-                <div class="totp-bar">
-                    <div class="totp-bar-fill"
-                         @key="_totpCode"
-                         style="@TotpBarStyle"></div>
-                </div>
             </div>
         }
     </ChildContent>
@@ -195,55 +257,63 @@ else
 </SheetModal>
 
 <style>
-    .totp-bar-fill {
-        animation-name: totpShrink;
-        animation-timing-function: linear;
-        animation-iteration-count: 1;
-        animation-fill-mode: forwards;
-    }
+    .cred { margin-top: 10px; }
+    .cred-grouped { border-left: 2px solid var(--a-900); border-radius: 0; padding-left: 10px; }
+    .cred-label { font-size: 12px; font-weight: 600; color: var(--a-200); margin-bottom: 4px; }
+    .cred-identity { display: flex; align-items: center; gap: 7px; color: var(--n-300); font-size: 13px; margin-top: 5px; }
+    .secret-bar { display: flex; align-items: center; gap: 8px; background: var(--color-bg); border: 1px solid var(--color-divider);
+                  border-radius: var(--radius-md); padding: 7px 10px; margin-top: 7px; }
+    .secret-label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--n-500); flex: none; }
+    .secret-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--color-text); }
+    .rot-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+    .rot-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+    .rot-status.warn { color: var(--warning); }
+    .rot-status.danger { color: var(--danger); }
+    .rot-status.muted { color: var(--n-500); }
+    .btn-mini { font-size: 12px; color: var(--a-400); background: transparent; border: 1px solid var(--a-900);
+                border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+    .badge-expiry { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; border-radius: 6px; padding: 2px 7px; flex: none; }
+    .badge-expiry.warn { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
+    .badge-expiry.danger { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+    .hint { color: var(--n-500); font-size: 12px; display: block; margin-top: 4px; }
 </style>
 
 @code {
-    private List<PasswordEntry> _entries = new();
+    private List<ServiceEntry> _entries = new();
     private string _search = string.Empty;
-    private HashSet<Guid> _revealed = new();
+    private readonly HashSet<Guid> _revealed = new();
 
+    // Add / edit form (simple single credential)
     private bool _showAdd;
-    private PasswordEntry? _editEntry;
-    private string _formSite = string.Empty;
-    private string _formUsername = string.Empty;
-    private string _formEmail = string.Empty;
-    private string _formPassword = string.Empty;
-    private bool _formPwVisible;
-    private string _formTags = string.Empty;
-    private string _formTotp = string.Empty;
-    private string _formError = string.Empty;
+    private ServiceEntry? _editEntry;
+    private string _fSite = string.Empty;
+    private CredentialFieldType _fIdentityType = CredentialFieldType.Email;
+    private string _fIdentity = string.Empty;
+    private string _fPassword = string.Empty;
+    private bool _fPwVisible;
+    private bool _fRotate;
+    private int _fRotateEvery = 90;
+    private RotationUnit _fRotateUnit = RotationUnit.Days;
+    private string _f2fa = string.Empty;
+    private string _fTags = string.Empty;
+    private string _fError = string.Empty;
+    private string _fSnapshot = string.Empty;
 
-    // Snapshot of the form when the modal opened; the sheet asks to confirm on
-    // accidental dismiss only when the current values differ from it (dirty).
-    private string _formSnapshot = string.Empty;
-    private string CurrentFormSnapshot() =>
-        string.Join("", _formSite, _formUsername, _formEmail, _formPassword, _formTags, _formTotp);
-    private bool FormDirty => _formSnapshot != CurrentFormSnapshot();
+    private string CurrentSnapshot() =>
+        string.Join("", _fSite, _fIdentityType, _fIdentity, _fPassword, _fRotate, _fRotateEvery, _fRotateUnit, _f2fa, _fTags);
+    private bool FormDirty => _fSnapshot != CurrentSnapshot();
 
-    private PasswordEntry? _totpEntry;
+    // Rotate modal
+    private (Guid EntryId, Guid CredId, Guid FieldId)? _rotateTarget;
+    private string _rotateNew = string.Empty;
+    private bool _rotatePwVisible;
+
+    // TOTP viewer
+    private string? _totpSecret;
+    private string _totpLabel = string.Empty;
     private string _totpCode = string.Empty;
     private int _totpRemaining;
-    private double _totpInitialFraction;   // start of the css animation (0..1)
     private System.Threading.Timer? _totpTimer;
-    private string? _totpSecretCache;
-
-    private string TotpBarStyle =>
-        $"animation-duration: 30s; animation-delay: -{(30 * (1 - _totpInitialFraction)).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}s;";
-
-    private List<PasswordEntry> FilteredEntries => string.IsNullOrWhiteSpace(_search)
-        ? _entries
-        : _entries.Where(e =>
-            e.Site.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
-            e.Username.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
-            e.Email.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
-            e.Tags.Any(t => t.Contains(_search, StringComparison.OrdinalIgnoreCase))
-        ).ToList();
 
     protected override async Task OnInitializedAsync()
     {
@@ -254,42 +324,219 @@ else
     private async Task LoadEntries()
     {
         if (AppState.Service is null) return;
-        _entries = await AppState.Service.GetEntriesAsync<PasswordEntry>();
+        _entries = await AppState.Service.GetEntriesAsync<ServiceEntry>();
     }
 
-    private void OpenAddModal()
+    // ─── Display projection ──────────────────────────────────────────────
+
+    private record DisplayCard(ServiceEntry Entry, IReadOnlyList<Credential> Credentials);
+
+    private IEnumerable<DisplayCard> Cards()
     {
-        _formSite = _formUsername = _formEmail = _formPassword = _formTags = _formTotp = _formError = string.Empty;
-        _formPwVisible = false;
-        _formSnapshot = CurrentFormSnapshot();
-        _showAdd = true;
+        foreach (var e in _entries.Where(Match))
+        {
+            if (e.Grouped || e.Credentials.Count <= 1)
+                yield return new DisplayCard(e, e.Credentials);
+            else
+                foreach (var c in e.Credentials)
+                    yield return new DisplayCard(e, new[] { c });
+        }
     }
 
-    private void ToggleReveal(Guid id)
+    private bool Match(ServiceEntry e)
     {
-        if (!_revealed.Remove(id))
-            _revealed.Add(id);
+        if (string.IsNullOrWhiteSpace(_search)) return true;
+        var q = _search;
+        var ic = StringComparison.OrdinalIgnoreCase;
+        if (e.Site.Contains(q, ic) || e.Tags.Any(t => t.Contains(q, ic))) return true;
+        foreach (var c in e.Credentials)
+        {
+            if (!string.IsNullOrEmpty(c.Label) && c.Label.Contains(q, ic)) return true;
+            if (c.Fields.Any(f => !f.IsSecret && f.PlainValue.Contains(q, ic))) return true;
+        }
+        return false;
     }
 
-    private async Task CopyPassword(PasswordEntry entry)
+    private static ExpiryStatus WorstStatus(IEnumerable<Credential> creds)
     {
-        var pw = AppState.Service!.DecryptPassword(entry);
-        await SecureClipboard.CopySensitiveAsync(pw);
+        var now = DateTime.UtcNow;
+        var worst = ExpiryStatus.None;
+        foreach (var f in creds.SelectMany(c => c.Fields))
+        {
+            var s = f.GetExpiryStatus(now);
+            if (s == ExpiryStatus.Expired) return ExpiryStatus.Expired;
+            if (s == ExpiryStatus.DueSoon) worst = ExpiryStatus.DueSoon;
+        }
+        return worst;
+    }
+
+    private static string FieldIcon(CredentialFieldType t) => t switch
+    {
+        CredentialFieldType.Password => "lock",
+        CredentialFieldType.Pin => "key",
+        CredentialFieldType.TwoFactor => "shield-check",
+        CredentialFieldType.Text => "file",
+        _ => "user",
+    };
+
+    private string FieldName(CredentialField f) => !string.IsNullOrEmpty(f.Label)
+        ? f.Label
+        : f.Type switch
+        {
+            CredentialFieldType.Password => L["vault.field.password"],
+            CredentialFieldType.Pin => "PIN",
+            _ => f.Type.ToString(),
+        };
+
+    // ─── Reveal / copy ───────────────────────────────────────────────────
+
+    private void ToggleReveal(Guid fieldId) { if (!_revealed.Remove(fieldId)) _revealed.Add(fieldId); }
+
+    private async Task CopySecret(CredentialField f)
+    {
+        await SecureClipboard.CopySensitiveAsync(AppState.Service!.DecryptSecret(f));
         Toast.Success(L["toast.passwordCopied"]);
     }
 
-    private void EditEntry(PasswordEntry entry)
+    // ─── Add / edit ──────────────────────────────────────────────────────
+
+    private void OpenAddModal()
+    {
+        _fSite = _fIdentity = _fPassword = _f2fa = _fTags = _fError = string.Empty;
+        _fIdentityType = CredentialFieldType.Email;
+        _fPwVisible = _fRotate = false;
+        _fRotateEvery = 90;
+        _fRotateUnit = RotationUnit.Days;
+        _fSnapshot = CurrentSnapshot();
+        _showAdd = true;
+    }
+
+    private void EditEntry(ServiceEntry entry)
     {
         _editEntry = entry;
-        _formSite = entry.Site;
-        _formUsername = entry.Username;
-        _formEmail = entry.Email;
-        _formPassword = AppState.Service!.DecryptPassword(entry);
-        _formTags = string.Join(", ", entry.Tags);
-        _formTotp = AppState.Service.GetDecryptedTotpSecret(entry) ?? string.Empty;
-        _formError = string.Empty;
-        _formPwVisible = false;
-        _formSnapshot = CurrentFormSnapshot();
+        _fSite = entry.Site;
+        _fTags = string.Join(", ", entry.Tags);
+        _fError = string.Empty;
+        _fPwVisible = false;
+
+        var cred = entry.Credentials.FirstOrDefault() ?? new Credential();
+        var id = cred.Fields.FirstOrDefault(f => !f.IsSecret &&
+            f.Type is CredentialFieldType.Email or CredentialFieldType.Username);
+        _fIdentityType = id?.Type ?? CredentialFieldType.Email;
+        _fIdentity = id?.PlainValue ?? string.Empty;
+
+        var pw = cred.Fields.FirstOrDefault(f => f.Type == CredentialFieldType.Password);
+        _fPassword = pw is null ? string.Empty : AppState.Service!.DecryptSecret(pw);
+        _fRotate = pw?.Rotation is not null;
+        _fRotateEvery = pw?.Rotation?.Interval ?? 90;
+        _fRotateUnit = pw?.Rotation?.Unit ?? RotationUnit.Days;
+
+        var tfa = cred.Fields.FirstOrDefault(f => f.Type == CredentialFieldType.TwoFactor);
+        _f2fa = tfa is null ? string.Empty : AppState.Service!.DecryptSecret(tfa);
+
+        _fSnapshot = CurrentSnapshot();
+    }
+
+    private void GeneratePassword()
+    {
+        _fPassword = SafeGenerate();
+        if (string.IsNullOrEmpty(_fPassword)) Toast.Warning(L["vault.generateConflict"]);
+    }
+
+    private string SafeGenerate()
+    {
+        try { return PasswordGen.Generate(GenPrefs.Options); }
+        catch (PasswordManager.Core.Exceptions.GeneratorConstraintException) { return string.Empty; }
+    }
+
+    private RotationPolicy? BuildRotation() =>
+        _fRotate ? new RotationPolicy { Interval = Math.Max(1, _fRotateEvery), Unit = _fRotateUnit, LastChanged = DateTime.UtcNow } : null;
+
+    private async Task SaveEntry()
+    {
+        _fError = string.Empty;
+        if (string.IsNullOrWhiteSpace(_fSite)) { _fError = L["vault.err.siteRequired"]; return; }
+        if (string.IsNullOrWhiteSpace(_fPassword)) { _fError = L["vault.err.passwordRequired"]; return; }
+
+        var svc = AppState.Service!;
+        var tags = _fTags.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
+
+        try
+        {
+            if (_editEntry is not null)
+            {
+                await svc.UpdateEntryAsync(_editEntry.Id, e =>
+                {
+                    var se = (ServiceEntry)e;
+                    se.Site = _fSite;
+                    se.Tags = tags;
+                    var cred = se.Credentials.FirstOrDefault();
+                    if (cred is null) { cred = new Credential(); se.Credentials.Add(cred); }
+                    ApplyFormToCredential(svc, cred);
+                    cred.LastUpdateTime = DateTime.UtcNow;
+                });
+            }
+            else
+            {
+                var cred = new Credential();
+                ApplyFormToCredential(svc, cred);
+                await svc.AddServiceEntryAsync(new ServiceEntry { Site = _fSite, Tags = tags, Credentials = { cred } });
+            }
+
+            var wasEdit = _editEntry is not null;
+            CloseModal();
+            await LoadEntries();
+            Toast.Success(wasEdit ? L["toast.entryUpdated"] : L["toast.entryAdded"]);
+        }
+        catch (Exception ex)
+        {
+            _fError = $"{L["toast.saveFailed"]}: {UserError.Describe(L, ex)}";
+        }
+    }
+
+    /// <summary>Writes the simple form back onto a credential, preserving field ids and rotation history.</summary>
+    private void ApplyFormToCredential(PasswordManager.Core.Services.PasswordManagerService svc, Credential cred)
+    {
+        // Identity (email/username)
+        var id = cred.Fields.FirstOrDefault(f => !f.IsSecret && f.Type is CredentialFieldType.Email or CredentialFieldType.Username);
+        if (string.IsNullOrWhiteSpace(_fIdentity))
+        {
+            if (id is not null) cred.Fields.Remove(id);
+        }
+        else
+        {
+            if (id is null) { id = new CredentialField(); cred.Fields.Add(id); }
+            id.Type = _fIdentityType;
+            id.IsSecret = false;
+            id.PlainValue = _fIdentity.Trim();
+        }
+
+        // Password (keeps rotation history via SetSecret when the value changed)
+        var pw = cred.Fields.FirstOrDefault(f => f.Type == CredentialFieldType.Password);
+        if (pw is null) { pw = new CredentialField { Type = CredentialFieldType.Password, IsSecret = true }; cred.Fields.Add(pw); }
+        pw.Rotation = BuildRotation();
+        var changed = pw.SecretValue is null || svc.DecryptSecret(pw) != _fPassword;
+        if (changed) pw.SetSecret(svc.EncryptValue(_fPassword));
+
+        // 2FA
+        var tfa = cred.Fields.FirstOrDefault(f => f.Type == CredentialFieldType.TwoFactor);
+        if (string.IsNullOrWhiteSpace(_f2fa))
+        {
+            if (tfa is not null) cred.Fields.Remove(tfa);
+        }
+        else
+        {
+            if (tfa is null) { tfa = new CredentialField { Type = CredentialFieldType.TwoFactor, IsSecret = true }; cred.Fields.Add(tfa); }
+            tfa.SecretValue = svc.EncryptValue(_f2fa.Trim());
+        }
+    }
+
+    private void CloseModal()
+    {
+        _showAdd = false;
+        _editEntry = null;
+        _fSite = _fIdentity = _fPassword = _f2fa = _fTags = _fError = string.Empty;
+        _fPwVisible = _fRotate = false;
     }
 
     private async Task DeleteEntry(Guid id)
@@ -306,125 +553,57 @@ else
         }
     }
 
-    private void GeneratePassword()
+    // ─── Rotate ──────────────────────────────────────────────────────────
+
+    private void OpenRotate(Guid entryId, Guid credId, Guid fieldId)
     {
-        try
-        {
-            _formPassword = PasswordGen.Generate(GenPrefs.Options);
-        }
-        catch (PasswordManager.Core.Exceptions.GeneratorConstraintException)
-        {
-            Toast.Warning(L["vault.generateConflict"]);
-        }
-        catch (Exception ex)
-        {
-            Toast.Error($"{L["gen.error"]}: {UserError.Describe(L, ex)}");
-        }
+        _rotateTarget = (entryId, credId, fieldId);
+        _rotateNew = string.Empty;
+        _rotatePwVisible = false;
     }
 
-    private async Task SaveEntry()
+    private async Task ConfirmRotate()
     {
-        _formError = string.Empty;
-
-        if (string.IsNullOrWhiteSpace(_formSite))
-        { _formError = L["vault.err.siteRequired"]; return; }
-        if (string.IsNullOrWhiteSpace(_formPassword))
-        { _formError = L["vault.err.passwordRequired"]; return; }
-
-        var tags = _formTags.Split(',', StringSplitOptions.RemoveEmptyEntries)
-            .Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
-
+        if (_rotateTarget is null || string.IsNullOrWhiteSpace(_rotateNew)) return;
+        var t = _rotateTarget.Value;
         try
         {
-            if (_editEntry is not null)
-            {
-                await AppState.Service!.UpdateEntryAsync(_editEntry.Id, e =>
-                {
-                    var pe = (PasswordEntry)e;
-                    pe.Site = _formSite;
-                    pe.Username = _formUsername;
-                    pe.Email = _formEmail;
-                    pe.Tags = tags;
-                });
-
-                var currentPw = AppState.Service.DecryptPassword(_editEntry);
-                if (currentPw != _formPassword)
-                    await AppState.Service.ChangePasswordAsync(_editEntry.Id, _formPassword);
-
-                if (!string.IsNullOrWhiteSpace(_formTotp))
-                    await AppState.Service.SetTotpSecretAsync(_editEntry.Id, _formTotp.Trim());
-                else
-                    await AppState.Service.RemoveTotpSecretAsync(_editEntry.Id);
-            }
-            else
-            {
-                var entry = new PasswordEntry
-                {
-                    Site = _formSite,
-                    Username = _formUsername,
-                    Email = _formEmail,
-                    Tags = tags,
-                };
-
-                await AppState.Service!.AddPasswordEntryAsync(entry, _formPassword);
-
-                if (!string.IsNullOrWhiteSpace(_formTotp))
-                    await AppState.Service.SetTotpSecretAsync(entry.Id, _formTotp.Trim());
-            }
-
-            var wasEdit = _editEntry is not null;
-            CloseModal();
+            await AppState.Service!.RotateFieldSecretAsync(t.EntryId, t.CredId, t.FieldId, _rotateNew);
+            _rotateTarget = null;
             await LoadEntries();
-            Toast.Success(wasEdit ? L["toast.entryUpdated"] : L["toast.entryAdded"]);
+            Toast.Success(L["vault.rotate.done"]);
         }
         catch (Exception ex)
         {
-            _formError = $"{L["toast.saveFailed"]}: {UserError.Describe(L, ex)}";
+            Toast.Error($"{L["toast.saveFailed"]}: {UserError.Describe(L, ex)}");
         }
     }
 
-    private void CloseModal()
+    // ─── TOTP ────────────────────────────────────────────────────────────
+
+    private void ShowTotp(string label, CredentialField f)
     {
-        _showAdd = false;
-        _editEntry = null;
-        _formSite = _formUsername = _formEmail = _formPassword = _formTags = _formTotp = _formError = string.Empty;
-        _formPwVisible = false;
-    }
+        _totpLabel = label;
+        _totpSecret = AppState.Service!.DecryptSecret(f);
+        if (string.IsNullOrEmpty(_totpSecret)) { _totpSecret = null; return; }
 
-    // ─── TOTP ────────────────────────────────────────────────────────
-
-    private void ShowTotp(PasswordEntry entry)
-    {
-        _totpEntry = entry;
-        _totpSecretCache = AppState.Service!.GetDecryptedTotpSecret(entry);
-        if (_totpSecretCache is null) { _totpEntry = null; return; }
-
-        RefreshTotpState(initial: true);
-
+        RefreshTotp();
         _totpTimer?.Dispose();
-        _totpTimer = new System.Threading.Timer(_ =>
-        {
-            RefreshTotpState();
-            InvokeAsync(StateHasChanged);
-        }, null, 1000, 1000);
+        _totpTimer = new System.Threading.Timer(_ => { RefreshTotp(); InvokeAsync(StateHasChanged); }, null, 1000, 1000);
     }
 
-    private void RefreshTotpState(bool initial = false)
+    private void RefreshTotp()
     {
-        if (_totpSecretCache is null) return;
-        var oldCode = _totpCode;
+        if (_totpSecret is null) return;
         _totpRemaining = TotpService.GetRemainingSeconds();
-        _totpCode = TotpService.GenerateCode(_totpSecretCache);
-        if (initial || oldCode != _totpCode)
-            _totpInitialFraction = _totpRemaining / 30.0;
+        _totpCode = TotpService.GenerateCode(_totpSecret);
     }
 
     private void CloseTotp()
     {
-        _totpEntry = null;
+        _totpSecret = null;
         _totpTimer?.Dispose();
         _totpTimer = null;
-        _totpSecretCache = null;
     }
 
     private async Task CopyTotp()

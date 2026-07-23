@@ -88,7 +88,9 @@
         {
             var svc = AppState.Service;
             if (svc is null) return;
-            _passwords = (await svc.GetEntriesAsync<PasswordEntry>()).Count;
+            // Counts both the new flexible entries and any legacy PasswordEntry still around.
+            _passwords = (await svc.GetEntriesAsync<ServiceEntry>()).Count
+                       + (await svc.GetEntriesAsync<PasswordEntry>()).Count;
             _notes = (await svc.GetEntriesAsync<SecureNote>()).Count;
             _cards = (await svc.GetEntriesAsync<CardEntry>()).Count;
             _countsReady = true;
