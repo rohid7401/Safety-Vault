@@ -42,5 +42,7 @@ public static class Icons
         ["user"] = """<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/>""",
         ["users"] = """<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.5 3-5.5 6.5-5.5s6.5 2 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18.4 14.9c1.9.8 3.1 2.4 3.1 5.1"/>""",
         ["globe"] = """<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/>""",
+        ["mail"] = """<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6l9-6"/>""",
+        ["phone"] = """<path d="M6 3h3l2 5l-2.5 1.5a12 12 0 0 0 5 5L16 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 4 5a2 2 0 0 1 2-2z"/>""",
     };
 }
