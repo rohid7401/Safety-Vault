@@ -17,7 +17,7 @@ namespace PasswordManager.UI.Services
         public KeyServerService(HttpClient http)
         {
             _http = http;
-            _http.DefaultRequestHeaders.UserAgent.ParseAdd("SecureVault/1.0");
+            _http.DefaultRequestHeaders.UserAgent.ParseAdd("SafetyVault/1.0");
         }
 
         /// <summary>

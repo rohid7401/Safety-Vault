@@ -13,7 +13,7 @@
             <div class="unlock-hero-icon">
                 <Icon Name="lock-keyhole" Size="30" StrokeWidth="1.8" />
             </div>
-            <h1>SecureVault</h1>
+            <h1>SafetyVault</h1>
             <p class="subtitle">@L["home.subtitle"]</p>
         </div>
 
@@ -275,7 +275,7 @@
             var account = await AuthService.RegisterAsync(_regUsername, _regEmail, _regPassphrase);
             if (await UnlockVaultAsync(account, _regPassphrase))
             {
-                Toast.Success("Welcome to SecureVault!");
+                Toast.Success("Welcome to SafetyVault!");
                 Nav.NavigateTo("dashboard");
             }
         }

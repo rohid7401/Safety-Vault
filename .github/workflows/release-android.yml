@@ -1,0 +1,80 @@
+name: Release Android (Play internal testing)
+
+# Publishes to Google Play's "internal testing" track. Only runs when a
+# version tag is pushed (e.g. `git tag v1.0.1 && git push origin v1.0.1`) —
+# ordinary commits to KEK/master only build; they never publish. The tag's
+# own name becomes the app's version name.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Cache NuGet + workload packs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.nuget/packages
+            ~/.dotnet/sdk-manifests
+            ~/.dotnet/packs
+          key: ${{ runner.os }}-dotnet-android-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-dotnet-android-
+
+      - name: Install MAUI Android workload
+        run: dotnet workload install maui-android
+
+      - name: Run tests
+        run: dotnet test tests/PasswordManager.Tests/PasswordManager.Tests.csproj -c Release --nologo
+
+      - name: Compute version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "name=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Decode keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+      - name: Publish signed .aab
+        run: >
+          dotnet publish src/PasswordManager.App/PasswordManager.App.csproj
+          -f net8.0-android -c Release
+          -p:AndroidPackageFormat=aab
+          -p:ApplicationDisplayVersion=${{ steps.version.outputs.name }}
+          -p:ApplicationVersion=${{ github.run_number }}
+          -p:AndroidSigningKeyStore="$RUNNER_TEMP/release.keystore"
+          -p:AndroidSigningKeyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          -p:AndroidSigningKeyPass=${{ secrets.ANDROID_KEY_PASSWORD }}
+          -p:AndroidSigningStorePass=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          -o "$RUNNER_TEMP/publish"
+
+      - name: Remove keystore from disk
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
+
+      - name: Upload to Play internal testing
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.safetyvault.app
+          releaseFiles: ${{ runner.temp }}/publish/*-Signed.aab
+          track: internal
+          status: completed

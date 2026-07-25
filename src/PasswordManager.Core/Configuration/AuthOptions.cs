@@ -1,7 +1,7 @@
 namespace PasswordManager.Core.Configuration
 {
     /// <summary>
-    /// Where SecureVault stores user accounts and their auto-created vaults.
+    /// Where SafetyVault stores user accounts and their auto-created vaults.
     /// Set during DI from the host (e.g. MAUI passes FileSystem.AppDataDirectory).
     /// </summary>
     public class AuthOptions

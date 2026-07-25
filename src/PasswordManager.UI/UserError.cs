@@ -16,7 +16,7 @@ namespace PasswordManager.UI
     {
         public static string Describe(Loc l, Exception ex)
         {
-            Debug.WriteLine($"[SecureVault] {ex.GetType().Name}: {ex}");
+            Debug.WriteLine($"[SafetyVault] {ex.GetType().Name}: {ex}");
             return IsSafeToShow(ex) ? ex.Message : l["error.unexpected"];
         }
 

@@ -163,7 +163,7 @@ else
     };
 
     private string CurrentRoute => Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].TrimEnd('/');
-    private string Title => TitleKeys.TryGetValue(CurrentRoute, out var key) ? L[key] : "SecureVault";
+    private string Title => TitleKeys.TryGetValue(CurrentRoute, out var key) ? L[key] : "SafetyVault";
     private bool ShowBack => CurrentRoute is not ("" or "dashboard");
 
     private string Initials

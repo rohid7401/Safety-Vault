@@ -37,7 +37,7 @@ namespace PasswordManager.Infrastructure.Encryption
             var keyRingGenerator = new PgpKeyRingGenerator(
                 PgpSignature.DefaultCertification,
                 pgpKeyPair,
-                "vault@securevault.local",
+                "vault@safetyvault.local",
                 SymmetricKeyAlgorithmTag.Aes256,
                 HashAlgorithmTag.Sha256,
                 passphrase.ToCharArray(),

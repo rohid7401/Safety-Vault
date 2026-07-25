@@ -1,4 +1,4 @@
-# SecureVault
+# SafetyVault
 
 Gestor de contraseñas local-first con cifrado PGP, construido en .NET MAUI Blazor
 Hybrid. Una sola master passphrase da acceso a contraseñas, notas seguras, tarjetas,
@@ -134,7 +134,7 @@ Si el `JAVA_HOME` global apunta a una versión distinta de 17, pasar explícitam
 
 El `.apk` firmado para instalar manualmente (`adb install ...`) queda en:
 ```
-src/PasswordManager.App/bin/Debug/net8.0-android/com.securevault.app-Signed.apk
+src/PasswordManager.App/bin/Debug/net8.0-android/com.safetyvault.app-Signed.apk
 ```
 
 ## macOS (Mac Catalyst)
