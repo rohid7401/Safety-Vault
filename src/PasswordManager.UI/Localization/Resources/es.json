@@ -32,7 +32,6 @@
   "nav.audit": "Auditoría de la bóveda",
   "nav.importExport": "Importar / exportar",
   "nav.keys": "Gestión de claves",
-  "nav.encrypt": "Cifrar",
   "nav.encryptFiles": "Cifrar archivos",
   "nav.encryptDirs": "Cifrar carpetas",
   "nav.tutorial": "Cómo funciona PGP",
@@ -44,7 +43,6 @@
   "title.audit": "Auditoría",
   "title.importExport": "Importar / exportar",
   "title.keys": "Gestión de claves",
-  "title.encrypt": "Cifrar",
   "title.encryptFiles": "Cifrar archivos",
   "title.encryptDirs": "Cifrar carpetas",
   "title.tutorial": "Cómo funciona PGP",
@@ -92,7 +90,6 @@
   "whatsThis.audit": "Un chequeo rápido de salud. Marca las contraseñas débiles, repetidas o antiguas, para que sepas exactamente qué mejorar.",
   "whatsThis.import-export": "Trae contraseñas desde otra app, o guarda una copia hacia fuera. Tus datos siempre son tuyos para moverlos.",
   "whatsThis.keys": "Tienes un par de claves: una que compartes para que te envíen archivos bloqueados, y una que guardas en secreto para abrirlos. Aquí cuidas ambas.",
-  "whatsThis.encrypt": "Convierte cualquier archivo en una versión bloqueada que solo la persona correcta puede abrir — ideal para compartir algo privado.",
   "whatsThis.encrypt-file": "Convierte cualquier archivo en una versión bloqueada que solo la persona correcta puede abrir — ideal para compartir algo privado.",
   "whatsThis.encrypt-directory": "La misma idea que bloquear un archivo, pero para una carpeta entera — todo se empaqueta y bloquea en un único archivo protegido.",
   "whatsThis.tutorial": "Un recorrido corto y sin tecnicismos de cómo funciona realmente el bloqueo y desbloqueo.",
@@ -270,8 +267,6 @@
   "enc.err.recipientNotFound": "No se encontró la clave pública del destinatario.",
   "enc.err.passphraseRequired": "Se necesita la frase maestra.",
 
-  "encryptHub.filesDesc": "Bloquea o desbloquea archivos individuales con PGP. Funciona en todas las plataformas, incluidos los móviles.",
-  "encryptHub.dirsDesc": "Comprime y bloquea una carpeta entera en un solo archivo. Solo escritorio — los móviles no dan acceso completo a carpetas.",
 
   "encFile.fileToLock": "Archivo a bloquear",
   "encFile.lockedToOpen": "Archivo bloqueado a abrir",

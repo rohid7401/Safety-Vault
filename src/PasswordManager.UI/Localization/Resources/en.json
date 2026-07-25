@@ -32,7 +32,6 @@
   "nav.audit": "Vault audit",
   "nav.importExport": "Import / export",
   "nav.keys": "Key management",
-  "nav.encrypt": "Encrypt",
   "nav.encryptFiles": "Encrypt files",
   "nav.encryptDirs": "Encrypt directories",
   "nav.tutorial": "How PGP works",
@@ -44,7 +43,6 @@
   "title.audit": "Vault audit",
   "title.importExport": "Import / export",
   "title.keys": "Key management",
-  "title.encrypt": "Encrypt",
   "title.encryptFiles": "Encrypt files",
   "title.encryptDirs": "Encrypt directories",
   "title.tutorial": "How PGP works",
@@ -92,7 +90,6 @@
   "whatsThis.audit": "A quick health check. It flags passwords that are weak, reused, or old, so you know exactly what to improve.",
   "whatsThis.import-export": "Bring passwords in from another app, or save a copy out. Your data is always yours to move.",
   "whatsThis.keys": "You have a pair of keys: one you share so people can send you locked files, and one you keep secret to open them. This is where you look after both.",
-  "whatsThis.encrypt": "Turn any file into a locked version only the right person can open — perfect for sharing something private.",
   "whatsThis.encrypt-file": "Turn any file into a locked version only the right person can open — perfect for sharing something private.",
   "whatsThis.encrypt-directory": "Same idea as locking a file, but for a whole folder — everything is bundled and locked into one protected file.",
   "whatsThis.tutorial": "A short, jargon-free walkthrough of how the locking and unlocking actually works.",
@@ -270,8 +267,6 @@
   "enc.err.recipientNotFound": "Recipient public key not found.",
   "enc.err.passphraseRequired": "Passphrase is required.",
 
-  "encryptHub.filesDesc": "Lock or unlock individual files with PGP. Works on every platform, phones included.",
-  "encryptHub.dirsDesc": "Zip and lock a whole folder into a single file. Desktop only — phones don't grant apps full folder access.",
 
   "encFile.fileToLock": "File to lock",
   "encFile.lockedToOpen": "Locked file to open",

@@ -103,7 +103,7 @@ else
                                     <Icon Name="refresh" Size="12" />
                                     @(st == ExpiryStatus.Expired ? L.Format("vault.expiry.overdue", -days) : L.Format("vault.expiry.inDays", days))
                                 </span>
-                                <button class="btn-mini" type="button" @onclick="() => OpenRotate(card.Entry.Id, cred.Id, f.Id)">
+                                <button class="btn-mini" type="button" @onclick="() => OpenRotate(card.Entry.Id, cred.Id, f.Id, f.Type)">
                                     @L["vault.rotate.now"]
                                 </button>
                             </div>
@@ -186,7 +186,11 @@ else
                         </div>
                         <div class="secret-bar @(f.IsSecret ? "is-secret" : "")">
                             <input type="@(f.IsSecret && !f.Reveal ? "password" : "text")" class="input"
-                                   style="@(f.IsSecret ? "font-family:var(--font-mono);" : "")" @bind="f.Value"
+                                   style="@(f.IsSecret ? "font-family:var(--font-mono);" : "")"
+                                   inputmode="@InputMode(f.Type)"
+                                   autocomplete="@(f.Type == CredentialFieldType.Email ? "email" : "off")"
+                                   maxlength="@MaxLength(f.Type)"
+                                   value="@f.Value" @oninput="e => OnFieldInput(f, e)"
                                    placeholder="@TypeName(f.Type)" />
                             @if (f.IsSecret)
                             {
@@ -195,7 +199,7 @@ else
                                 </button>
                             }
                         </div>
-                        @if (f.Type is CredentialFieldType.Password or CredentialFieldType.Pin)
+                        @if (f.Type is CredentialFieldType.Password)
                         {
                             <button class="btn-icon" type="button" aria-label="@L["vault.generate"]" title="@L["vault.generate"]"
                                     @onclick="() => f.Value = SafeGenerate()">
@@ -264,11 +268,15 @@ else
             <label>@L["vault.rotate.newPassword"]</label>
             <div class="input-group">
                 <input type="@(_rotatePwVisible ? "text" : "password")" class="input" style="font-family:var(--font-mono);"
-                       @bind="_rotateNew" placeholder="@L["vault.field.passwordPlaceholder"]" />
+                       inputmode="@InputMode(_rotateType)" maxlength="@MaxLength(_rotateType)"
+                       value="@_rotateNew" @oninput="OnRotateInput" placeholder="@L["vault.field.passwordPlaceholder"]" />
                 <button class="btn btn-secondary" type="button" @onclick="() => _rotatePwVisible = !_rotatePwVisible">
                     <Icon Name="@(_rotatePwVisible ? "eye-off" : "eye")" Size="16" />
                 </button>
-                <button class="btn btn-secondary" type="button" @onclick="() => _rotateNew = SafeGenerate()">@L["vault.generate"]</button>
+                @if (_rotateType != CredentialFieldType.Pin)
+                {
+                    <button class="btn btn-secondary" type="button" @onclick="() => _rotateNew = SafeGenerate()">@L["vault.generate"]</button>
+                }
             </div>
         </div>
     </ChildContent>
@@ -369,6 +377,34 @@ else
     private void ToggleTypeMenu(FieldDraft f) => _typeMenu = _typeMenu == f ? null : f;
     private void SelectType(FieldDraft f, CredentialFieldType t) { f.Type = t; _typeMenu = null; }
 
+    private static string InputMode(CredentialFieldType t) => t switch
+    {
+        CredentialFieldType.Email => "email",
+        CredentialFieldType.Pin => "numeric",
+        CredentialFieldType.Phone => "tel",
+        _ => "text",
+    };
+
+    /// <summary>Generous caps to stop accidental huge pastes; not a security boundary.</summary>
+    private static int MaxLength(CredentialFieldType t) => t switch
+    {
+        CredentialFieldType.Email => 254, // RFC 5321
+        CredentialFieldType.Username => 100,
+        CredentialFieldType.Password => 128,
+        CredentialFieldType.Pin => 12,
+        CredentialFieldType.Phone => 20,
+        CredentialFieldType.TwoFactor => 128,
+        _ => 200,
+    };
+
+    private void OnFieldInput(FieldDraft f, ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? string.Empty;
+        f.Value = f.Type == CredentialFieldType.Pin
+            ? new string(raw.Where(char.IsDigit).ToArray())
+            : raw;
+    }
+
     private static readonly CredentialFieldType[] FieldTypes =
     {
         CredentialFieldType.Email, CredentialFieldType.Username, CredentialFieldType.Password,
@@ -422,8 +458,17 @@ else
 
     // Rotate modal
     private (Guid EntryId, Guid CredId, Guid FieldId)? _rotateTarget;
+    private CredentialFieldType _rotateType;
     private string _rotateNew = string.Empty;
     private bool _rotatePwVisible;
+
+    private void OnRotateInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? string.Empty;
+        _rotateNew = _rotateType == CredentialFieldType.Pin
+            ? new string(raw.Where(char.IsDigit).ToArray())
+            : raw;
+    }
 
     // TOTP viewer
     private string? _totpSecret;
@@ -686,9 +731,10 @@ else
 
     // ─── Rotate ──────────────────────────────────────────────────────────
 
-    private void OpenRotate(Guid entryId, Guid credId, Guid fieldId)
+    private void OpenRotate(Guid entryId, Guid credId, Guid fieldId, CredentialFieldType type)
     {
         _rotateTarget = (entryId, credId, fieldId);
+        _rotateType = type;
         _rotateNew = string.Empty;
         _rotatePwVisible = false;
     }
