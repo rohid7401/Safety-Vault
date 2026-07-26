@@ -547,7 +547,7 @@
         "contentHash": "vWd/mmQQo2vXp5aDjwi/bj9DO4MABNMZtYpRhzYBFDzvDln68eZBgW+rYMT81egXmNcnt87+6+GbpZ8GW2VJ6w=="
       }
     },
-    "net9.0-android35.0": {
+    "net9.0-android36.0": {
       "CommunityToolkit.Maui": {
         "type": "Direct",
         "requested": "[7.0.1, )",
@@ -1936,8 +1936,8 @@
         }
       }
     },
-    "net9.0-android35.0/android-arm64": {},
-    "net9.0-android35.0/android-x64": {},
-    "net9.0-android35.0/win10-x64": {}
+    "net9.0-android36.0/android-arm64": {},
+    "net9.0-android36.0/android-x64": {},
+    "net9.0-android36.0/win10-x64": {}
   }
 }
