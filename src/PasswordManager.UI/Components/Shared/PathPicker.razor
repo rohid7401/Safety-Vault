@@ -1,4 +1,5 @@
 @inject IFilePickerService Picker
+@inject Loc L
 
 <div class="input-group">
     <input type="text"
@@ -31,16 +32,16 @@
 
     private string ButtonLabel => Mode switch
     {
-        PickerMode.Folder => "Choose folder",
-        PickerMode.SaveFile => "Save as...",
-        _ => "Attach file",
+        PickerMode.Folder => L["picker.folder"],
+        PickerMode.SaveFile => L["picker.saveAs"],
+        _ => L["picker.attach"],
     };
 
     private string ButtonTitle => Mode switch
     {
-        PickerMode.Folder => "Choose a folder",
-        PickerMode.SaveFile => "Pick where to save the output",
-        _ => "Select an existing file",
+        PickerMode.Folder => L["picker.folderTitle"],
+        PickerMode.SaveFile => L["picker.saveAsTitle"],
+        _ => L["picker.attachTitle"],
     };
 
     private async Task OnTextChanged(ChangeEventArgs e)

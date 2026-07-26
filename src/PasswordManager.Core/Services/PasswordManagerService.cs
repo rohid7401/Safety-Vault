@@ -166,6 +166,30 @@ namespace PasswordManager.Core.Services
             await _repository.SaveAsync(vault);
         }
 
+        /// <summary>
+        /// Permanently removes every entry of type <typeparamref name="T"/>, trashed ones
+        /// included, and returns how many were removed. Deliberately a hard delete: this is
+        /// the recovery path for a section that has become unusable (a bad import, thousands
+        /// of junk rows), and moving those entries to the trash would leave the vault just
+        /// as large. Nothing else is touched — the other sections and the PGP keys survive.
+        /// </summary>
+        public async Task<int> DeleteAllAsync<T>() where T : VaultEntry
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+            var removed = vault.Entries.RemoveAll(e => e is T);
+            if (removed > 0) await _repository.SaveAsync(vault);
+            return removed;
+        }
+
+        /// <summary>Number of live (non-trashed) entries of the given type.</summary>
+        public async Task<int> CountAsync<T>() where T : VaultEntry
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+            return vault.Entries.Count(e => e is T && !e.IsDeleted);
+        }
+
         // ─── Expiration ──────────────────────────────────────────────────────
 
         public async Task SetExpireTimeAsync(Guid id, DateTime? expireTime)
@@ -282,7 +306,7 @@ namespace PasswordManager.Core.Services
 
             foreach (var portable in portableEntries)
             {
-                var cred = new Credential();
+                var cred = new Credential { Label = portable.CredentialLabel };
 
                 if (!string.IsNullOrEmpty(portable.Email))
                     cred.Fields.Add(PlainField(CredentialFieldType.Email, portable.Email));
@@ -293,6 +317,11 @@ namespace PasswordManager.Core.Services
 
                 if (!string.IsNullOrEmpty(portable.TotpSecret))
                     cred.Fields.Add(SecretField(CredentialFieldType.TwoFactor, portable.TotpSecret));
+
+                // The source's notes column has no typed equivalent, so it lands as free text
+                // rather than being dropped — most managers put real information in there.
+                if (!string.IsNullOrWhiteSpace(portable.Notes))
+                    cred.Fields.Add(PlainField(CredentialFieldType.Text, portable.Notes));
 
                 var entry = new ServiceEntry
                 {
@@ -307,6 +336,186 @@ namespace PasswordManager.Core.Services
             }
 
             await _repository.SaveAsync(vault);
+        }
+
+        // ─── Export / Import (native backup: full detail) ─────────────────────
+
+        /// <summary>
+        /// Builds a lossless <see cref="VaultBackup"/> of every service entry, decrypting each
+        /// secret on the way out. The result holds plaintext — see the remarks on
+        /// <see cref="VaultBackup"/> for why it cannot carry the stored ciphertexts instead, and
+        /// why the caller is expected to wrap it in PGP before it touches disk.
+        /// </summary>
+        public async Task<VaultBackup> ExportBackupAsync()
+        {
+            ThrowIfDisposed();
+            var services = await GetEntriesAsync<ServiceEntry>();
+
+            var backup = new VaultBackup { ExportedAt = DateTime.UtcNow };
+
+            foreach (var svc in services)
+            {
+                var entry = new BackupServiceEntry
+                {
+                    Site = svc.Site,
+                    Tags = new List<string>(svc.Tags),
+                    Grouped = svc.Grouped,
+                    ExpireTime = svc.ExpireTime,
+                    CreationTime = svc.CreationTime,
+                    LastUpdateTime = svc.LastUpdateTime,
+                };
+
+                foreach (var cred in svc.Credentials)
+                {
+                    var credential = new BackupCredential
+                    {
+                        Label = cred.Label,
+                        CreationTime = cred.CreationTime,
+                        LastUpdateTime = cred.LastUpdateTime,
+                    };
+
+                    foreach (var field in cred.Fields)
+                    {
+                        credential.Fields.Add(new BackupField
+                        {
+                            Type = field.Type,
+                            Label = field.Label,
+                            IsSecret = field.IsSecret,
+                            Value = field.IsSecret ? DecryptSecret(field) : field.PlainValue,
+                            TwoFactorKind = field.TwoFactorKind,
+                            HotpCounter = field.HotpCounter,
+                            Rotation = field.Rotation is null ? null : new BackupRotation
+                            {
+                                Interval = field.Rotation.Interval,
+                                Unit = field.Rotation.Unit,
+                                LastChanged = field.Rotation.LastChanged,
+                            },
+                        });
+                    }
+
+                    entry.Credentials.Add(credential);
+                }
+
+                backup.Services.Add(entry);
+            }
+
+            return backup;
+        }
+
+        /// <summary>
+        /// Restores a <see cref="VaultBackup"/>, re-encrypting every secret with *this* vault's
+        /// field key. Entries are added, never merged: ids are regenerated, so importing the
+        /// same backup twice yields duplicates rather than silently overwriting anything the
+        /// user has changed since. Returns how many service entries were added.
+        /// </summary>
+        public async Task<int> ImportBackupAsync(VaultBackup backup)
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+
+            foreach (var source in backup.Services)
+            {
+                var entry = new ServiceEntry
+                {
+                    Site = source.Site,
+                    Tags = new List<string>(source.Tags),
+                    Grouped = source.Grouped,
+                    ExpireTime = source.ExpireTime,
+                    CreationTime = source.CreationTime,
+                    LastUpdateTime = DateTime.UtcNow,
+                };
+
+                foreach (var sourceCred in source.Credentials)
+                {
+                    var cred = new Credential
+                    {
+                        Label = sourceCred.Label,
+                        CreationTime = sourceCred.CreationTime,
+                        LastUpdateTime = DateTime.UtcNow,
+                    };
+
+                    foreach (var sourceField in sourceCred.Fields)
+                    {
+                        cred.Fields.Add(new CredentialField
+                        {
+                            Type = sourceField.Type,
+                            Label = sourceField.Label,
+                            IsSecret = sourceField.IsSecret,
+                            PlainValue = sourceField.IsSecret ? string.Empty : sourceField.Value,
+                            SecretValue = sourceField.IsSecret ? EncryptField(sourceField.Value) : null,
+                            TwoFactorKind = sourceField.TwoFactorKind,
+                            HotpCounter = sourceField.HotpCounter,
+                            Rotation = sourceField.Rotation is null ? null : new RotationPolicy
+                            {
+                                Interval = sourceField.Rotation.Interval,
+                                Unit = sourceField.Rotation.Unit,
+                                LastChanged = sourceField.Rotation.LastChanged,
+                            },
+                        });
+                    }
+
+                    entry.Credentials.Add(cred);
+                }
+
+                vault.Entries.Add(entry);
+            }
+
+            await _repository.SaveAsync(vault);
+            return backup.Services.Count;
+        }
+
+        // ─── Export (interop rows) ────────────────────────────────────────────
+
+        /// <summary>
+        /// Flattens the vault to one <see cref="ExportRow"/> per credential — the shape a
+        /// spreadsheet or another password manager expects. Carries more than
+        /// <see cref="ExportEntriesAsync"/> (credential label, PIN, phone, free text) so the
+        /// caller can pick which of it actually leaves the device.
+        /// </summary>
+        public async Task<List<ExportRow>> ExportRowsAsync()
+        {
+            ThrowIfDisposed();
+            var services = await GetEntriesAsync<ServiceEntry>();
+
+            var rows = new List<ExportRow>();
+            foreach (var svc in services)
+            {
+                foreach (var cred in svc.Credentials)
+                {
+                    rows.Add(new ExportRow
+                    {
+                        Site = svc.Site,
+                        CredentialLabel = cred.Label,
+                        Username = FirstPlain(cred, CredentialFieldType.Username),
+                        Email = FirstPlain(cred, CredentialFieldType.Email),
+                        Phone = FirstPlain(cred, CredentialFieldType.Phone),
+                        Password = FirstSecret(cred, CredentialFieldType.Password),
+                        Pin = FirstSecret(cred, CredentialFieldType.Pin),
+                        TotpSecret = FirstSecret(cred, CredentialFieldType.TwoFactor),
+                        Text = JoinTextFields(cred),
+                        Tags = string.Join(";", svc.Tags),
+                    });
+                }
+            }
+            return rows;
+        }
+
+        /// <summary>
+        /// Free-text fields collapsed into one notes cell, labelled where the user named them,
+        /// since no target format has a column per custom field.
+        /// </summary>
+        private string JoinTextFields(Credential cred)
+        {
+            var parts = cred.Fields
+                .Where(f => f.Type == CredentialFieldType.Text)
+                .Select(f =>
+                {
+                    var value = f.IsSecret ? DecryptSecret(f) : f.PlainValue;
+                    return string.IsNullOrEmpty(f.Label) ? value : $"{f.Label}: {value}";
+                })
+                .Where(v => !string.IsNullOrWhiteSpace(v));
+
+            return string.Join(" | ", parts);
         }
 
         // ─── Audit ───────────────────────────────────────────────────────────

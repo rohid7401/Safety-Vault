@@ -1,0 +1,85 @@
+@* Step content + navigation for the guided tour. Used both inside the first-run overlay
+   (OnboardingTour, wrapped in a centered SheetModal) and standalone on the revisit page
+   (WalkthroughPage, wrapped in normal page chrome) — this component only renders the
+   step itself and the Back/Next/Skip row, never its own backdrop. *@
+@inject Loc L
+@implements IDisposable
+
+<div class="tour-step">
+    <div class="tour-icon-circle">
+        <Icon Name="@Current.Icon" Size="28" StrokeWidth="1.8" />
+    </div>
+    <h3 style="text-align:center; margin-bottom:8px;">@L[Current.TitleKey]</h3>
+    <p style="text-align:center; color:var(--n-300); font-size:14px; line-height:1.55; margin:0;">
+        @L[Current.BodyKey]
+    </p>
+</div>
+
+<div class="tour-dots">
+    @for (var i = 0; i < TourContent.Steps.Length; i++)
+    {
+        <span class="tour-dot @(i == _index ? "active" : "")"></span>
+    }
+</div>
+
+<div class="tour-actions">
+    @if (ShowSkip && !IsLast)
+    {
+        <button class="btn btn-secondary" type="button" @onclick="Skip">@L["tour.skip"]</button>
+    }
+    else if (_index > 0)
+    {
+        <button class="btn btn-secondary" type="button" @onclick="Back">@L["tour.back"]</button>
+    }
+    <button class="btn btn-primary" style="flex:1;" type="button" @onclick="Next">
+        @(IsLast ? L["common.done"] : L["tour.next"])
+    </button>
+</div>
+
+<style>
+    .tour-step { padding: 6px 4px 18px; }
+    .tour-icon-circle {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: var(--a-900);
+        color: var(--a-300);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 14px;
+    }
+    .tour-dots { display: flex; justify-content: center; gap: 6px; margin-bottom: 18px; }
+    .tour-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--n-700); transition: background .15s, width .15s; }
+    .tour-dot.active { background: var(--color-accent); width: 16px; border-radius: 3px; }
+    .tour-actions { display: flex; gap: 10px; }
+    .tour-actions .btn { height: 44px; }
+</style>
+
+@code {
+    [Parameter] public EventCallback OnDone { get; set; }
+
+    /// <summary>False on the revisit page: there's nothing to "skip" when you opened it on purpose.</summary>
+    [Parameter] public bool ShowSkip { get; set; } = true;
+
+    private int _index;
+
+    private TourStep Current => TourContent.Steps[_index];
+    private bool IsLast => _index == TourContent.Steps.Length - 1;
+
+    protected override void OnInitialized() => L.OnChanged += StateHasChanged;
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private void Back()
+    {
+        if (_index > 0) _index--;
+    }
+
+    private async Task Next()
+    {
+        if (IsLast) { await OnDone.InvokeAsync(); return; }
+        _index++;
+    }
+
+    private async Task Skip() => await OnDone.InvokeAsync();
+}

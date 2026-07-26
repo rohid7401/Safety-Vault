@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- interactive-widget=resizes-content makes the soft keyboard shrink the layout
+         viewport itself on Chromium 108+, which fixes `vh` and `position: fixed` at
+         the source. The visualViewport script below covers older WebViews. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>SafetyVault</title>
     <base href="/" />
     <link rel="stylesheet" href="_content/PasswordManager.UI/css/app.css" />
@@ -26,15 +29,38 @@
     <script src="_framework/blazor.webview.js" autostart="false"></script>
 
     <script>
-        // ── Keep a focused field inside a bottom sheet visible above the soft keyboard ──
+        // ── Publish the visible viewport height as --app-vh ──
+        // Android's WebView keeps reporting the full screen height for `vh` even
+        // while the soft keyboard covers the bottom of it, so a layout sized with
+        // `100vh` leaves its lower third behind the keyboard. visualViewport is the
+        // only API that reports the box the user can actually see; app.css sizes the
+        // shell, the unlock screen and the sheet backdrops from this variable.
+        (function () {
+            var vv = window.visualViewport;
+            if (!vv) return;
+            var root = document.documentElement;
+
+            function sync() {
+                root.style.setProperty('--app-vh', vv.height + 'px');
+            }
+
+            vv.addEventListener('resize', sync);
+            vv.addEventListener('scroll', sync);
+            sync();
+        })();
+
+        // ── Keep the focused field visible above the soft keyboard ──
+        // The resize above frees up the space; this scrolls the field into it.
         document.addEventListener('focusin', function (e) {
             var el = e.target;
-            if (el && el.matches && el.matches('.sheet input, .sheet textarea, .sheet select')) {
-                // Wait for the keyboard to open and the viewport to resize, then center the field.
-                setTimeout(function () {
-                    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                }, 300);
-            }
+            if (!el || !el.matches || !el.matches('input, textarea, select')) return;
+            if (el.type === 'checkbox' || el.type === 'range') return;
+
+            // Wait for the keyboard animation to finish and the viewport to settle,
+            // otherwise we scroll against the pre-resize geometry and undershoot.
+            setTimeout(function () {
+                el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }, 300);
         });
 
         // ── Swipe-down on the sheet grip to dismiss (drag handle gesture) ──

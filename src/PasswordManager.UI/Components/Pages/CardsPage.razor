@@ -1,4 +1,4 @@
-@page "/vault/cards"
+﻿@page "/vault/cards"
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject ToastService Toast
@@ -10,9 +10,6 @@
 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;">
     <div style="flex:1;">
         <p style="margin:0; font-size:13px; color:var(--n-400);">@L.Format("cards.count", _entries.Count)</p>
-        <div style="margin-top:6px;">
-            <WhatsThisPill FeatureKey="cards" />
-        </div>
     </div>
     <button class="btn btn-primary" style="flex:none;" @onclick="OpenAddModal">
         <Icon Name="plus" Size="16" StrokeWidth="2.2" />@L["common.add"]
@@ -89,14 +86,15 @@ else
     <ChildContent>
         <div class="field">
             <label>@L["cards.field.holder"]</label>
-            <input type="text" class="input" @bind="_formName"
+            <input type="text" class="input" @bind="_formName" maxlength="@FieldLimits.CardholderName"
                    placeholder="JANE M DOE" />
         </div>
 
         <div class="field">
             <label>@L["cards.field.number"]</label>
             <input type="text" class="input" style="font-family:var(--font-mono);"
-                   @bind="_formNumber" placeholder="4242 4242 4242 4242" />
+                   @bind="_formNumber" placeholder="4242 4242 4242 4242"
+                   inputmode="numeric" maxlength="@FieldLimits.CardNumber" />
         </div>
 
         <div class="grid-2">
@@ -113,7 +111,8 @@ else
         <div class="field">
             <label>@L["cards.cvv"]</label>
             <input type="text" class="input" style="font-family:var(--font-mono); max-width:120px;"
-                   @bind="_formCvv" placeholder="•••" />
+                   @bind="_formCvv" placeholder="•••"
+                   inputmode="numeric" maxlength="@FieldLimits.Cvv" />
         </div>
 
         @if (!string.IsNullOrEmpty(_formError))

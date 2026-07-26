@@ -37,7 +37,7 @@ namespace PasswordManager.Infrastructure.Services
                     EntryLabel = item.Label,
                     Type = AuditIssueType.WeakPassword,
                     Severity = strength <= 2 ? AuditSeverity.Critical : AuditSeverity.High,
-                    Description = $"Password strength: {strength}/8"
+                    Strength = strength
                 });
             }
         }
@@ -60,7 +60,7 @@ namespace PasswordManager.Infrastructure.Services
                         EntryLabel = item.Label,
                         Type = AuditIssueType.ReusedPassword,
                         Severity = AuditSeverity.High,
-                        Description = $"Password shared with {group.Count() - 1} other entries"
+                        SharedWith = group.Count() - 1
                     });
                 }
             }
@@ -80,7 +80,7 @@ namespace PasswordManager.Infrastructure.Services
                         EntryLabel = item.Label,
                         Type = AuditIssueType.ExpiredEntry,
                         Severity = AuditSeverity.Medium,
-                        Description = $"Expired on {item.ExpiresAt.Value:yyyy-MM-dd}"
+                        ExpiredOn = item.ExpiresAt.Value
                     });
                 }
             }

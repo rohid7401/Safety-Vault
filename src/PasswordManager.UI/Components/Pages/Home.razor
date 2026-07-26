@@ -1,4 +1,4 @@
-@page "/"
+﻿@page "/"
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject IAesService AesService
@@ -44,7 +44,7 @@
         {
             <div class="field">
                 <label>@L["home.usernameOrEmail"]</label>
-                <input type="text" class="input" @bind="_loginIdentity"
+                <input type="text" class="input" @bind="_loginIdentity" maxlength="@FieldLimits.Email"
                        placeholder="@L["home.placeholder.identity"]" />
             </div>
 
@@ -81,13 +81,13 @@
         {
             <div class="field">
                 <label>@L["home.username"]</label>
-                <input type="text" class="input" @bind="_regUsername"
+                <input type="text" class="input" @bind="_regUsername" maxlength="@FieldLimits.Username"
                        placeholder="jane.doe" />
             </div>
 
             <div class="field">
                 <label>@L["home.email"]</label>
-                <input type="email" class="input" @bind="_regEmail"
+                <input type="email" class="input" @bind="_regEmail" inputmode="email" autocomplete="email" maxlength="@FieldLimits.Email"
                        placeholder="jane@example.com" />
             </div>
 
@@ -131,13 +131,11 @@
     </div>
 </div>
 
-<SheetModal Visible="_showRestore" Title="Vault integrity check failed" OnClose="CancelRestore">
+<SheetModal Visible="_showRestore" Title="@L["restore.title"]" OnClose="CancelRestore">
     <ChildContent>
         <div class="alert alert-warning">@_restoreError</div>
         <p style="color:var(--n-400); font-size:13px; line-height:1.55;">
-            The current vault could not be verified — it may have been modified or
-            corrupted. A known-good backup from your previous save is available.
-            Restoring will replace the current vault with that backup.
+            @L["restore.body"]
         </p>
         @if (!string.IsNullOrEmpty(_restoreFailure))
         {
@@ -145,9 +143,9 @@
         }
     </ChildContent>
     <FooterContent>
-        <button class="btn btn-secondary" @onclick="CancelRestore">Cancel</button>
+        <button class="btn btn-secondary" @onclick="CancelRestore">@L["common.cancel"]</button>
         <button class="btn btn-primary" @onclick="ConfirmRestore" disabled="@_restoring">
-            @(_restoring ? "Restoring..." : "Restore from backup")
+            @(_restoring ? L["restore.restoring"] : L["restore.confirm"])
         </button>
     </FooterContent>
 </SheetModal>
@@ -225,9 +223,9 @@
         _info = string.Empty;
 
         if (string.IsNullOrWhiteSpace(_loginIdentity))
-        { _error = "Enter your username or email."; return; }
+        { _error = L["home.err.identityRequired"]; return; }
         if (string.IsNullOrWhiteSpace(_loginPassphrase))
-        { _error = "Enter your master passphrase."; return; }
+        { _error = L["home.err.passphraseRequired"]; return; }
 
         _loading = true;
         StateHasChanged();
@@ -257,16 +255,16 @@
         _info = string.Empty;
 
         if (string.IsNullOrWhiteSpace(_regUsername))
-        { _error = "Username is required."; return; }
+        { _error = L["home.err.usernameRequired"]; return; }
         if (string.IsNullOrWhiteSpace(_regEmail) || !_regEmail.Contains('@'))
-        { _error = "A valid email is required."; return; }
+        { _error = L["home.err.emailInvalid"]; return; }
         if (string.IsNullOrWhiteSpace(_regPassphrase) || _regPassphrase.Length < 8)
-        { _error = "Passphrase must be at least 8 characters."; return; }
+        { _error = L["home.err.passphraseShort"]; return; }
         if (_regPassphrase != _regPassphraseConfirm)
-        { _error = "Passphrases do not match."; return; }
+        { _error = L["home.err.passphraseMismatch"]; return; }
 
         _loading = true;
-        _info = "Generating your PGP key pair... this can take a few seconds.";
+        _info = L["home.generatingKeys"];
         StateHasChanged();
         await Task.Yield();
 
@@ -275,7 +273,7 @@
             var account = await AuthService.RegisterAsync(_regUsername, _regEmail, _regPassphrase);
             if (await UnlockVaultAsync(account, _regPassphrase))
             {
-                Toast.Success("Welcome to SafetyVault!");
+                Toast.Success(L["home.welcome"]);
                 Nav.NavigateTo("dashboard");
             }
         }
@@ -366,7 +364,7 @@
             _showRestore = false;
             _pendingService = null;
             _pendingAccount = null;
-            Toast.Success("Vault restored from backup.");
+            Toast.Success(L["restore.ok"]);
             Nav.NavigateTo("dashboard");
         }
         catch (Exception ex)
@@ -385,6 +383,6 @@
         _pendingService = null;
         _pendingAccount = null;
         _showRestore = false;
-        _error = "Vault could not be verified and was not opened. Restore was cancelled.";
+        _error = L["restore.cancelled"];
     }
 }

@@ -1,0 +1,19 @@
+@page "/walkthrough"
+@inject NavigationManager Nav
+@inject Loc L
+@implements IDisposable
+
+<p style="margin:0 0 18px; font-size:13px; color:var(--n-400); text-align:center;">
+    @L["tour.revisitIntro"]
+</p>
+
+<div class="card" style="padding:22px 18px;">
+    <TourSteps ShowSkip="false" OnDone="GoToDashboard" />
+</div>
+
+@code {
+    protected override void OnInitialized() => L.OnChanged += StateHasChanged;
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private void GoToDashboard() => Nav.NavigateTo("dashboard");
+}

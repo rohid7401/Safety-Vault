@@ -9,24 +9,12 @@
 
 @if (AppState.Service is null || AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
-<div style="margin-bottom:14px;">
-    <WhatsThisPill FeatureKey="import-export" />
-</div>
-
 @* ─── Import ─── *@
 <div class="card" style="gap:10px;">
     <div class="card-title">@L["io.importTitle"]</div>
     <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.5;">
         @L["io.importBody"]
     </p>
-
-    <div class="field" style="margin-bottom:0;">
-        <label>@L["io.format"]</label>
-        <select class="input" @bind="_importFormat">
-            <option value="csv">@L["io.format.csv"]</option>
-            <option value="bitwarden">@L["io.format.bitwarden"]</option>
-        </select>
-    </div>
 
     <div class="field" style="margin-bottom:0;">
         <label>@L["io.file"]</label>
@@ -47,7 +35,7 @@
     }
 
     <button class="btn btn-primary btn-block" style="height:44px;" @onclick="ImportFile" disabled="@_importing">
-        @(_importing ? L["io.importing"] : L["io.import"])
+        @(_importing ? L["io.importing"] : L["io.review"])
     </button>
 
     @if (!string.IsNullOrEmpty(_importResult))
@@ -58,6 +46,52 @@
     }
 </div>
 
+@* ─── Import confirmation ─── *@
+<SheetModal Visible="@(_pending is not null)" Title="@L["io.confirmTitle"]" OnClose="CancelImport">
+    <ChildContent>
+        @if (_pending is not null)
+        {
+            @if (_pending.IsNativeBackup)
+            {
+                <div class="alert alert-success" style="margin-bottom:10px;">@L["io.confirmNative"]</div>
+            }
+
+            <p style="margin:0 0 12px; font-size:14px; line-height:1.55;">
+                @L.Format("io.confirmBody", _pending.EntryCount)
+            </p>
+
+            @if (_pending.SkippedRows > 0)
+            {
+                <div class="alert alert-warning" style="margin-bottom:10px;">
+                    @L.Format("io.confirmSkipped", _pending.SkippedRows)
+                </div>
+            }
+            @if (_pending.TruncatedValues > 0)
+            {
+                <div class="alert alert-warning" style="margin-bottom:10px;">
+                    @L.Format("io.confirmTruncated", _pending.TruncatedValues)
+                </div>
+            }
+
+            <div style="font-size:12px; color:var(--n-400); line-height:1.5;">
+                @L["io.confirmPreviewLabel"]
+            </div>
+            <ul style="margin:6px 0 0; padding-left:18px; font-size:12px; color:var(--n-300);">
+                @foreach (var line in _pending.Preview(5))
+                {
+                    <li style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@line</li>
+                }
+            </ul>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="CancelImport">@L["common.cancel"]</button>
+        <button class="btn btn-primary" @onclick="ConfirmImport" disabled="@_confirming">
+            @(_confirming ? L["io.importing"] : L["io.import"])
+        </button>
+    </FooterContent>
+</SheetModal>
+
 @* ─── Export ─── *@
 <div class="card" style="gap:10px; margin-top:12px;">
     <div class="card-title">@L["io.exportTitle"]</div>
@@ -66,7 +100,39 @@
     </p>
 
     <div class="field" style="margin-bottom:0;">
-        <label>@L["io.format"]</label>
+        <label>@L["io.exportTarget"]</label>
+        <select class="input" value="@_target" @onchange="OnTargetChanged">
+            <option value="@ExportTarget.NativeBackup">@L["io.target.native"]</option>
+            <option value="@ExportTarget.GenericCsv">@L["io.target.generic"]</option>
+            <option value="@ExportTarget.BitwardenCsv">@L["io.target.bitwarden"]</option>
+            <option value="@ExportTarget.ChromeCsv">@L["io.target.chrome"]</option>
+        </select>
+        <small style="color:var(--n-500); font-size:12px;">@L[TargetHintKey]</small>
+    </div>
+
+    @if (_target != ExportTarget.NativeBackup)
+    {
+        <div class="field" style="margin-bottom:0;">
+            <label>@L["io.exportFields"]</label>
+            <div class="export-fields">
+                @foreach (var field in ExportPresets.SelectableFields(_target))
+                {
+                    <label class="form-check" style="margin-bottom:0;">
+                        <span>@L[FieldLabelKey(field)]</span>
+                        <input type="checkbox" checked="@_selected.Contains(field)"
+                               @onchange="e => ToggleField(field, e)" />
+                    </label>
+                }
+            </div>
+            @if (_selected.Count == 0)
+            {
+                <small style="color:var(--danger); font-size:12px;">@L["io.err.noColumns"]</small>
+            }
+        </div>
+    }
+
+    <div class="field" style="margin-bottom:0;">
+        <label>@L["io.protection"]</label>
         <select class="input" @bind="_exportMode">
             <option value="encrypted">@L["io.export.encrypted"]</option>
             <option value="plaintext">@L["io.export.plaintext"]</option>
@@ -76,11 +142,12 @@
     @if (_exportMode == "plaintext")
     {
         <div class="alert alert-danger" style="margin-bottom:0;">
-            @L["io.plaintextWarning"]
+            @(_target == ExportTarget.NativeBackup ? L["io.plaintextWarningBackup"] : L["io.plaintextWarning"])
         </div>
     }
 
-    <button class="btn btn-secondary btn-block" style="height:44px;" @onclick="ExportVault" disabled="@_exporting">
+    <button class="btn btn-secondary btn-block" style="height:44px;" @onclick="ExportVault"
+            disabled="@(_exporting || (_target != ExportTarget.NativeBackup && _selected.Count == 0))">
         @(_exporting ? L["io.exporting"] : L["io.export"])
     </button>
 
@@ -90,14 +157,29 @@
     }
 </div>
 
+<style>
+    .export-fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2px 12px;
+    }
+
+    @@media (max-width: 460px) {
+        .export-fields { grid-template-columns: 1fr; }
+    }
+</style>
+
 @code {
+    // ── Export ──
     private bool _exporting;
+    private ExportTarget _target = ExportTarget.NativeBackup;
+    private HashSet<ExportField> _selected = new();
     private string _exportMode = "encrypted";
     private string _exportResult = string.Empty;
     private bool _exportError;
 
+    // ── Import ──
     private bool _importing;
-    private string _importFormat = "csv";
     private byte[]? _importData;
     private string _importName = string.Empty;
     private bool _importIsEncrypted;
@@ -105,12 +187,66 @@
     private string _importResult = string.Empty;
     private bool _importError;
 
+    /// <summary>Parsed but not yet written — awaiting the user's confirmation.</summary>
+    private ImportResult? _pending;
+    private bool _confirming;
+
     private string OwnPublicKeyPath => Path.Combine(AppState.Account!.VaultPath, "public_key.asc");
     private string OwnPrivateKeyPath => Path.Combine(AppState.Account!.VaultPath, "private_key.asc");
 
-    protected override void OnInitialized() => L.OnChanged += StateHasChanged;
+    protected override void OnInitialized()
+    {
+        L.OnChanged += StateHasChanged;
+        SelectAllFields();
+    }
 
     public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    // ─── Export ──────────────────────────────────────────────────────────
+
+    private void OnTargetChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<ExportTarget>(e.Value?.ToString(), out var target))
+            _target = target;
+
+        // Each target offers a different column set, so the previous selection may name
+        // fields this one has no column for.
+        SelectAllFields();
+        _exportResult = string.Empty;
+    }
+
+    private void SelectAllFields() =>
+        _selected = ExportPresets.SelectableFields(_target).ToHashSet();
+
+    private void ToggleField(ExportField field, ChangeEventArgs e)
+    {
+        if (e.Value is true) _selected.Add(field);
+        else _selected.Remove(field);
+    }
+
+    private string TargetHintKey => _target switch
+    {
+        ExportTarget.NativeBackup => "io.target.nativeHint",
+        ExportTarget.BitwardenCsv => "io.target.bitwardenHint",
+        ExportTarget.ChromeCsv => "io.target.chromeHint",
+        _ => "io.target.genericHint",
+    };
+
+    private static string FieldLabelKey(ExportField field) => field switch
+    {
+        ExportField.Site => "io.field.site",
+        ExportField.CredentialLabel => "io.field.credentialLabel",
+        ExportField.Username => "io.field.username",
+        ExportField.Email => "io.field.email",
+        ExportField.Login => "io.field.login",
+        ExportField.Password => "io.field.password",
+        ExportField.Pin => "io.field.pin",
+        ExportField.Phone => "io.field.phone",
+        ExportField.TotpSecret => "io.field.totp",
+        ExportField.Text => "io.field.notes",
+        ExportField.Tags => "io.field.tags",
+        _ => "io.field.site",
+    };
 
     private async Task ExportVault()
     {
@@ -121,10 +257,11 @@
 
         try
         {
-            var portable = await AppState.Service!.ExportEntriesAsync();
-            var csv = ImportExport.ExportToCsv(portable);
-            var plaintext = System.Text.Encoding.UTF8.GetBytes(csv);
+            var (content, count, extension) = _target == ExportTarget.NativeBackup
+                ? await BuildBackupAsync()
+                : await BuildCsvAsync();
 
+            var plaintext = System.Text.Encoding.UTF8.GetBytes(content);
             var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             string? saved;
 
@@ -134,16 +271,16 @@
                 using var encrypted = new MemoryStream();
                 await FileEnc.EncryptAsync(input, OwnPublicKeyPath, encrypted);
                 encrypted.Position = 0;
-                saved = await Picker.SaveStreamAsync($"vault_backup_{stamp}.csv.pgp", encrypted);
+                saved = await Picker.SaveStreamAsync($"safetyvault_{stamp}{extension}.pgp", encrypted);
             }
             else
             {
                 using var input = new MemoryStream(plaintext);
-                saved = await Picker.SaveStreamAsync($"vault_export_{stamp}.csv", input);
+                saved = await Picker.SaveStreamAsync($"safetyvault_{stamp}{extension}", input);
             }
 
             if (saved is null) { _exportResult = L["io.exportCancelled"]; _exportError = true; }
-            else { _exportResult = L.Format("io.exportOk", portable.Count, saved); }
+            else { _exportResult = L.Format("io.exportOk", count, saved); }
         }
         catch (Exception ex)
         {
@@ -156,22 +293,68 @@
         }
     }
 
+    private async Task<(string Content, int Count, string Extension)> BuildBackupAsync()
+    {
+        var backup = await AppState.Service!.ExportBackupAsync();
+        return (ImportExport.ExportToBackupJson(backup), backup.Services.Count, ".safetyvault.json");
+    }
+
+    private async Task<(string Content, int Count, string Extension)> BuildCsvAsync()
+    {
+        var rows = await AppState.Service!.ExportRowsAsync();
+
+        // Keep the preset's own column order and headers; drop only what the user unticked.
+        var columns = ExportPresets.For(_target)
+            .Where(c => !c.Field.HasValue || _selected.Contains(c.Field.Value))
+            .ToList();
+
+        return (ImportExport.ExportToCsv(rows, columns), rows.Count, ".csv");
+    }
+
+    // ─── Import ──────────────────────────────────────────────────────────
+
     private async Task PickImport()
     {
-        var picked = await Picker.PickFileForReadAsync("Select a backup or export file",
+        var picked = await Picker.PickFileForReadAsync(L["io.pickTitle"],
             new[] { ".csv", ".json", ".txt", ".pgp", ".gpg", ".asc" });
         if (picked is null) return;
 
         using (picked)
         {
             using var ms = new MemoryStream();
-            await picked.Stream.CopyToAsync(ms);
+            // Cap the copy itself: a huge file must not be pulled into memory just to be
+            // rejected afterwards. One byte over the limit is enough to detect it.
+            await CopyAtMostAsync(picked.Stream, ms, ImportLimits.MaxFileBytes + 1);
+
+            if (ms.Length > ImportLimits.MaxFileBytes)
+            {
+                _importData = null;
+                _importName = string.Empty;
+                _importResult = DescribeFormatError(ImportFormatError.FileTooLarge);
+                _importError = true;
+                return;
+            }
+
             _importData = ms.ToArray();
             _importName = picked.FileName;
             _importIsEncrypted = LooksEncrypted(_importName, _importData);
             _importPassphrase = string.Empty;
             _importResult = string.Empty;
             _importError = false;
+            _pending = null;
+        }
+    }
+
+    private static async Task CopyAtMostAsync(Stream source, Stream destination, long maxBytes)
+    {
+        var buffer = new byte[81920];
+        long total = 0;
+        int read;
+        while (total < maxBytes && (read = await source.ReadAsync(buffer)) > 0)
+        {
+            var take = (int)Math.Min(read, maxBytes - total);
+            await destination.WriteAsync(buffer.AsMemory(0, take));
+            total += take;
         }
     }
 
@@ -204,26 +387,22 @@
                 using var input = new MemoryStream(_importData);
                 using var decrypted = new MemoryStream();
                 await FileEnc.DecryptAsync(input, OwnPrivateKeyPath, _importPassphrase, decrypted);
-                content = System.Text.Encoding.UTF8.GetString(decrypted.ToArray());
+                content = DecodeTextOrThrow(decrypted.ToArray());
             }
             else
             {
-                content = System.Text.Encoding.UTF8.GetString(_importData);
+                content = DecodeTextOrThrow(_importData);
             }
 
-            List<PortableEntry> entries = _importFormat == "bitwarden"
-                ? ImportExport.ImportFromBitwardenJson(content)
-                : ImportExport.ImportFromCsv(content);
-
-            if (entries.Count == 0)
-            {
-                _importResult = L["io.noEntries"];
-                _importError = true;
-                return;
-            }
-
-            await AppState.Service!.ImportEntriesAsync(entries);
-            _importResult = L.Format("io.importOk", entries.Count);
+            // Parse only, format detected from the content itself. Nothing reaches the vault
+            // until the user confirms the summary below — that confirmation is what stops a
+            // misidentified file from silently adding thousands of junk entries.
+            _pending = ImportExport.Import(content);
+        }
+        catch (ImportFormatException ex)
+        {
+            _importResult = DescribeFormatError(ex.Reason);
+            _importError = true;
         }
         catch (Exception ex)
         {
@@ -237,6 +416,69 @@
             _importing = false;
         }
     }
+
+    /// <summary>
+    /// Decodes as strict UTF-8 so a binary file fails here with a clear message instead of
+    /// becoming a string of replacement characters that the CSV parser then walks line by line.
+    /// </summary>
+    private static string DecodeTextOrThrow(byte[] data)
+    {
+        try
+        {
+            return new System.Text.UTF8Encoding(false, throwOnInvalidBytes: true).GetString(data);
+        }
+        catch (ArgumentException)
+        {
+            throw new ImportFormatException(ImportFormatError.NotText);
+        }
+    }
+
+    private async Task ConfirmImport()
+    {
+        if (_pending is null) return;
+
+        _confirming = true;
+        StateHasChanged();
+        try
+        {
+            int added;
+            if (_pending.Backup is not null)
+                added = await AppState.Service!.ImportBackupAsync(_pending.Backup);
+            else
+            {
+                await AppState.Service!.ImportEntriesAsync(_pending.Entries);
+                added = _pending.Entries.Count;
+            }
+
+            _importResult = L.Format("io.importOk", added);
+            _importError = false;
+            _pending = null;
+        }
+        catch (Exception ex)
+        {
+            _importResult = $"{L["io.importFailed"]}: {UserError.Describe(L, ex)}";
+            _importError = true;
+        }
+        finally
+        {
+            _confirming = false;
+        }
+    }
+
+    private void CancelImport() => _pending = null;
+
+    private string DescribeFormatError(ImportFormatError reason) => reason switch
+    {
+        ImportFormatError.FileTooLarge => L.Format("io.err.tooLarge", ImportLimits.MaxFileBytes / (1024 * 1024)),
+        ImportFormatError.NotText => L["io.err.notText"],
+        ImportFormatError.PgpBlock => L["io.err.pgpBlock"],
+        ImportFormatError.UnrecognizedColumns => L["io.err.unrecognized"],
+        ImportFormatError.InvalidJson => L["io.err.invalidJson"],
+        ImportFormatError.TooManyEntries => L.Format("io.err.tooMany", ImportLimits.MaxEntries),
+        ImportFormatError.NoUsableEntries => L["io.err.noUsable"],
+        ImportFormatError.UnsupportedVersion => L["io.err.unsupportedVersion"],
+        _ => L["error.unexpected"],
+    };
 
     private static bool LooksEncrypted(string name, byte[] data)
     {

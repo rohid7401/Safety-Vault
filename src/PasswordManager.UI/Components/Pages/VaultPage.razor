@@ -1,4 +1,4 @@
-@page "/vault"
+﻿@page "/vault"
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject IPasswordGenerator PasswordGen
@@ -14,7 +14,6 @@
 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;">
     <div style="flex:1;">
         <p style="margin:0; font-size:13px; color:var(--n-400);">@L.Format("vault.count", _entries.Count)</p>
-        <div style="margin-top:6px;"><WhatsThisPill FeatureKey="passwords" /></div>
     </div>
     <button class="btn btn-primary" style="flex:none;" @onclick="OpenAddModal">
         <Icon Name="plus" Size="16" StrokeWidth="2.2" />@L["common.add"]
@@ -26,7 +25,9 @@
     <input type="text" placeholder="@L["vault.searchPlaceholder"]" @bind="_search" @bind:event="oninput" />
 </div>
 
-@if (!Cards().Any())
+@{ var matches = Cards(); }
+
+@if (matches.Count == 0)
 {
     <div class="empty-state">
         <div class="icon-circle"><Icon Name="lock" Size="30" StrokeWidth="1.8" /></div>
@@ -36,7 +37,12 @@
 }
 else
 {
-    @foreach (var card in Cards())
+    @if (matches.Count > RenderCap)
+    {
+        <div class="alert alert-warning">@L.Format("vault.tooMany", RenderCap, matches.Count)</div>
+    }
+
+    @foreach (var card in matches.Take(RenderCap))
     {
         var worst = WorstStatus(card.Credentials);
         <div class="card">
@@ -136,7 +142,8 @@ else
     <ChildContent>
         <div class="field">
             <label>@L["vault.field.site"]</label>
-            <input type="text" class="input" @bind="_fSite" placeholder="github.com" />
+            <input type="text" class="input" @bind="_fSite" placeholder="github.com"
+                   maxlength="@FieldLimits.Site" />
         </div>
 
         <label class="form-check" style="margin-bottom:0;">
@@ -150,7 +157,8 @@ else
                 @if (_draftGrouped)
                 {
                     <div class="draft-cred-head">
-                        <input type="text" class="input" @bind="cred.Label" placeholder="@L["vault.credLabel"]" />
+                        <input type="text" class="input" @bind="cred.Label" placeholder="@L["vault.credLabel"]"
+                               maxlength="@FieldLimits.Label" />
                         @if (_draft.Count > 1)
                         {
                             <button class="btn-icon" type="button" style="color:var(--danger);" @onclick="() => RemoveCredential(cred)">
@@ -247,7 +255,8 @@ else
 
         <div class="field" style="margin-top:14px;">
             <label>@L["vault.field.tags"]</label>
-            <input type="text" class="input" @bind="_fTags" placeholder="@L["vault.field.tagsPlaceholder"]" />
+            <input type="text" class="input" @bind="_fTags" placeholder="@L["vault.field.tagsPlaceholder"]"
+                   maxlength="@(FieldLimits.Tag * FieldLimits.TagsPerEntry)" />
         </div>
 
         @if (!string.IsNullOrEmpty(_fError))
@@ -385,16 +394,19 @@ else
         _ => "text",
     };
 
-    /// <summary>Generous caps to stop accidental huge pastes; not a security boundary.</summary>
+    /// <summary>
+    /// Generous caps to stop accidental huge pastes; not a security boundary. Shared with
+    /// the importer via <see cref="FieldLimits"/> so typed and imported values agree.
+    /// </summary>
     private static int MaxLength(CredentialFieldType t) => t switch
     {
-        CredentialFieldType.Email => 254, // RFC 5321
-        CredentialFieldType.Username => 100,
-        CredentialFieldType.Password => 128,
-        CredentialFieldType.Pin => 12,
-        CredentialFieldType.Phone => 20,
-        CredentialFieldType.TwoFactor => 128,
-        _ => 200,
+        CredentialFieldType.Email => FieldLimits.Email,
+        CredentialFieldType.Username => FieldLimits.Username,
+        CredentialFieldType.Password => FieldLimits.Password,
+        CredentialFieldType.Pin => FieldLimits.Pin,
+        CredentialFieldType.Phone => FieldLimits.Phone,
+        CredentialFieldType.TwoFactor => FieldLimits.TwoFactorSecret,
+        _ => FieldLimits.Text,
     };
 
     private void OnFieldInput(FieldDraft f, ChangeEventArgs e)
@@ -493,16 +505,27 @@ else
 
     private record DisplayCard(ServiceEntry Entry, IReadOnlyList<Credential> Credentials);
 
-    private IEnumerable<DisplayCard> Cards()
+    /// <summary>
+    /// Cards drawn at once. Every card is a good few DOM nodes, so rendering an unbounded
+    /// list locks up the WebView — a bad import that left thousands of entries behind used
+    /// to make this page impossible to open, and therefore impossible to fix from. Beyond
+    /// this many the user is told to narrow the search (or empty the section under "Delete
+    /// data"), which is what anyone with a real vault this size would do anyway.
+    /// </summary>
+    private const int RenderCap = 200;
+
+    private List<DisplayCard> Cards()
     {
+        var cards = new List<DisplayCard>();
         foreach (var e in _entries.Where(Match))
         {
             if (e.Grouped || e.Credentials.Count <= 1)
-                yield return new DisplayCard(e, e.Credentials);
+                cards.Add(new DisplayCard(e, e.Credentials));
             else
                 foreach (var c in e.Credentials)
-                    yield return new DisplayCard(e, new[] { c });
+                    cards.Add(new DisplayCard(e, new[] { c }));
         }
+        return cards;
     }
 
     private bool Match(ServiceEntry e)

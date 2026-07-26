@@ -1,4 +1,4 @@
-@page "/vault/notes"
+﻿@page "/vault/notes"
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject ToastService Toast
@@ -10,9 +10,6 @@
 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;">
     <div style="flex:1;">
         <p style="margin:0; font-size:13px; color:var(--n-400);">@L.Format("notes.count", _entries.Count)</p>
-        <div style="margin-top:6px;">
-            <WhatsThisPill FeatureKey="notes" />
-        </div>
     </div>
     <button class="btn btn-primary" style="flex:none;" @onclick="OpenAddModal">
         <Icon Name="plus" Size="16" StrokeWidth="2.2" />@L["common.add"]
@@ -74,19 +71,19 @@ else
     <ChildContent>
         <div class="field">
             <label>@L["notes.field.title"]</label>
-            <input type="text" class="input" @bind="_formTitle"
+            <input type="text" class="input" @bind="_formTitle" maxlength="@FieldLimits.NoteTitle"
                    placeholder="@L["notes.field.titlePlaceholder"]" />
         </div>
 
         <div class="field">
             <label>@L["notes.field.content"]</label>
-            <textarea class="input" rows="6" @bind="_formContent"
+            <textarea class="input" rows="6" @bind="_formContent" maxlength="@FieldLimits.NoteContent"
                       placeholder="@L["notes.field.contentPlaceholder"]"></textarea>
         </div>
 
         <div class="field">
             <label>@L["vault.field.tags"]</label>
-            <input type="text" class="input" @bind="_formTags"
+            <input type="text" class="input" @bind="_formTags" maxlength="@(FieldLimits.Tag * FieldLimits.TagsPerEntry)"
                    placeholder="2fa, backup" />
         </div>
 

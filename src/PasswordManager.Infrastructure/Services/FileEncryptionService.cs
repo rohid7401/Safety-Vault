@@ -7,6 +7,10 @@ namespace PasswordManager.Infrastructure.Services
     {
         public const long MaxFileSizeBytes = 200L * 1024 * 1024;        // 200 MB
         public const long MaxDirectorySizeBytes = 1024L * 1024 * 1024;  // 1 GB
+        // Lower than MaxDirectorySizeBytes: the multi-file bundle path holds every file plus
+        // the zip plus the ciphertext in memory at once (mobile has no scratch disk the way
+        // the path-based EncryptDirectoryAsync does), so this stays conservative for RAM.
+        public const long MaxBundleSizeBytes = 100L * 1024 * 1024;      // 100 MB
         // Caps on the DECOMPRESSED output when extracting an encrypted directory, to defuse
         // decompression bombs (a small zip that expands to hundreds of GB / millions of files).
         private const long MaxExtractedBytes = MaxDirectorySizeBytes;
@@ -46,6 +50,52 @@ namespace PasswordManager.Infrastructure.Services
             var encrypted = await ReadCappedAsync(input, cap);
             var data = _pgpService.DecryptBytes(encrypted, privateKeyPath, passphrase);
             await output.WriteAsync(data);
+        }
+
+        public async Task EncryptFilesAsync(
+            IReadOnlyList<(string Name, byte[] Content)> files, string publicKeyPath, Stream output)
+        {
+            if (!File.Exists(publicKeyPath))
+                throw new FileNotFoundException("Public key not found.", publicKeyPath);
+            if (files.Count == 0)
+                throw new InvalidOperationException("No files to bundle.");
+
+            var total = files.Sum(f => (long)f.Content.Length);
+            if (total > MaxBundleSizeBytes)
+                throw new InvalidOperationException(
+                    $"Selected files are too large ({FormatBytes(total)}). " +
+                    $"Maximum supported size is {FormatBytes(MaxBundleSizeBytes)}.");
+
+            using var zipStream = new MemoryStream();
+            using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var (name, content) in files)
+                {
+                    var entryName = UniqueEntryName(usedNames, string.IsNullOrWhiteSpace(name) ? "file" : name);
+                    using var entryStream = archive.CreateEntry(entryName, CompressionLevel.Optimal).Open();
+                    await entryStream.WriteAsync(content);
+                }
+            }
+
+            zipStream.Position = 0;
+            var encrypted = _pgpService.EncryptBytes(zipStream.ToArray(), publicKeyPath);
+            await output.WriteAsync(encrypted);
+        }
+
+        /// <summary>Two files picked with the same display name would otherwise collide as
+        /// zip entries and silently overwrite each other on extraction.</summary>
+        private static string UniqueEntryName(HashSet<string> used, string name)
+        {
+            if (used.Add(name)) return name;
+
+            var ext = Path.GetExtension(name);
+            var stem = Path.GetFileNameWithoutExtension(name);
+            for (var i = 2; ; i++)
+            {
+                var candidate = $"{stem} ({i}){ext}";
+                if (used.Add(candidate)) return candidate;
+            }
         }
 
         // ─── Path convenience (desktop) ───────────────────────────────────────

@@ -1,128 +1,237 @@
-@page "/encrypt-directory"
+﻿@page "/encrypt-directory"
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject IFileEncryptionService FileEnc
 @inject IKeyDirectoryService KeyDir
+@inject IFilePickerService Picker
+@inject IPlatformInfo Platform
 @inject Loc L
 @implements IDisposable
 
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
-<div style="margin-bottom:14px;">
-    <WhatsThisPill FeatureKey="encrypt-directory" />
-</div>
-
-<div class="alert alert-info">
-    @((MarkupString)L["encDir.desktopNote"])
-</div>
 
 <div class="seg" style="margin-bottom:16px;">
-    <button class="seg-opt @(_mode == Mode.Encrypt ? "active" : "")" type="button" @onclick="() => _mode = Mode.Encrypt">
+    <button class="seg-opt @(_mode == Mode.Encrypt ? "active" : "")" type="button" @onclick="() => SwitchMode(Mode.Encrypt)">
         @L["enc.lock"]
     </button>
-    <button class="seg-opt @(_mode == Mode.Decrypt ? "active" : "")" type="button" @onclick="() => _mode = Mode.Decrypt">
+    <button class="seg-opt @(_mode == Mode.Decrypt ? "active" : "")" type="button" @onclick="() => SwitchMode(Mode.Decrypt)">
         @L["enc.unlock"]
     </button>
 </div>
 
-@if (_mode == Mode.Encrypt)
+@if (Platform.HasFilesystemFolderAccess)
 {
-    <div class="card" style="gap:14px;">
-        <div class="field" style="margin-bottom:0;">
-            <label>@L["encDir.folderToLock"]</label>
-            <PathPicker Value="@_inputPath"
-                        ValueChanged="@(v => _inputPath = v)"
-                        Mode="PathPicker.PickerMode.Folder"
-                        Placeholder="C:\Users\jane\Documents\Project_Confidential" />
-        </div>
+    @* ───── Desktop: real filesystem access, pick the folder itself ───── *@
+    @if (_mode == Mode.Encrypt)
+    {
+        <div class="card" style="gap:14px;">
+            <div class="field" style="margin-bottom:0;">
+                <label>@L["encDir.folderToLock"]</label>
+                <PathPicker Value="@_inputPath"
+                            ValueChanged="@(v => _inputPath = v)"
+                            Mode="PathPicker.PickerMode.Folder"
+                            Placeholder="C:\Users\jane\Documents\Project_Confidential" />
+            </div>
 
-        <div class="field" style="margin-bottom:0;">
-            <label>@L["enc.whoCanOpen"]</label>
-            <select class="input" @bind="_recipientPath">
-                <option value="">@L["enc.selectRecipient"]</option>
-                <option value="@OwnPublicKeyPath">@L.Format("enc.myself", AppState.Account!.Username)</option>
-                @if (_keys is not null)
-                {
-                    foreach (var k in _keys)
+            <div class="field" style="margin-bottom:0;">
+                <label>@L["enc.whoCanOpen"]</label>
+                <select class="input" @bind="_recipientPath">
+                    <option value="">@L["enc.selectRecipient"]</option>
+                    <option value="@OwnPublicKeyPath">@L.Format("enc.myself", AppState.Account!.Username)</option>
+                    @if (_keys is not null)
                     {
-                        <option value="@k.FullPath">@k.OwnerLabel</option>
+                        foreach (var k in _keys)
+                        {
+                            <option value="@k.FullPath">@k.OwnerLabel</option>
+                        }
                     }
-                }
-            </select>
+                </select>
+            </div>
+
+            <div class="field" style="margin-bottom:0;">
+                <label>@L["encDir.outputFile"]</label>
+                <PathPicker Value="@_outputPath"
+                            ValueChanged="@(v => _outputPath = v)"
+                            Mode="PathPicker.PickerMode.SaveFile"
+                            SuggestedFileName="@SuggestedArchiveName"
+                            Placeholder="C:\Users\jane\Documents\Project_Confidential.zip.pgp" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(_result))
+            {
+                <div class="alert alert-@(_isError ? "danger" : "success")" style="margin-bottom:0;">@_result</div>
+            }
+
+            <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunEncryptFolder" disabled="@_running">
+                @(_running ? L["encDir.lockingFolder"] : L["encDir.lockFolder"])
+            </button>
         </div>
 
-        <div class="field" style="margin-bottom:0;">
-            <label>@L["encDir.outputFile"]</label>
-            <PathPicker Value="@_outputPath"
-                        ValueChanged="@(v => _outputPath = v)"
-                        Mode="PathPicker.PickerMode.SaveFile"
-                        SuggestedFileName="@SuggestedArchiveName"
-                        Placeholder="C:\Users\jane\Documents\Project_Confidential.zip.pgp" />
+        <div class="hint-row">
+            <Icon Name="info" Size="15" />
+            <span>@L["encDir.hintEncrypt"]</span>
+        </div>
+    }
+    else
+    {
+        <div class="card" style="gap:14px;">
+            <div class="field" style="margin-bottom:0;">
+                <label>@L["encDir.lockedArchive"]</label>
+                <PathPicker Value="@_inputPath"
+                            ValueChanged="@(v => _inputPath = v)"
+                            Mode="PathPicker.PickerMode.File"
+                            FileExtensions="@_pgpExtensions"
+                            Placeholder="C:\Users\jane\Documents\Project_Confidential.zip.pgp" />
+            </div>
+
+            <div class="field" style="margin-bottom:0;">
+                <label>@L["home.masterPassphrase"]</label>
+                <input type="password" class="input" @bind="_passphrase"
+                       placeholder="@L["home.placeholder.passphrase"]" />
+            </div>
+
+            <div class="field" style="margin-bottom:0;">
+                <label>@L["encDir.extractTo"]</label>
+                <PathPicker Value="@_outputPath"
+                            ValueChanged="@(v => _outputPath = v)"
+                            Mode="PathPicker.PickerMode.Folder"
+                            Placeholder="C:\Users\jane\Documents\Restored" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(_result))
+            {
+                <div class="alert alert-@(_isError ? "danger" : "success")" style="margin-bottom:0;">@_result</div>
+            }
+
+            <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunDecryptFolder" disabled="@_running">
+                @(_running ? L["encFile.unlocking"] : L["encDir.unlockFolder"])
+            </button>
         </div>
 
-        @if (!string.IsNullOrEmpty(_result))
-        {
-            <div class="alert alert-@(_isError ? "danger" : "success")" style="margin-bottom:0;">@_result</div>
-        }
-
-        <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunEncrypt" disabled="@_running">
-            @(_running ? L["encDir.lockingFolder"] : L["encDir.lockFolder"])
-        </button>
-    </div>
-
-    <div class="hint-row">
-        <Icon Name="info" Size="15" />
-        <span>@L["encDir.hintEncrypt"]</span>
-    </div>
+        <div class="hint-row">
+            <Icon Name="info" Size="15" />
+            <span>@L["encDir.hintDecrypt"]</span>
+        </div>
+    }
 }
 else
 {
-    <div class="card" style="gap:14px;">
-        <div class="field" style="margin-bottom:0;">
-            <label>@L["encDir.lockedArchive"]</label>
-            <PathPicker Value="@_inputPath"
-                        ValueChanged="@(v => _inputPath = v)"
-                        Mode="PathPicker.PickerMode.File"
-                        FileExtensions="@_pgpExtensions"
-                        Placeholder="C:\Users\jane\Documents\Project_Confidential.zip.pgp" />
+    @* ───── Mobile: no real folder path (Android SAF / iOS scoped bookmarks), so files
+       are picked individually, bundled into a zip in memory, and encrypted the same
+       way EncryptFilePage handles a single file. ───── *@
+    @if (_mode == Mode.Encrypt)
+    {
+        <div class="card" style="gap:14px;">
+            <div class="field" style="margin-bottom:6px;">
+                <label>@L["encDir.filesToLock"]</label>
+                @if (_bundle.Count == 0)
+                {
+                    <p style="margin:0 0 10px; font-size:13px; color:var(--n-400);">@L["encDir.noFilesChosen"]</p>
+                }
+                else
+                {
+                    <ul style="margin:0 0 10px; padding-left:18px; font-size:13px; color:var(--n-300);">
+                        @foreach (var f in _bundle)
+                        {
+                            <li style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@f.Name</span>
+                                <button class="btn-icon" type="button" aria-label="@L["common.delete"]"
+                                        style="flex:none;" @onclick="() => RemoveFromBundle(f)">
+                                    <Icon Name="trash" Size="14" StrokeWidth="1.8" />
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                    <p style="margin:0 0 10px; font-size:12px; color:var(--n-500);">
+                        @L.Format("encDir.bundleTotal", _bundle.Count, FormatBytes(_bundle.Sum(f => (long)f.Content.Length)))
+                    </p>
+                }
+                <button class="btn btn-secondary btn-block" type="button" @onclick="PickMoreFiles">
+                    @L["encDir.addFiles"]
+                </button>
+            </div>
+
+            <div class="field" style="margin-bottom:0;">
+                <label>@L["enc.whoCanOpen"]</label>
+                <select class="input" @bind="_recipientPath">
+                    <option value="">@L["enc.selectRecipient"]</option>
+                    <option value="@OwnPublicKeyPath">@L.Format("enc.myself", AppState.Account!.Username)</option>
+                    @if (_keys is not null)
+                    {
+                        foreach (var k in _keys)
+                        {
+                            <option value="@k.FullPath">@k.OwnerLabel</option>
+                        }
+                    }
+                </select>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_result))
+            {
+                <div class="alert alert-@(_isError ? "danger" : "success")" style="margin-bottom:0;">@_result</div>
+            }
+
+            <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunEncryptBundle"
+                    disabled="@(_running || _bundle.Count == 0)">
+                @(_running ? L["encDir.lockingFolder"] : L["encDir.lockFiles"])
+            </button>
         </div>
 
-        <div class="field" style="margin-bottom:0;">
-            <label>@L["home.masterPassphrase"]</label>
-            <input type="password" class="input" @bind="_passphrase"
-                   placeholder="@L["home.placeholder.passphrase"]" />
+        <div class="hint-row">
+            <Icon Name="info" Size="15" />
+            <span>@L["encDir.hintEncryptMobile"]</span>
+        </div>
+    }
+    else
+    {
+        <div class="card" style="gap:14px;">
+            <div class="field" style="margin-bottom:0;">
+                <label>@L["encDir.lockedArchive"]</label>
+                <div class="input-group">
+                    <input type="text" class="input" value="@_inputName" placeholder="archive.zip.pgp" readonly />
+                    <button class="btn btn-secondary" type="button" @onclick="PickBundleInput">@L["common.choose"]</button>
+                </div>
+            </div>
+
+            <div class="field" style="margin-bottom:0;">
+                <label>@L["home.masterPassphrase"]</label>
+                <input type="password" class="input" @bind="_passphrase"
+                       placeholder="@L["home.placeholder.passphrase"]" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(_result))
+            {
+                <div class="alert alert-@(_isError ? "danger" : "success")" style="margin-bottom:0;">@_result</div>
+            }
+
+            <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunDecryptBundle" disabled="@_running">
+                @(_running ? L["encFile.unlocking"] : L["encDir.unlockFolder"])
+            </button>
         </div>
 
-        <div class="field" style="margin-bottom:0;">
-            <label>@L["encDir.extractTo"]</label>
-            <PathPicker Value="@_outputPath"
-                        ValueChanged="@(v => _outputPath = v)"
-                        Mode="PathPicker.PickerMode.Folder"
-                        Placeholder="C:\Users\jane\Documents\Restored" />
+        <div class="hint-row">
+            <Icon Name="info" Size="15" />
+            <span>@L["encDir.hintDecryptMobile"]</span>
         </div>
-
-        @if (!string.IsNullOrEmpty(_result))
-        {
-            <div class="alert alert-@(_isError ? "danger" : "success")" style="margin-bottom:0;">@_result</div>
-        }
-
-        <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunDecrypt" disabled="@_running">
-            @(_running ? L["encFile.unlocking"] : L["encDir.unlockFolder"])
-        </button>
-    </div>
-
-    <div class="hint-row">
-        <Icon Name="info" Size="15" />
-        <span>@L["encDir.hintDecrypt"]</span>
-    </div>
+    }
 }
 
 @code {
     private enum Mode { Encrypt, Decrypt }
     private Mode _mode = Mode.Encrypt;
 
+    private const long MaxBundleBytes = 100L * 1024 * 1024; // mirrors FileEncryptionService.MaxBundleSizeBytes
+
+    // Desktop (path-based)
     private string _inputPath = string.Empty;
     private string _outputPath = string.Empty;
+
+    // Mobile (stream-based)
+    private readonly List<(string Name, byte[] Content)> _bundle = new();
+    private byte[]? _inputData;
+    private string _inputName = string.Empty;
+
     private string _recipientPath = string.Empty;
     private string _passphrase = string.Empty;
     private string _result = string.Empty;
@@ -149,7 +258,19 @@ else
 
     public void Dispose() => L.OnChanged -= StateHasChanged;
 
-    private async Task RunEncrypt()
+    private void SwitchMode(Mode mode)
+    {
+        _mode = mode;
+        _bundle.Clear();
+        _inputData = null;
+        _inputName = string.Empty;
+        _result = string.Empty;
+        _isError = false;
+    }
+
+    // ─── Desktop ─────────────────────────────────────────────────────────
+
+    private async Task RunEncryptFolder()
     {
         _result = string.Empty;
         _isError = false;
@@ -177,7 +298,7 @@ else
         }
     }
 
-    private async Task RunDecrypt()
+    private async Task RunDecryptFolder()
     {
         _result = string.Empty;
         _isError = false;
@@ -202,6 +323,155 @@ else
         {
             _running = false;
         }
+    }
+
+    // ─── Mobile ──────────────────────────────────────────────────────────
+
+    private async Task PickMoreFiles()
+    {
+        var picked = await Picker.PickMultipleFilesForReadAsync(L["encDir.pickFilesTitle"]);
+        if (picked.Count == 0) return;
+
+        try
+        {
+            foreach (var file in picked)
+            {
+                using (file)
+                {
+                    var remaining = MaxBundleBytes - _bundle.Sum(f => (long)f.Content.Length);
+                    if (remaining <= 0)
+                    {
+                        ShowError(L.Format("encDir.err.bundleTooLarge", MaxBundleBytes / (1024 * 1024)));
+                        return;
+                    }
+                    var content = await ReadCappedAsync(file.Stream, remaining);
+                    _bundle.Add((file.FileName, content));
+                }
+            }
+            _result = string.Empty;
+            _isError = false;
+        }
+        catch (InvalidOperationException)
+        {
+            ShowError(L.Format("encDir.err.bundleTooLarge", MaxBundleBytes / (1024 * 1024)));
+        }
+    }
+
+    private void RemoveFromBundle((string Name, byte[] Content) file) => _bundle.Remove(file);
+
+    private async Task RunEncryptBundle()
+    {
+        _result = string.Empty;
+        _isError = false;
+
+        if (_bundle.Count == 0) { ShowError(L["encDir.err.noFiles"]); return; }
+        if (string.IsNullOrWhiteSpace(_recipientPath)) { ShowError(L["enc.err.selectRecipient"]); return; }
+        if (!File.Exists(_recipientPath)) { ShowError(L["enc.err.recipientNotFound"]); return; }
+
+        _running = true;
+        StateHasChanged();
+        try
+        {
+            using var output = new MemoryStream();
+            await FileEnc.EncryptFilesAsync(_bundle, _recipientPath, output);
+            output.Position = 0;
+
+            var suggested = (_bundle.Count == 1 ? Path.GetFileNameWithoutExtension(_bundle[0].Name) : "archive") + ".zip.pgp";
+            var saved = await Picker.SaveStreamAsync(suggested, output);
+            if (saved is null) { ShowError(L["enc.saveCancelled"]); }
+            else { _result = L.Format("encDir.encryptedOk", saved); }
+        }
+        catch (Exception ex)
+        {
+            ShowError(UserError.Describe(L, ex));
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private async Task PickBundleInput()
+    {
+        var picked = await Picker.PickFileForReadAsync(L["encDir.pickArchiveTitle"], _pgpExtensions);
+        if (picked is null) return;
+
+        using (picked)
+        {
+            try
+            {
+                _inputData = await ReadCappedAsync(picked.Stream, MaxBundleBytes);
+                _inputName = picked.FileName;
+                _result = string.Empty;
+                _isError = false;
+            }
+            catch (Exception ex)
+            {
+                _inputData = null;
+                _inputName = string.Empty;
+                ShowError(UserError.Describe(L, ex));
+            }
+        }
+    }
+
+    private async Task RunDecryptBundle()
+    {
+        _result = string.Empty;
+        _isError = false;
+
+        if (_inputData is null) { ShowError(L["enc.err.chooseEncrypted"]); return; }
+        if (string.IsNullOrWhiteSpace(_passphrase)) { ShowError(L["enc.err.passphraseRequired"]); return; }
+
+        _running = true;
+        StateHasChanged();
+        try
+        {
+            using var input = new MemoryStream(_inputData);
+            using var output = new MemoryStream();
+            await FileEnc.DecryptAsync(input, OwnPrivateKeyPath, _passphrase, output);
+            output.Position = 0;
+
+            var suggested = _inputName.EndsWith(".pgp", StringComparison.OrdinalIgnoreCase)
+                ? _inputName[..^4]
+                : _inputName + ".zip";
+
+            var saved = await Picker.SaveStreamAsync(suggested, output);
+            if (saved is null) { ShowError(L["enc.saveCancelled"]); }
+            else { _result = L.Format("encDir.extractedOkMobile", saved); }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"{L["enc.decryptFailed"]}: {UserError.Describe(L, ex)}");
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private static async Task<byte[]> ReadCappedAsync(Stream input, long maxBytes)
+    {
+        using var ms = new MemoryStream();
+        var buffer = new byte[81920];
+        long total = 0;
+        int read;
+        while ((read = await input.ReadAsync(buffer)) > 0)
+        {
+            total += read;
+            if (total > maxBytes)
+                throw new InvalidOperationException("File is too large.");
+            ms.Write(buffer, 0, read);
+        }
+        return ms.ToArray();
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB" };
+        double size = bytes;
+        int unit = 0;
+        while (size >= 1024 && unit < units.Length - 1) { size /= 1024; unit++; }
+        return $"{size:0.#} {units[unit]}";
     }
 
     private void ShowError(string msg)

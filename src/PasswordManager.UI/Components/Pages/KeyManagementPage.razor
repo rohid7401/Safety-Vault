@@ -1,4 +1,4 @@
-@page "/keys"
+﻿@page "/keys"
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject IKeyDirectoryService KeyDir
@@ -11,9 +11,6 @@
 
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
-<div style="margin-bottom:14px;">
-    <WhatsThisPill FeatureKey="keys" />
-</div>
 
 <div class="hint-row" style="margin-top:0; margin-bottom:16px;">
     <Icon Name="info" Size="15" />
@@ -65,7 +62,7 @@
     <div class="field" style="margin-bottom:0;">
         <label>@L["keys.searchByEmail"]</label>
         <div class="input-group">
-            <input type="email" class="input" @bind="_searchEmail"
+            <input type="email" class="input" @bind="_searchEmail" inputmode="email" autocomplete="email" maxlength="@FieldLimits.Email"
                    placeholder="alice@example.com" />
             <button class="btn btn-primary" @onclick="SearchKeyserver" disabled="@_searching">
                 @(_searching ? L["keys.searching"] : L["keys.search"])
@@ -113,7 +110,7 @@
             }
 
             <div style="margin-top:10px;">
-                <input type="text" class="input" @bind="_searchImportLabel"
+                <input type="text" class="input" @bind="_searchImportLabel" maxlength="@FieldLimits.Label"
                        placeholder="@L["keys.displayNamePlaceholder"]" style="margin-bottom:8px;" />
                 <button class="btn btn-primary btn-sm" @onclick="ImportSearchResult">
                     @L["keys.addToDirectory"]
@@ -188,7 +185,7 @@ else
 
         <div class="field">
             <label>@L["keys.displayName"]</label>
-            <input type="text" class="input" @bind="_importLabel"
+            <input type="text" class="input" @bind="_importLabel" maxlength="@FieldLimits.Label"
                    placeholder="Alice Johnson" />
         </div>
 
@@ -198,7 +195,7 @@ else
                         ValueChanged="@(v => _importKeyPath = v)"
                         Mode="PathPicker.PickerMode.File"
                         FileExtensions="@_ascExtensions"
-                        FilterTitle="Select a public key file"
+                        FilterTitle="@L["keys.pickKeyTitle"]"
                         Placeholder="C:\Users\jane\Downloads\alice_public.asc" />
             <small style="color:var(--n-500); font-size:12px;">@L["keys.supportedExt"]</small>
         </div>
@@ -308,7 +305,7 @@ else
         }
         catch (Exception ex)
         {
-            Toast.Error($"Could not load key directory: {UserError.Describe(L, ex)}");
+            Toast.Error($"{L["keys.err.loadDirectory"]}: {UserError.Describe(L, ex)}");
             _keys = new List<PgpKeyInfo>();
         }
     }
@@ -317,35 +314,35 @@ else
     {
         if (AppState.Account is null) return;
         if (!File.Exists(OwnPublicKeyPath))
-        { Toast.Error("Your public key file is missing on disk."); return; }
+        { Toast.Error(L["keys.err.publicKeyMissing"]); return; }
         try
         {
             await KeyDir.PublishOwnKeyAsync(AppState.Account.VaultPath, OwnPublicKeyPath,
                 $"{AppState.Account.Username} (me)");
-            Toast.Success("Your public key is now in your contact directory.");
+            Toast.Success(L["keys.ok.published"]);
             await Reload();
         }
         catch (Exception ex)
         {
-            Toast.Error($"Could not publish your key: {UserError.Describe(L, ex)}");
+            Toast.Error($"{L["keys.err.publish"]}: {UserError.Describe(L, ex)}");
         }
     }
 
     private async Task ExportOwnPublicKey()
     {
         if (!File.Exists(OwnPublicKeyPath))
-        { Toast.Error("Your public key file is missing on disk."); return; }
+        { Toast.Error(L["keys.err.publicKeyMissing"]); return; }
         try
         {
             var bytes = await File.ReadAllBytesAsync(OwnPublicKeyPath);
             var savedTo = await Picker.SaveFileAsync(
                 $"{AppState.Account!.Username}_public_key.asc", bytes);
             if (!string.IsNullOrEmpty(savedTo))
-                Toast.Success($"Exported public key to {savedTo}");
+                Toast.Success(L.Format("keys.ok.exported", savedTo));
         }
         catch (Exception ex)
         {
-            Toast.Error($"Export failed: {UserError.Describe(L, ex)}");
+            Toast.Error($"{L["keys.err.export"]}: {UserError.Describe(L, ex)}");
         }
     }
 
@@ -366,11 +363,11 @@ else
         _importError = string.Empty;
 
         if (string.IsNullOrWhiteSpace(_importLabel))
-        { _importError = "Display name is required."; return; }
+        { _importError = L["keys.err.labelRequired"]; return; }
         if (string.IsNullOrWhiteSpace(_importKeyPath))
-        { _importError = "Pick the public key file."; return; }
+        { _importError = L["keys.err.pickKeyFile"]; return; }
         if (!File.Exists(_importKeyPath))
-        { _importError = $"File not found: {_importKeyPath}"; return; }
+        { _importError = L.Format("keys.err.fileNotFound", _importKeyPath); return; }
 
         _importing = true;
         StateHasChanged();
@@ -378,16 +375,16 @@ else
         {
             await KeyDir.ImportKeyAsync(AppState.Account!.VaultPath, _importKeyPath, _importLabel);
             _showImport = false;
-            Toast.Success($"Imported '{_importLabel}' into your contact directory.");
+            Toast.Success(L.Format("keys.ok.imported", _importLabel));
             await Reload();
         }
         catch (UnauthorizedAccessException)
         {
-            _importError = "Permission denied while reading the file. Check folder access.";
+            _importError = L["keys.err.permissionDenied"];
         }
         catch (Exception ex)
         {
-            _importError = $"Import failed: {UserError.Describe(L, ex)}";
+            _importError = $"{L["keys.err.import"]}: {UserError.Describe(L, ex)}";
         }
         finally
         {
@@ -400,12 +397,12 @@ else
         try
         {
             await KeyDir.RemoveKeyAsync(AppState.Account!.VaultPath, fileName);
-            Toast.Success("Key removed.");
+            Toast.Success(L["keys.ok.removed"]);
             await Reload();
         }
         catch (Exception ex)
         {
-            Toast.Error($"Could not remove key: {UserError.Describe(L, ex)}");
+            Toast.Error($"{L["keys.err.remove"]}: {UserError.Describe(L, ex)}");
         }
     }
 
@@ -420,7 +417,7 @@ else
         _searchImportLabel = string.Empty;
 
         if (string.IsNullOrWhiteSpace(_searchEmail) || !_searchEmail.Contains('@'))
-        { Toast.Warning("Enter a valid email address."); return; }
+        { Toast.Warning(L["keys.err.emailInvalid"]); return; }
 
         _searching = true;
         StateHasChanged();
@@ -460,7 +457,7 @@ else
     {
         if (_searchResultArmor is null || AppState.Account is null) return;
         if (string.IsNullOrWhiteSpace(_searchImportLabel))
-        { Toast.Warning("Choose a display name for this contact."); return; }
+        { Toast.Warning(L["keys.err.labelRequired"]); return; }
 
         try
         {
@@ -470,7 +467,7 @@ else
             await KeyDir.ImportKeyAsync(AppState.Account.VaultPath, temp, _searchImportLabel);
             File.Delete(temp);
 
-            Toast.Success($"Added {_searchImportLabel} to your contact directory.");
+            Toast.Success(L.Format("keys.ok.imported", _searchImportLabel));
             _searchResultArmor = null;
             _searchKeyDetails = null;
             _searchEmailMismatch = false;
@@ -480,7 +477,7 @@ else
         }
         catch (Exception ex)
         {
-            Toast.Error($"Import failed: {UserError.Describe(L, ex)}");
+            Toast.Error($"{L["keys.err.import"]}: {UserError.Describe(L, ex)}");
         }
     }
 
@@ -503,7 +500,7 @@ else
     {
         _publishError = string.Empty;
         if (!File.Exists(OwnPublicKeyPath))
-        { _publishError = "Public key file is missing."; return; }
+        { _publishError = L["keys.err.publicKeyMissing"]; return; }
 
         _publishing = true;
         StateHasChanged();

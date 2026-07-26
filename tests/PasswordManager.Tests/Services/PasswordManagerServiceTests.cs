@@ -468,6 +468,236 @@ namespace PasswordManager.Tests.Services
             Assert.Equal("4111", svc2.DecryptField(card.CardNumber));
         }
 
+        // ─── Native backup round trip (device → device) ──────────────────────
+
+        [Fact]
+        public async Task ExportBackup_ThenImportIntoAnotherVault_PreservesEverything()
+        {
+            VaultBackup backup;
+
+            await using (var source = await CreateServiceAsync())
+            {
+                var entry = new ServiceEntry { Site = "bank.com", Grouped = true, Tags = { "finance" } };
+
+                var personal = new Credential { Label = "Personal" };
+                personal.Fields.Add(new CredentialField
+                {
+                    Type = CredentialFieldType.Email,
+                    PlainValue = "me@bank.com",
+                });
+                personal.Fields.Add(new CredentialField
+                {
+                    Type = CredentialFieldType.Password,
+                    IsSecret = true,
+                    SecretValue = source.EncryptValue("P@ssw0rd"),
+                    Rotation = new RotationPolicy { Interval = 30, Unit = RotationUnit.Days },
+                });
+                personal.Fields.Add(new CredentialField
+                {
+                    Type = CredentialFieldType.Pin,
+                    IsSecret = true,
+                    Label = "ATM PIN",
+                    SecretValue = source.EncryptValue("4821"),
+                });
+
+                var business = new Credential { Label = "Business" };
+                business.Fields.Add(new CredentialField
+                {
+                    Type = CredentialFieldType.Username,
+                    PlainValue = "acme",
+                });
+                business.Fields.Add(new CredentialField
+                {
+                    Type = CredentialFieldType.TwoFactor,
+                    IsSecret = true,
+                    SecretValue = source.EncryptValue("JBSWY3DPEHPK3PXP"),
+                    TwoFactorKind = TwoFactorKind.Hotp,
+                    HotpCounter = 7,
+                });
+
+                entry.Credentials.Add(personal);
+                entry.Credentials.Add(business);
+                await source.AddServiceEntryAsync(entry);
+
+                backup = await source.ExportBackupAsync();
+            }
+
+            // A different vault, with a different field key — the whole reason the backup
+            // carries plaintext rather than the stored ciphertexts.
+            var otherDir = Path.Combine(_dataDir, "other");
+            Directory.CreateDirectory(otherDir);
+            var otherRepo = new KekVaultRepository(RandomNumberGenerator.GetBytes(32), otherDir);
+            await using var target = await PasswordManagerService.CreateAsync(
+                otherRepo, new AesService(), RandomNumberGenerator.GetBytes(32));
+
+            var added = await target.ImportBackupAsync(backup);
+            Assert.Equal(1, added);
+
+            var restored = Assert.Single(await target.GetEntriesAsync<ServiceEntry>());
+            Assert.Equal("bank.com", restored.Site);
+            Assert.Equal(new[] { "finance" }, restored.Tags);
+            Assert.True(restored.Grouped);
+            Assert.Equal(2, restored.Credentials.Count);
+
+            var restoredPersonal = restored.Credentials.Single(c => c.Label == "Personal");
+            Assert.Equal("me@bank.com",
+                restoredPersonal.Fields.Single(f => f.Type == CredentialFieldType.Email).PlainValue);
+
+            var password = restoredPersonal.Fields.Single(f => f.Type == CredentialFieldType.Password);
+            Assert.Equal("P@ssw0rd", target.DecryptSecret(password));
+            Assert.NotNull(password.Rotation);
+            Assert.Equal(30, password.Rotation!.Interval);
+
+            var pin = restoredPersonal.Fields.Single(f => f.Type == CredentialFieldType.Pin);
+            Assert.Equal("4821", target.DecryptSecret(pin));
+            Assert.Equal("ATM PIN", pin.Label);
+
+            var restoredBusiness = restored.Credentials.Single(c => c.Label == "Business");
+            var totp = restoredBusiness.Fields.Single(f => f.Type == CredentialFieldType.TwoFactor);
+            Assert.Equal("JBSWY3DPEHPK3PXP", target.DecryptSecret(totp));
+            Assert.Equal(TwoFactorKind.Hotp, totp.TwoFactorKind);
+            Assert.Equal(7, totp.HotpCounter);
+        }
+
+        [Fact]
+        public async Task ImportBackup_GivesFreshIds_SoReimportingDuplicatesRatherThanOverwrites()
+        {
+            await using var svc = await CreateServiceAsync();
+            var original = await AddPwAsync(svc, "a.com");
+
+            var backup = await svc.ExportBackupAsync();
+            await svc.ImportBackupAsync(backup);
+
+            var all = await svc.GetEntriesAsync<ServiceEntry>();
+            Assert.Equal(2, all.Count);
+            Assert.Equal(2, all.Select(e => e.Id).Distinct().Count());
+            Assert.Contains(all, e => e.Id == original.Id);
+        }
+
+        // ─── Interop export rows ─────────────────────────────────────────────
+
+        [Fact]
+        public async Task ExportRowsAsync_EmitsOneRowPerCredential()
+        {
+            await using var svc = await CreateServiceAsync();
+
+            var entry = new ServiceEntry { Site = "bank.com" };
+            foreach (var label in new[] { "Personal", "Business" })
+            {
+                var cred = new Credential { Label = label };
+                cred.Fields.Add(new CredentialField
+                {
+                    Type = CredentialFieldType.Password,
+                    IsSecret = true,
+                    SecretValue = svc.EncryptValue($"pw-{label}"),
+                });
+                entry.Credentials.Add(cred);
+            }
+            await svc.AddServiceEntryAsync(entry);
+
+            var rows = await svc.ExportRowsAsync();
+
+            Assert.Equal(2, rows.Count);
+            Assert.All(rows, r => Assert.Equal("bank.com", r.Site));
+            Assert.Equal(new[] { "Personal", "Business" }, rows.Select(r => r.CredentialLabel));
+            Assert.Contains(rows, r => r.Password == "pw-Personal");
+        }
+
+        [Fact]
+        public async Task ExportRowsAsync_CarriesFieldsTheFlatShapeUsedToDrop()
+        {
+            await using var svc = await CreateServiceAsync();
+
+            var cred = new Credential();
+            cred.Fields.Add(new CredentialField { Type = CredentialFieldType.Phone, PlainValue = "+506 8888" });
+            cred.Fields.Add(new CredentialField
+            {
+                Type = CredentialFieldType.Pin,
+                IsSecret = true,
+                SecretValue = svc.EncryptValue("4821"),
+            });
+            cred.Fields.Add(new CredentialField
+            {
+                Type = CredentialFieldType.Text,
+                Label = "Recovery",
+                PlainValue = "code-99",
+            });
+
+            await svc.AddServiceEntryAsync(new ServiceEntry { Site = "a.com", Credentials = { cred } });
+
+            var row = Assert.Single(await svc.ExportRowsAsync());
+
+            Assert.Equal("+506 8888", row.Phone);
+            Assert.Equal("4821", row.Pin);
+            Assert.Equal("Recovery: code-99", row.Text);
+        }
+
+        // ─── Delete all (per-section reset) ──────────────────────────────────
+
+        [Fact]
+        public async Task DeleteAllAsync_RemovesOnlyThatType()
+        {
+            await using var svc = await CreateServiceAsync();
+            await AddPwAsync(svc, "a.com");
+            await AddPwAsync(svc, "b.com");
+            await svc.AddSecureNoteAsync(new SecureNote { Title = "keep me" }, "content");
+
+            var removed = await svc.DeleteAllAsync<ServiceEntry>();
+
+            Assert.Equal(2, removed);
+            Assert.Empty(await svc.GetEntriesAsync<ServiceEntry>());
+            Assert.Single(await svc.GetEntriesAsync<SecureNote>());
+        }
+
+        [Fact]
+        public async Task DeleteAllAsync_AlsoRemovesTrashedEntriesOfThatType()
+        {
+            await using var svc = await CreateServiceAsync();
+            var trashed = await AddPwAsync(svc, "gone.com");
+            await AddPwAsync(svc, "live.com");
+            await svc.DeleteEntryAsync(trashed.Id);
+
+            var removed = await svc.DeleteAllAsync<ServiceEntry>();
+
+            // Both the live one and the soft-deleted one: a "delete all" that left the
+            // trash full would not actually shrink the vault.
+            Assert.Equal(2, removed);
+            Assert.Empty(await svc.GetDeletedEntriesAsync());
+        }
+
+        [Fact]
+        public async Task DeleteAllAsync_SurvivesReopen()
+        {
+            var entryId = Guid.Empty;
+            await using (var svc = await CreateServiceAsync())
+            {
+                entryId = (await AddPwAsync(svc, "a.com")).Id;
+                await svc.DeleteAllAsync<ServiceEntry>();
+            }
+
+            await using var reopened = await CreateServiceAsync();
+            Assert.Empty(await reopened.GetEntriesAsync<ServiceEntry>());
+            Assert.Null(await reopened.GetEntryByIdAsync(entryId));
+        }
+
+        [Fact]
+        public async Task DeleteAllAsync_EmptySection_ReturnsZero()
+        {
+            await using var svc = await CreateServiceAsync();
+            Assert.Equal(0, await svc.DeleteAllAsync<CardEntry>());
+        }
+
+        [Fact]
+        public async Task CountAsync_IgnoresTrashedEntries()
+        {
+            await using var svc = await CreateServiceAsync();
+            var trashed = await AddPwAsync(svc, "gone.com");
+            await AddPwAsync(svc, "live.com");
+            await svc.DeleteEntryAsync(trashed.Id);
+
+            Assert.Equal(1, await svc.CountAsync<ServiceEntry>());
+        }
+
         // ─── IDisposable ─────────────────────────────────────────────────────
 
         [Fact]

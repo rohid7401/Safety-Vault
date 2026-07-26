@@ -102,6 +102,79 @@ namespace PasswordManager.Tests.Services
             Assert.Equal("beta", await File.ReadAllTextAsync(Path.Combine(outDir, "sub", "b.txt")));
         }
 
+        // ─── Multi-file bundle (mobile: no filesystem folder access) ──────────
+
+        [Fact]
+        public async Task EncryptFilesThenDecrypt_RestoresAllFilesAsZip()
+        {
+            var files = new List<(string Name, byte[] Content)>
+            {
+                ("a.txt", Encoding.UTF8.GetBytes("alpha")),
+                ("b.txt", Encoding.UTF8.GetBytes("beta")),
+            };
+
+            using var encrypted = new MemoryStream();
+            await _service.EncryptFilesAsync(files, _pgp.PublicKeyPath, encrypted);
+            encrypted.Position = 0;
+
+            using var zipBytes = new MemoryStream();
+            await _service.DecryptAsync(encrypted, _pgp.PrivateKeyPath, PgpTestFixture.Passphrase, zipBytes);
+            zipBytes.Position = 0;
+
+            using var archive = new System.IO.Compression.ZipArchive(zipBytes, System.IO.Compression.ZipArchiveMode.Read);
+            Assert.Equal(2, archive.Entries.Count);
+
+            using var readerA = new StreamReader(archive.GetEntry("a.txt")!.Open());
+            Assert.Equal("alpha", await readerA.ReadToEndAsync());
+
+            using var readerB = new StreamReader(archive.GetEntry("b.txt")!.Open());
+            Assert.Equal("beta", await readerB.ReadToEndAsync());
+        }
+
+        [Fact]
+        public async Task EncryptFilesAsync_DuplicateNames_AreDisambiguated()
+        {
+            var files = new List<(string Name, byte[] Content)>
+            {
+                ("note.txt", Encoding.UTF8.GetBytes("first")),
+                ("note.txt", Encoding.UTF8.GetBytes("second")),
+            };
+
+            using var encrypted = new MemoryStream();
+            await _service.EncryptFilesAsync(files, _pgp.PublicKeyPath, encrypted);
+            encrypted.Position = 0;
+
+            using var zipBytes = new MemoryStream();
+            await _service.DecryptAsync(encrypted, _pgp.PrivateKeyPath, PgpTestFixture.Passphrase, zipBytes);
+            zipBytes.Position = 0;
+
+            using var archive = new System.IO.Compression.ZipArchive(zipBytes, System.IO.Compression.ZipArchiveMode.Read);
+            Assert.Equal(2, archive.Entries.Count);
+            Assert.Contains(archive.Entries, e => e.Name == "note.txt");
+            Assert.Contains(archive.Entries, e => e.Name == "note (2).txt");
+        }
+
+        [Fact]
+        public async Task EncryptFilesAsync_NoFiles_Throws()
+        {
+            using var output = new MemoryStream();
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _service.EncryptFilesAsync(new List<(string, byte[])>(), _pgp.PublicKeyPath, output));
+        }
+
+        [Fact]
+        public async Task EncryptFilesAsync_OverTheBundleCap_Throws()
+        {
+            var files = new List<(string Name, byte[] Content)>
+            {
+                ("big.bin", new byte[FileEncryptionService.MaxBundleSizeBytes + 1]),
+            };
+
+            using var output = new MemoryStream();
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _service.EncryptFilesAsync(files, _pgp.PublicKeyPath, output));
+        }
+
         public void Dispose() => _pgp.Dispose();
     }
 }

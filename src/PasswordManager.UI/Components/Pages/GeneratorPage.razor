@@ -1,4 +1,4 @@
-@page "/generator"
+﻿@page "/generator"
 @inject IPasswordGenerator Generator
 @inject GeneratorPreferences Prefs
 @inject ToastService Toast
@@ -6,9 +6,6 @@
 @inject Loc L
 @implements IDisposable
 
-<div style="margin-bottom:14px;">
-    <WhatsThisPill FeatureKey="generator" />
-</div>
 
 <div class="card" style="gap:14px;">
     @if (_conflicts.Count > 0)

@@ -14,6 +14,14 @@ namespace PasswordManager.UI.Abstractions
         /// <summary>Picks an existing file and returns a readable stream + display name.</summary>
         Task<PickedFile?> PickFileForReadAsync(string? filterTitle = null, string[]? extensions = null);
 
+        /// <summary>
+        /// Picks one or more existing files and returns a readable stream + display name for
+        /// each. Used where a whole folder can't be picked (mobile — see
+        /// <see cref="IPlatformInfo.HasFilesystemFolderAccess"/>): the user selects the files
+        /// individually instead. Empty (not null) if the user cancels.
+        /// </summary>
+        Task<IReadOnlyList<PickedFile>> PickMultipleFilesForReadAsync(string? filterTitle = null, string[]? extensions = null);
+
         /// <summary>Picks an existing folder and returns its path.</summary>
         Task<string?> PickFolderAsync(string? title = null);
 

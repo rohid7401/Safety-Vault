@@ -10,13 +10,27 @@ namespace PasswordManager.Core.Models
         public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// One finding of the audit. Carries only structured data — never a display string:
+    /// the auditor lives in Infrastructure and has no access to the UI's translations,
+    /// so the wording is built in the UI layer from <see cref="Type"/> plus whichever
+    /// of the detail fields below applies to it.
+    /// </summary>
     public class AuditIssue
     {
         public Guid EntryId { get; set; }
         public string EntryLabel { get; set; } = string.Empty;
         public AuditIssueType Type { get; set; }
         public AuditSeverity Severity { get; set; }
-        public string Description { get; set; } = string.Empty;
+
+        /// <summary>Strength score 0–8 of the offending password (<see cref="AuditIssueType.WeakPassword"/>).</summary>
+        public int Strength { get; set; }
+
+        /// <summary>How many *other* entries share this same password (<see cref="AuditIssueType.ReusedPassword"/>).</summary>
+        public int SharedWith { get; set; }
+
+        /// <summary>When the secret expired (<see cref="AuditIssueType.ExpiredEntry"/>).</summary>
+        public DateTime? ExpiredOn { get; set; }
     }
 
     public enum AuditIssueType

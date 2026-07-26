@@ -41,6 +41,25 @@ namespace PasswordManager.App.Platform
             }
         }
 
+        public async Task<IReadOnlyList<PickedFile>> PickMultipleFilesForReadAsync(string? filterTitle = null, string[]? extensions = null)
+        {
+            try
+            {
+                var options = BuildOptions(filterTitle, extensions);
+                var results = await FilePicker.Default.PickMultipleAsync(options);
+                if (results is null) return Array.Empty<PickedFile>();
+
+                var picked = new List<PickedFile>();
+                foreach (var r in results)
+                    picked.Add(new PickedFile(r.FileName, await r.OpenReadAsync()));
+                return picked;
+            }
+            catch
+            {
+                return Array.Empty<PickedFile>();
+            }
+        }
+
         public async Task<string?> PickFolderAsync(string? title = null)
         {
             try

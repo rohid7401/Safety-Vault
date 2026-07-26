@@ -1,0 +1,168 @@
+﻿@page "/data"
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject ToastService Toast
+@inject Loc L
+@implements IDisposable
+
+@* Deliberately renders only counts, never the entries themselves. A section that has
+   become unusable (a bad import leaving thousands of junk rows freezes its own page)
+   must still have a reachable way to be emptied — that is the whole point of this page. *@
+
+@if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
+
+
+<div class="card" style="gap:6px;">
+    <div class="card-title">@L["data.title"]</div>
+    <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.5;">
+        @L["data.body"]
+    </p>
+</div>
+
+@foreach (var s in _sections)
+{
+    <div class="card" style="flex-direction:row; align-items:center; gap:12px; margin-top:12px;">
+        <div class="entry-icon"><Icon Name="@s.Icon" Size="15" StrokeWidth="1.8" /></div>
+        <div style="flex:1; min-width:0;">
+            <div style="font-size:14px; font-weight:600;">@L[s.LabelKey]</div>
+            <div style="font-size:12px; color:var(--n-400);">
+                @(_loading ? L["common.loading"] : L.Format("data.count", Count(s.Kind)))
+            </div>
+        </div>
+        <button class="btn btn-secondary" type="button" style="flex:none; color:var(--danger);"
+                disabled="@(_loading || Count(s.Kind) == 0)"
+                @onclick="() => Ask(s)">
+            @L["data.deleteAll"]
+        </button>
+    </div>
+}
+
+@* ── Confirmation: name-typing guard, not just a yes/no ── *@
+<SheetModal Visible="@(_pending is not null)" Title="@L["data.confirmTitle"]" OnClose="Cancel">
+    <ChildContent>
+        @if (_pending is not null)
+        {
+            <div class="alert alert-danger" style="margin-bottom:12px;">
+                @L.Format("data.confirmBody", Count(_pending.Kind), L[_pending.LabelKey])
+            </div>
+            <p style="margin:0 0 10px; font-size:13px; color:var(--n-400); line-height:1.5;">
+                @L["data.confirmIrreversible"]
+            </p>
+
+            <div class="field" style="margin-bottom:0;">
+                <label>@L.Format("data.confirmTypePrompt", ConfirmWord)</label>
+                <input type="text" class="input" @bind="_typed" @bind:event="oninput"
+                       autocomplete="off" autocapitalize="none" spellcheck="false"
+                       maxlength="@FieldLimits.Label" placeholder="@ConfirmWord" />
+            </div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="Cancel">@L["common.cancel"]</button>
+        <button class="btn btn-primary" style="background:var(--danger); border-color:var(--danger);"
+                disabled="@(!TypedMatches || _deleting)" @onclick="Confirm">
+            @(_deleting ? L["data.deleting"] : L["data.deleteAll"])
+        </button>
+    </FooterContent>
+</SheetModal>
+
+@code {
+    private enum SectionKind { Passwords, Notes, Cards, Trash }
+
+    private sealed record Section(SectionKind Kind, string LabelKey, string Icon);
+
+    private static readonly Section[] _sections =
+    [
+        new(SectionKind.Passwords, "nav.passwords", "lock"),
+        new(SectionKind.Notes, "nav.notes", "note"),
+        new(SectionKind.Cards, "nav.cards", "card"),
+        new(SectionKind.Trash, "data.trash", "trash"),
+    ];
+
+    private readonly Dictionary<SectionKind, int> _counts = new();
+    private bool _loading = true;
+
+    private Section? _pending;
+    private string _typed = string.Empty;
+    private bool _deleting;
+
+    /// <summary>Word the user must type to arm the delete button.</summary>
+    private string ConfirmWord => L["data.confirmWord"];
+
+    private bool TypedMatches =>
+        string.Equals(_typed.Trim(), ConfirmWord, StringComparison.CurrentCultureIgnoreCase);
+
+    private int Count(SectionKind kind) => _counts.TryGetValue(kind, out var n) ? n : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        L.OnChanged += StateHasChanged;
+        await RefreshCountsAsync();
+    }
+
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private async Task RefreshCountsAsync()
+    {
+        _loading = true;
+        var svc = AppState.Service!;
+
+        _counts[SectionKind.Passwords] = await svc.CountAsync<ServiceEntry>();
+        _counts[SectionKind.Notes] = await svc.CountAsync<SecureNote>();
+        _counts[SectionKind.Cards] = await svc.CountAsync<CardEntry>();
+        _counts[SectionKind.Trash] = (await svc.GetDeletedEntriesAsync()).Count;
+
+        _loading = false;
+    }
+
+    private void Ask(Section section)
+    {
+        _pending = section;
+        _typed = string.Empty;
+    }
+
+    private void Cancel()
+    {
+        _pending = null;
+        _typed = string.Empty;
+    }
+
+    private async Task Confirm()
+    {
+        if (_pending is null || !TypedMatches) return;
+
+        _deleting = true;
+        StateHasChanged();
+        try
+        {
+            var svc = AppState.Service!;
+            var removed = _pending.Kind switch
+            {
+                SectionKind.Passwords => await svc.DeleteAllAsync<ServiceEntry>(),
+                SectionKind.Notes => await svc.DeleteAllAsync<SecureNote>(),
+                SectionKind.Cards => await svc.DeleteAllAsync<CardEntry>(),
+                SectionKind.Trash => await PurgeTrashAsync(svc),
+                _ => 0,
+            };
+
+            Toast.Success(L.Format("data.deletedOk", removed));
+            Cancel();
+            await RefreshCountsAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"{L["data.deleteFailed"]}: {UserError.Describe(L, ex)}");
+        }
+        finally
+        {
+            _deleting = false;
+        }
+    }
+
+    private async Task<int> PurgeTrashAsync(PasswordManagerService svc)
+    {
+        var count = (await svc.GetDeletedEntriesAsync()).Count;
+        await svc.PurgeDeletedAsync();
+        return count;
+    }
+}

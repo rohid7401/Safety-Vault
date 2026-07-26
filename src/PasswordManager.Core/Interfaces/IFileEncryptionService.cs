@@ -14,6 +14,14 @@ namespace PasswordManager.Core.Interfaces
         /// private key + passphrase, and writes the plaintext to <paramref name="output"/>.</summary>
         Task DecryptAsync(Stream input, string privateKeyPath, string passphrase, Stream output);
 
+        /// <summary>
+        /// Bundles several already-in-memory files into a zip and PGP-encrypts the zip to
+        /// <paramref name="output"/>. The mobile equivalent of <see cref="EncryptDirectoryAsync"/>:
+        /// where a picked folder yields no real filesystem path to walk, the caller picks
+        /// individual files instead and this does the bundling.
+        /// </summary>
+        Task EncryptFilesAsync(IReadOnlyList<(string Name, byte[] Content)> files, string publicKeyPath, Stream output);
+
         // ─── Path-based convenience (desktop) ────────────────────────────────
         // Thin wrappers over the stream methods for the filesystem-friendly platforms.
 

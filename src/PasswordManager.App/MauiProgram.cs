@@ -41,10 +41,12 @@ public static class MauiProgram
         // Localization
         builder.Services.AddSingleton<ILanguageStore, MauiLanguageStore>();
         builder.Services.AddSingleton<Loc>();
+        builder.Services.AddSingleton<ITutorialStore, MauiTutorialStore>();
 
         // Platform implementations of the UI abstractions
         builder.Services.AddSingleton<IClipboardService, MauiClipboardService>();
         builder.Services.AddSingleton<IFilePickerService, MauiFilePickerService>();
+        builder.Services.AddSingleton<IPlatformInfo, MauiPlatformInfo>();
         builder.Services.AddSingleton<SecureClipboardService>();
 
 #if DEBUG

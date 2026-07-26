@@ -1,4 +1,4 @@
-@page "/audit"
+﻿@page "/audit"
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject IVaultAuditor Auditor
@@ -7,9 +7,6 @@
 
 @if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
 
-<div style="margin-bottom:14px;">
-    <WhatsThisPill FeatureKey="audit" />
-</div>
 
 @if (_report is null)
 {
@@ -55,9 +52,9 @@ else
             <div class="card" style="flex-direction:row; align-items:center; gap:12px;">
                 <div style="flex:1; min-width:0;">
                     <div style="font-size:14px; font-weight:600;">@issue.EntryLabel</div>
-                    <div style="font-size:12px; color:var(--n-400);">@issue.Description</div>
+                    <div style="font-size:12px; color:var(--n-400);">@Describe(issue)</div>
                 </div>
-                <span class="badge badge-@issue.Severity.ToString().ToLower()">@issue.Type</span>
+                <span class="badge badge-@issue.Severity.ToString().ToLower()">@TypeLabel(issue.Type)</span>
             </div>
         }
     }
@@ -74,6 +71,30 @@ else
     protected override void OnInitialized() => L.OnChanged += StateHasChanged;
 
     public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    // The auditor reports structured findings (Infrastructure has no access to Loc);
+    // the wording is built here so it follows the selected language.
+    private string TypeLabel(AuditIssueType type) => type switch
+    {
+        AuditIssueType.WeakPassword => L["audit.issue.weak"],
+        AuditIssueType.ReusedPassword => L["audit.issue.reused"],
+        AuditIssueType.ExpiredEntry => L["audit.issue.expired"],
+        AuditIssueType.NoExpiration => L["audit.issue.noExpiration"],
+        _ => string.Empty,
+    };
+
+    private string Describe(AuditIssue issue) => issue.Type switch
+    {
+        AuditIssueType.WeakPassword => L.Format("audit.desc.weak", issue.Strength),
+        AuditIssueType.ReusedPassword => issue.SharedWith == 1
+            ? L["audit.desc.reusedOne"]
+            : L.Format("audit.desc.reused", issue.SharedWith),
+        AuditIssueType.ExpiredEntry => issue.ExpiredOn.HasValue
+            ? L.Format("audit.desc.expired", issue.ExpiredOn.Value.ToLocalTime().ToString("d"))
+            : string.Empty,
+        AuditIssueType.NoExpiration => L["audit.desc.noExpiration"],
+        _ => string.Empty,
+    };
 
     private async Task RunAudit()
     {

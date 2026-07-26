@@ -25,6 +25,8 @@
 }
 else
 {
+    <OnboardingTour />
+
     <div class="app-shell">
         <header class="appbar">
             @if (ShowBack)
@@ -134,6 +136,7 @@ else
             new NavItem("nav.generator", "generator", "refresh"),
             new NavItem("nav.audit", "audit", "shield"),
             new NavItem("nav.importExport", "import-export", "swap"),
+            new NavItem("nav.data", "data", "trash"),
         ]),
         new("nav.group.keys",
         [
@@ -143,6 +146,7 @@ else
         ]),
         new("nav.group.learn",
         [
+            new NavItem("nav.walkthrough", "walkthrough", "info"),
             new NavItem("nav.tutorial", "tutorial", "book"),
         ]),
     ];
@@ -156,6 +160,8 @@ else
         ["generator"] = "title.generator",
         ["audit"] = "title.audit",
         ["import-export"] = "title.importExport",
+        ["data"] = "title.data",
+        ["walkthrough"] = "title.walkthrough",
         ["keys"] = "title.keys",
         ["encrypt-file"] = "title.encryptFiles",
         ["encrypt-directory"] = "title.encryptDirs",

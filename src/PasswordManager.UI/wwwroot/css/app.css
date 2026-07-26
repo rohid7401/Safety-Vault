@@ -97,10 +97,16 @@ h1, h2, h3, h4, h5, h6 {
 @keyframes totpShrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 
 /* ═══ App shell ════════════════════════════════════════════════════ */
+/* --app-vh is the *visible* viewport height, published by the visualViewport
+   listener in index.html. It matters on Android: the WebView keeps reporting
+   the full screen height for `vh` even while the soft keyboard covers the
+   bottom third of it, so anything sized or anchored with `vh` ends up behind
+   the keyboard. The 100vh fallback applies on desktop and before the first
+   resize event fires. */
 .app-shell {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: var(--app-vh, 100vh);
     position: relative;
     overflow: hidden;
 }
@@ -590,23 +596,6 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
 .page-header h1 { font-size: 20px; font-weight: 600; }
 .page-header p { color: var(--n-400); font-size: 13px; margin-top: 2px; }
 
-.whats-this-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: transparent;
-    border: 1px solid var(--color-divider);
-    border-radius: 100px;
-    padding: 4px 11px;
-    color: var(--n-300);
-    font-size: 11.5px;
-    white-space: nowrap;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    transition: border-color .15s;
-}
-.whats-this-pill:hover { border-color: var(--color-accent); }
-
 .info-dot {
     width: 14px;
     height: 14px;
@@ -736,7 +725,7 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100vh;
+    height: var(--app-vh, 100vh);
     background: var(--color-bg);
     overflow-y: auto;
 }
@@ -825,7 +814,13 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
 .modal-backdrop,
 .sheet-backdrop {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* Height (not `bottom: 0`) so the sheet's bottom edge sits on top of the
+       soft keyboard instead of behind it — `position: fixed` resolves against
+       the layout viewport, which the keyboard does not shrink. */
+    height: var(--app-vh, 100vh);
     background: color-mix(in srgb, var(--n-900) 60%, transparent);
     display: flex;
     align-items: flex-end;

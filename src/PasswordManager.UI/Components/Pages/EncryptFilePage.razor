@@ -1,4 +1,4 @@
-@page "/encrypt-file"
+﻿@page "/encrypt-file"
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject IFileEncryptionService FileEnc
@@ -9,9 +9,6 @@
 
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
-<div style="margin-bottom:14px;">
-    <WhatsThisPill FeatureKey="encrypt-file" />
-</div>
 
 <div class="seg" style="margin-bottom:16px;">
     <button class="seg-opt @(_mode == Mode.Encrypt ? "active" : "")" type="button" @onclick="() => SwitchMode(Mode.Encrypt)">
