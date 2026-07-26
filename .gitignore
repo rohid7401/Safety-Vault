@@ -381,3 +381,6 @@ vault.config.json
 
 docs/
 .claude/
+
+# NuGet lock files are regenerated per-environment; keep them local, not tracked
+**/packages.lock.json
