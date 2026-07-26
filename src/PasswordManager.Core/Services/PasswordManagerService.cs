@@ -313,6 +313,13 @@ namespace PasswordManager.Core.Services
                 if (!string.IsNullOrEmpty(portable.Username))
                     cred.Fields.Add(PlainField(CredentialFieldType.Username, portable.Username));
 
+                // Only when it says something the card title doesn't already — the importer falls
+                // back to using the url as the site name, and repeating it on the credential
+                // would show every imported card its own address twice.
+                if (!string.IsNullOrEmpty(portable.Web) &&
+                    !string.Equals(portable.Web, portable.Site, StringComparison.OrdinalIgnoreCase))
+                    cred.Fields.Add(PlainField(CredentialFieldType.Web, portable.Web));
+
                 cred.Fields.Add(SecretField(CredentialFieldType.Password, portable.Password));
 
                 if (!string.IsNullOrEmpty(portable.TotpSecret))
@@ -382,6 +389,7 @@ namespace PasswordManager.Core.Services
                             Label = field.Label,
                             IsSecret = field.IsSecret,
                             Value = field.IsSecret ? DecryptSecret(field) : field.PlainValue,
+                            LastChanged = field.LastChanged,
                             TwoFactorKind = field.TwoFactorKind,
                             HotpCounter = field.HotpCounter,
                             Rotation = field.Rotation is null ? null : new BackupRotation
@@ -443,6 +451,7 @@ namespace PasswordManager.Core.Services
                             IsSecret = sourceField.IsSecret,
                             PlainValue = sourceField.IsSecret ? string.Empty : sourceField.Value,
                             SecretValue = sourceField.IsSecret ? EncryptField(sourceField.Value) : null,
+                            LastChanged = sourceField.LastChanged,
                             TwoFactorKind = sourceField.TwoFactorKind,
                             HotpCounter = sourceField.HotpCounter,
                             Rotation = sourceField.Rotation is null ? null : new RotationPolicy
@@ -489,6 +498,7 @@ namespace PasswordManager.Core.Services
                         Username = FirstPlain(cred, CredentialFieldType.Username),
                         Email = FirstPlain(cred, CredentialFieldType.Email),
                         Phone = FirstPlain(cred, CredentialFieldType.Phone),
+                        Web = FirstPlain(cred, CredentialFieldType.Web),
                         Password = FirstSecret(cred, CredentialFieldType.Password),
                         Pin = FirstSecret(cred, CredentialFieldType.Pin),
                         TotpSecret = FirstSecret(cred, CredentialFieldType.TwoFactor),

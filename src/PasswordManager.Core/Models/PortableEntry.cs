@@ -18,6 +18,11 @@ namespace PasswordManager.Core.Models
         public string Password { get; set; } = string.Empty;
         public string? TotpSecret { get; set; }
 
+        /// <summary>The account's URL, from the source's url/uri column. Kept apart from
+        /// <see cref="Site"/> so a Chrome export lands its <c>name</c> as the card title and its
+        /// <c>url</c> as an address on the credential, instead of one overwriting the other.</summary>
+        public string Web { get; set; } = string.Empty;
+
         /// <summary>Free text from the source's notes column.</summary>
         public string Notes { get; set; } = string.Empty;
 

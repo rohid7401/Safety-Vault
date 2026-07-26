@@ -21,6 +21,9 @@ namespace PasswordManager.Core.Models
         public string Phone { get; set; } = string.Empty;
         public string TotpSecret { get; set; } = string.Empty;
 
+        /// <summary>The credential's own URL, which is what other managers put in their uri column.</summary>
+        public string Web { get; set; } = string.Empty;
+
         /// <summary>Free-text fields joined together; lands in the target's "notes" column.</summary>
         public string Text { get; set; } = string.Empty;
 
@@ -44,6 +47,7 @@ namespace PasswordManager.Core.Models
             ExportField.Pin => Pin,
             ExportField.Phone => Phone,
             ExportField.TotpSecret => TotpSecret,
+            ExportField.Web => Web,
             ExportField.Text => Text,
             ExportField.Tags => Tags,
             _ => string.Empty,
@@ -65,6 +69,10 @@ namespace PasswordManager.Core.Models
         Pin,
         Phone,
         TotpSecret,
+
+        /// <summary>The credential's URL — the target's uri/url column.</summary>
+        Web,
+
         Text,
         Tags,
     }
