@@ -45,7 +45,8 @@ un futuro shell Blazor WebAssembly (web) pueda reusar toda la UI sin reescribirl
 
 ## Requisitos comunes (todas las plataformas)
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (Core/Infrastructure/UI/tests)
+- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) (solo Android, que requiere `net9.0-android35.0` — la API 35 que exige Play Store no está disponible en el workload de Android de .NET 8)
 - Workload de MAUI:
   ```
   dotnet workload install maui
@@ -90,7 +91,7 @@ App UI development**), seleccionar el target Windows y F5.
 | Herramienta | Notas |
 |---|---|
 | **JDK 17** | Microsoft Build of OpenJDK recomendado. Puede convivir con otras versiones de Java ya instaladas — no hace falta que sea el `JAVA_HOME` global, ver abajo |
-| **Android SDK** | Mínimo: `platform-tools`, `platforms;android-34`, `build-tools;34.0.0`. Se puede instalar con Android Studio (GUI) o solo las [command-line tools](https://developer.android.com/studio#command-tools) (más liviano, sin IDE) |
+| **Android SDK** | Mínimo: `platform-tools`, `platforms;android-35`, `build-tools;35.0.0`. Se puede instalar con Android Studio (GUI) o solo las [command-line tools](https://developer.android.com/studio#command-tools) (más liviano, sin IDE) |
 | Dispositivo o emulador Android 7.0+ (API 24) | Para probar la app compilada |
 
 ### Instalación rápida (Windows, sin Android Studio)
@@ -104,7 +105,7 @@ winget install --id Microsoft.OpenJDK.17 -e
 #    el contenido en <SDK_ROOT>\cmdline-tools\latest\)
 
 # 3. Instalar los paquetes necesarios y aceptar licencias
-<SDK_ROOT>\cmdline-tools\latest\bin\sdkmanager.bat --sdk_root=<SDK_ROOT> "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+<SDK_ROOT>\cmdline-tools\latest\bin\sdkmanager.bat --sdk_root=<SDK_ROOT> "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 <SDK_ROOT>\cmdline-tools\latest\bin\sdkmanager.bat --sdk_root=<SDK_ROOT> --licenses
 
 # 4. Variables de entorno (nueva terminal para que tomen efecto)
@@ -124,7 +125,7 @@ setx ANDROID_SDK_ROOT "<SDK_ROOT>"
 # Con el dispositivo conectado y depuración USB activada (u emulador ya iniciado):
 adb devices     # confirmar que aparece
 
-dotnet build src/PasswordManager.App/PasswordManager.App.csproj -f net8.0-android -t:Run
+dotnet build src/PasswordManager.App/PasswordManager.App.csproj -f net9.0-android35.0 -t:Run
 ```
 
 Si el `JAVA_HOME` global apunta a una versión distinta de 17, pasar explícitamente:
@@ -134,7 +135,7 @@ Si el `JAVA_HOME` global apunta a una versión distinta de 17, pasar explícitam
 
 El `.apk` firmado para instalar manualmente (`adb install ...`) queda en:
 ```
-src/PasswordManager.App/bin/Debug/net8.0-android/com.safetyvault.app-Signed.apk
+src/PasswordManager.App/bin/Debug/net9.0-android35.0/com.safetyvault.app-Signed.apk
 ```
 
 ## macOS (Mac Catalyst)

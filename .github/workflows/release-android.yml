@@ -25,7 +25,10 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          # .NET 9 SDK builds net8.0 TFMs too (Core/Infra/UI/tests) — it's the
+          # one required here because Android API 35 (mandatory on Play since
+          # 2025) only ships in the net9.0-android workload, not net8.0-android.
+          dotnet-version: "9.0.x"
 
       - name: Cache NuGet + workload packs
         uses: actions/cache@v4
@@ -40,6 +43,12 @@ jobs:
 
       - name: Install MAUI Android workload
         run: dotnet workload install maui-android
+
+      - name: Install Android API 35 platform
+        run: >
+          dotnet build -t:InstallAndroidDependencies -f net9.0-android35.0
+          -p:AcceptAndroidSDKLicenses=true
+          src/PasswordManager.App/PasswordManager.App.csproj
 
       - name: Run tests
         run: dotnet test tests/PasswordManager.Tests/PasswordManager.Tests.csproj -c Release --nologo
@@ -56,8 +65,9 @@ jobs:
       - name: Publish signed .aab
         run: >
           dotnet publish src/PasswordManager.App/PasswordManager.App.csproj
-          -f net8.0-android -c Release
+          -f net9.0-android35.0 -c Release
           -p:AndroidPackageFormat=aab
+          -p:AndroidKeyStore=true
           -p:ApplicationDisplayVersion=${{ steps.version.outputs.name }}
           -p:ApplicationVersion=${{ github.run_number }}
           -p:AndroidSigningKeyStore="$RUNNER_TEMP/release.keystore"
