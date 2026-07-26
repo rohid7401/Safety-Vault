@@ -50,6 +50,7 @@ namespace PasswordManager.Core.Models
             new("password", ExportField.Password),
             new("pin", ExportField.Pin),
             new("phone", ExportField.Phone),
+            new("url", ExportField.Web),
             new("totp_secret", ExportField.TotpSecret),
             new("notes", ExportField.Text),
             new("tags", ExportField.Tags),
@@ -69,7 +70,7 @@ namespace PasswordManager.Core.Models
             new("notes", ExportField.Text),
             new("fields", null),
             new("reprompt", null, "0"),
-            new("login_uri", null),
+            new("login_uri", ExportField.Web),
             new("login_username", ExportField.Login),
             new("login_password", ExportField.Password),
             new("login_totp", ExportField.TotpSecret),
@@ -79,7 +80,7 @@ namespace PasswordManager.Core.Models
         private static readonly ExportColumn[] Chrome =
         {
             new("name", ExportField.Site),
-            new("url", null),
+            new("url", ExportField.Web),
             new("username", ExportField.Login),
             new("password", ExportField.Password),
             new("note", ExportField.Text),

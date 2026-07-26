@@ -25,6 +25,16 @@ namespace PasswordManager.Core.Models
         /// <summary>Encrypted value for secret fields. Null for non-secret fields.</summary>
         public EncryptedField? SecretValue { get; set; }
 
+        /// <summary>
+        /// When the secret was last replaced, for the user's own reference ("changed 3 months
+        /// ago"). Distinct from <see cref="RotationPolicy.LastChanged"/>, which only exists
+        /// while a rotation policy does and drives the expiry clock; this is tracked for every
+        /// secret field regardless. Null means unknown — either a non-secret field, or a
+        /// credential written before this was recorded, which must not be reported as "changed
+        /// today" just because it was read today.
+        /// </summary>
+        public DateTime? LastChanged { get; set; }
+
         // ── Rotation (meaningful for Password / Pin) ─────────────────────────
         public RotationPolicy? Rotation { get; set; }
 
@@ -43,6 +53,8 @@ namespace PasswordManager.Core.Models
         /// Replaces the secret value. When the field has a rotation policy, the immediately-
         /// previous value is kept in a single history slot (any older value is discarded) and
         /// the rotation clock is restarted. Fields without rotation are simply overwritten.
+        /// Callers must only invoke this when the value actually changed — every call stamps
+        /// <see cref="LastChanged"/>, so re-setting an unchanged secret would misreport it.
         /// </summary>
         public void SetSecret(EncryptedField newValue)
         {
@@ -52,6 +64,7 @@ namespace PasswordManager.Core.Models
                     PreviousSecret = SecretValue;
                 Rotation.LastChanged = DateTime.UtcNow;
             }
+            LastChanged = DateTime.UtcNow;
             SecretValue = newValue;
         }
 

@@ -543,6 +543,86 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
 }
 .tag-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
+/* ── Chip tag editor (TagInput) ────────────────────────────────────────── */
+.tag-input {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 40px;
+    padding: 6px 8px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md);
+    cursor: text;
+    transition: border-color .15s;
+}
+.tag-input:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.tag-input.focused { border-color: var(--color-accent); }
+
+.tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 5px 3px 11px;
+    border-radius: 100px;
+    background: var(--a-900);
+    color: var(--a-200);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+.tag-chip-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 100px;
+    background: transparent;
+    color: inherit;
+    opacity: .65;
+    cursor: pointer;
+}
+.tag-chip-x:hover { opacity: 1; background: color-mix(in srgb, currentColor 22%, transparent); }
+
+.tag-input-box {
+    flex: 1 1 90px;
+    min-width: 90px;
+    padding: 2px 0;
+    font: inherit;
+    font-size: 14px;
+    color: var(--color-text);
+    caret-color: var(--color-accent);
+    background: transparent;
+    border: 0;
+    outline: none;
+}
+.tag-input-box::placeholder { color: var(--n-500); }
+
+.tag-suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tag-suggest-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px dashed var(--color-divider);
+    border-radius: 100px;
+    background: transparent;
+    color: var(--n-400);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color .15s, color .15s;
+}
+.tag-suggest-item:hover { border-style: solid; border-color: var(--color-accent); color: var(--color-text); }
+
 .tag-2fa {
     display: inline-flex;
     align-items: center;

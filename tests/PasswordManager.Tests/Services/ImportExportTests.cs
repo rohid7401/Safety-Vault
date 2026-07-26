@@ -24,16 +24,50 @@ namespace PasswordManager.Tests.Services
                 Username = "user1",
                 Email = "user@example.com",
                 Password = "Secret123!",
+                Web = "https://example.com/login",
                 Tags = "work;email",
             });
 
             var csv = _service.ExportToCsv(rows, AllOf(ExportTarget.GenericCsv));
 
-            Assert.Contains("site,credential_label,username,email,password,pin,phone,totp_secret,notes,tags", csv);
+            Assert.Contains("site,credential_label,username,email,password,pin,phone,url,totp_secret,notes,tags", csv);
             Assert.Contains("example.com", csv);
             Assert.Contains("Personal", csv);
             Assert.Contains("Secret123!", csv);
+            Assert.Contains("https://example.com/login", csv);
             Assert.Contains("work;email", csv);
+        }
+
+        [Fact]
+        public void ImportCsv_ChromeExport_KeepsNameAsSiteAndUrlAsWeb()
+        {
+            var csv = "name,url,username,password,note\n" +
+                      "Universidad,https://plataforma.uni.ac.cr,alum@uni.ac.cr,Passw0rd!,\n";
+
+            var entry = Assert.Single(_service.Import(csv).Entries!);
+
+            Assert.Equal("Universidad", entry.Site);
+            Assert.Equal("https://plataforma.uni.ac.cr", entry.Web);
+        }
+
+        [Fact]
+        public void ImportCsv_UrlOnlyAndNoTitle_FallsBackToUrlAsSite()
+        {
+            var csv = "url,username,password\nhttps://matricula.uni.ac.cr,alum@uni.ac.cr,Passw0rd!\n";
+
+            var entry = Assert.Single(_service.Import(csv).Entries!);
+
+            Assert.Equal("https://matricula.uni.ac.cr", entry.Site);
+        }
+
+        [Fact]
+        public void ExportToCsv_Bitwarden_FillsLoginUriFromWebField()
+        {
+            var rows = Rows(new ExportRow { Site = "Universidad", Web = "https://pagos.uni.ac.cr", Password = "p" });
+
+            var csv = _service.ExportToCsv(rows, AllOf(ExportTarget.BitwardenCsv));
+
+            Assert.Contains("https://pagos.uni.ac.cr", csv);
         }
 
         [Fact]

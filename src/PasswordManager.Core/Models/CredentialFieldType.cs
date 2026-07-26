@@ -5,6 +5,14 @@ namespace PasswordManager.Core.Models
     /// hint, and whether the value is treated as a secret by default. "Pin" is just a secret
     /// made of digits — cryptographically indistinct from a password.
     /// </summary>
+    /// <remarks>
+    /// ORDER IS PART OF THE STORAGE FORMAT. The vault serializer has no
+    /// <c>JsonStringEnumConverter</c>, so these persist as their integer values — <c>Text</c>
+    /// is 6 in every vault written so far. Inserting a member anywhere but the end renumbers
+    /// the ones after it, which silently retypes fields in vaults already on users' devices
+    /// (a stored 6 meaning "Text" would read back as whatever now sits at 6). Append only;
+    /// never reorder or remove.
+    /// </remarks>
     public enum CredentialFieldType
     {
         Email,
@@ -14,5 +22,12 @@ namespace PasswordManager.Core.Models
         Phone,
         TwoFactor,
         Text,
+
+        /// <summary>
+        /// A URL. Lets one grouped card hold several sites that share an account but not a
+        /// password — a university card whose "Plataforma", "Matrícula" and "Pagos"
+        /// credentials each point at their own address.
+        /// </summary>
+        Web,
     }
 }

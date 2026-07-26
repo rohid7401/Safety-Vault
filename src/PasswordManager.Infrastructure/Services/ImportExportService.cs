@@ -176,7 +176,8 @@ namespace PasswordManager.Infrastructure.Services
 
                 var entry = new PortableEntry
                 {
-                    Site = GetField(fields, headerMap, "site", "name", "url", "web site", "login_uri", "title"),
+                    Site = GetField(fields, headerMap, "site", "name", "title"),
+                    Web = GetField(fields, headerMap, "url", "uri", "login_uri", "web site", "website"),
                     CredentialLabel = GetField(fields, headerMap, "credential_label", "account name"),
                     Username = GetField(fields, headerMap, "username", "login_username", "user", "login name", "account"),
                     Email = GetField(fields, headerMap, "email", "e-mail"),
@@ -184,6 +185,10 @@ namespace PasswordManager.Infrastructure.Services
                     TotpSecret = GetFieldOrNull(fields, headerMap, "totp_secret", "totp", "login_totp", "otpauth"),
                     Notes = GetField(fields, headerMap, "notes", "note", "comments"),
                 };
+
+                // Files that carry only a url and no title (some KeePass and browser exports) would
+                // otherwise import as untitled cards, so the address doubles as the name.
+                if (string.IsNullOrWhiteSpace(entry.Site)) entry.Site = entry.Web;
 
                 var tagsRaw = GetField(fields, headerMap, "tags", "folder", "group");
                 if (!string.IsNullOrEmpty(tagsRaw))
@@ -290,7 +295,7 @@ namespace PasswordManager.Infrastructure.Services
         /// </summary>
         private static readonly string[] KnownColumns =
         {
-            "site", "name", "url", "web site", "login_uri", "title",
+            "site", "name", "url", "uri", "web site", "website", "login_uri", "title",
             "username", "login_username", "user", "login name", "account",
             "email", "e-mail", "password", "login_password",
             "totp_secret", "totp", "login_totp", "otpauth",
@@ -328,6 +333,7 @@ namespace PasswordManager.Infrastructure.Services
             var cut = 0;
 
             if (e.Site.Length > FieldLimits.Site) { e.Site = FieldLimits.Clamp(e.Site, FieldLimits.Site); cut++; }
+            if (e.Web.Length > FieldLimits.Site) { e.Web = FieldLimits.Clamp(e.Web, FieldLimits.Site); cut++; }
             if (e.CredentialLabel.Length > FieldLimits.Label) { e.CredentialLabel = FieldLimits.Clamp(e.CredentialLabel, FieldLimits.Label); cut++; }
             if (e.Notes.Length > FieldLimits.NoteContent) { e.Notes = FieldLimits.Clamp(e.Notes, FieldLimits.NoteContent); cut++; }
             if (e.Username.Length > FieldLimits.Username) { e.Username = FieldLimits.Clamp(e.Username, FieldLimits.Username); cut++; }

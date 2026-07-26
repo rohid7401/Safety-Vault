@@ -124,6 +124,18 @@ else
                             </button>
                         </div>
                     }
+
+                    <div class="cred-meta">
+                        <span title="@cred.CreationTime.ToLocalTime().ToString("g")">
+                            <Icon Name="plus" Size="11" />@L.Format("vault.meta.created", Ago(cred.CreationTime))
+                        </span>
+                        @if (SecretChangedAt(cred) is DateTime changed)
+                        {
+                            <span title="@changed.ToLocalTime().ToString("g")">
+                                <Icon Name="refresh" Size="11" />@L.Format("vault.meta.secretChanged", Ago(changed))
+                            </span>
+                        }
+                    </div>
                 </div>
             }
 
@@ -255,8 +267,8 @@ else
 
         <div class="field" style="margin-top:14px;">
             <label>@L["vault.field.tags"]</label>
-            <input type="text" class="input" @bind="_fTags" placeholder="@L["vault.field.tagsPlaceholder"]"
-                   maxlength="@(FieldLimits.Tag * FieldLimits.TagsPerEntry)" />
+            <TagInput Tags="_fTags" Available="@KnownTags" Placeholder="@L["vault.field.tagsPlaceholder"]"
+                      RemoveLabel="@L["vault.tags.remove"]" />
         </div>
 
         @if (!string.IsNullOrEmpty(_fError))
@@ -323,6 +335,8 @@ else
                   border-radius: var(--radius-md); padding: 7px 10px; margin-top: 7px; }
     .secret-label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--n-500); flex: none; }
     .secret-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--color-text); }
+    .cred-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 9px; font-size: 11px; color: var(--n-500); }
+    .cred-meta span { display: inline-flex; align-items: center; gap: 4px; }
     .rot-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
     .rot-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
     .rot-status.warn { color: var(--warning); }
@@ -376,12 +390,44 @@ else
     private bool _showAdd;
     private ServiceEntry? _editEntry;
     private string _fSite = string.Empty;
-    private string _fTags = string.Empty;
+    private List<string> _fTags = new();
     private string _fError = string.Empty;
+
+    /// <summary>Tags already in use, offered as suggestions so the same idea doesn't end up
+    /// spelled three ways across the vault. The entry being edited contributes too — its own
+    /// tags are filtered out by the chip editor rather than here.</summary>
+    private List<string> KnownTags => _entries
+        .SelectMany(e => e.Tags)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(t => t, StringComparer.CurrentCultureIgnoreCase)
+        .ToList();
     private bool _draftGrouped;
     private List<CredDraft> _draft = new();
     private string _fSnapshot = string.Empty;
     private FieldDraft? _typeMenu;
+
+    /// <summary>
+    /// When this credential's password (or PIN) was last replaced, or null when nothing here is
+    /// datable. Falls back to the rotation clock so credentials created before <see
+    /// cref="CredentialField.LastChanged"/> existed still show a real date if they rotate;
+    /// the rest correctly show nothing rather than inventing one.
+    /// </summary>
+    private static DateTime? SecretChangedAt(Credential cred) => cred.Fields
+        .Where(f => f.Type is CredentialFieldType.Password or CredentialFieldType.Pin)
+        .Select(f => f.LastChanged ?? f.Rotation?.LastChanged)
+        .Where(d => d is not null)
+        .Max();
+
+    /// <summary>Coarse "how long ago" phrasing — the exact timestamp is in the tooltip.</summary>
+    private string Ago(DateTime utc)
+    {
+        var days = (int)(DateTime.UtcNow - utc).TotalDays;
+        if (days <= 0) return L["vault.ago.today"];
+        if (days == 1) return L["vault.ago.yesterday"];
+        if (days < 30) return L.Format("vault.ago.days", days);
+        if (days < 365) return L.Format("vault.ago.months", days / 30);
+        return L.Format("vault.ago.years", days / 365);
+    }
 
     private void ToggleTypeMenu(FieldDraft f) => _typeMenu = _typeMenu == f ? null : f;
     private void SelectType(FieldDraft f, CredentialFieldType t) { f.Type = t; _typeMenu = null; }
@@ -391,6 +437,7 @@ else
         CredentialFieldType.Email => "email",
         CredentialFieldType.Pin => "numeric",
         CredentialFieldType.Phone => "tel",
+        CredentialFieldType.Web => "url",
         _ => "text",
     };
 
@@ -406,6 +453,7 @@ else
         CredentialFieldType.Pin => FieldLimits.Pin,
         CredentialFieldType.Phone => FieldLimits.Phone,
         CredentialFieldType.TwoFactor => FieldLimits.TwoFactorSecret,
+        CredentialFieldType.Web => FieldLimits.Site,
         _ => FieldLimits.Text,
     };
 
@@ -420,7 +468,8 @@ else
     private static readonly CredentialFieldType[] FieldTypes =
     {
         CredentialFieldType.Email, CredentialFieldType.Username, CredentialFieldType.Password,
-        CredentialFieldType.Pin, CredentialFieldType.Phone, CredentialFieldType.TwoFactor, CredentialFieldType.Text,
+        CredentialFieldType.Pin, CredentialFieldType.Web, CredentialFieldType.Phone,
+        CredentialFieldType.TwoFactor, CredentialFieldType.Text,
     };
 
     private string TypeName(CredentialFieldType t) => t switch
@@ -431,6 +480,7 @@ else
         CredentialFieldType.Pin => L["fieldType.pin"],
         CredentialFieldType.Phone => L["fieldType.phone"],
         CredentialFieldType.TwoFactor => L["fieldType.twofa"],
+        CredentialFieldType.Web => L["fieldType.web"],
         _ => L["fieldType.text"],
     };
 
@@ -449,6 +499,9 @@ else
 
     private sealed class CredDraft
     {
+        /// <summary>Id of the credential this draft was loaded from, so an edit keeps its identity
+        /// and its creation date instead of silently being replaced by a brand-new credential.</summary>
+        public Guid? SourceId;
         public string Label = string.Empty;
         public List<FieldDraft> Fields = new();
     }
@@ -456,7 +509,7 @@ else
     private string CurrentSnapshot()
     {
         var sb = new System.Text.StringBuilder();
-        sb.Append(_fSite).Append('|').Append(_fTags).Append('|').Append(_draftGrouped);
+        sb.Append(_fSite).Append('|').Append(string.Join(',', _fTags)).Append('|').Append(_draftGrouped);
         foreach (var c in _draft)
         {
             sb.Append("//").Append(c.Label);
@@ -564,6 +617,7 @@ else
         CredentialFieldType.Phone => "phone",
         CredentialFieldType.TwoFactor => "shield-check",
         CredentialFieldType.Text => "file",
+        CredentialFieldType.Web => "globe",
         _ => "user",
     };
 
@@ -591,7 +645,8 @@ else
     private void OpenAddModal()
     {
         _editEntry = null;
-        _fSite = _fTags = _fError = string.Empty;
+        _fSite = _fError = string.Empty;
+        _fTags = new List<string>();
         _draftGrouped = false;
         _draft = new List<CredDraft>
         {
@@ -605,11 +660,12 @@ else
     {
         _editEntry = entry;
         _fSite = entry.Site;
-        _fTags = string.Join(", ", entry.Tags);
+        _fTags = new List<string>(entry.Tags);
         _fError = string.Empty;
         _draftGrouped = entry.Grouped && entry.Credentials.Count > 1;
         _draft = entry.Credentials.Select(c => new CredDraft
         {
+            SourceId = c.Id,
             Label = c.Label,
             Fields = c.Fields.Select(f => new FieldDraft
             {
@@ -650,7 +706,7 @@ else
         var creds = BuildCredentials(svc, _editEntry);
         if (creds.Count == 0) { _fError = L["vault.err.needField"]; return; }
 
-        var tags = _fTags.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
+        var tags = new List<string>(_fTags);
         try
         {
             if (_editEntry is not null)
@@ -683,16 +739,30 @@ else
     /// <summary>
     /// Converts the drafts into credentials, encrypting secret values. On edit it matches fields
     /// by their source id to preserve rotation history (SetSecret only when the value changed) and
-    /// the rotation clock when nothing changed.
+    /// the rotation clock when nothing changed, and matches credentials by their own source id so
+    /// an edit keeps the original creation date rather than looking freshly created every save.
     /// </summary>
     private List<Credential> BuildCredentials(PasswordManager.Core.Services.PasswordManagerService svc, ServiceEntry? existing)
     {
         var existingFields = existing?.Credentials.SelectMany(c => c.Fields).ToDictionary(f => f.Id);
+        var existingCreds = existing?.Credentials.ToDictionary(c => c.Id);
         var result = new List<Credential>();
 
         foreach (var cd in _draft)
         {
+            Credential? srcCred = null;
+            if (cd.SourceId is Guid cid && existingCreds is not null) existingCreds.TryGetValue(cid, out srcCred);
+
             var cred = new Credential { Label = cd.Label };
+            if (srcCred is not null)
+            {
+                cred.Id = srcCred.Id;
+                cred.CreationTime = srcCred.CreationTime;
+                cred.LastUpdateTime = srcCred.LastUpdateTime;
+            }
+
+            var changed = srcCred is null || srcCred.Label != cd.Label;
+
             foreach (var fd in cd.Fields)
             {
                 if (string.IsNullOrWhiteSpace(fd.Value)) continue;
@@ -701,6 +771,15 @@ else
                 if (!fd.IsSecret)
                 {
                     field.PlainValue = fd.Value.Trim();
+
+                    CredentialField? plainSrc = null;
+                    if (fd.SourceId is Guid psid && existingFields is not null) existingFields.TryGetValue(psid, out plainSrc);
+                    if (plainSrc is not null)
+                    {
+                        field.Id = plainSrc.Id;
+                        if (plainSrc.PlainValue != field.PlainValue) changed = true;
+                    }
+                    else changed = true;
                 }
                 else
                 {
@@ -715,16 +794,26 @@ else
                         field.Id = src.Id;
                         field.SecretValue = src.SecretValue;
                         field.PreviousSecret = src.PreviousSecret;
+                        field.LastChanged = src.LastChanged;
                         if (src.SecretValue is null || svc.DecryptSecret(src) != fd.Value)
+                        {
                             field.SetSecret(svc.EncryptValue(fd.Value));
+                            changed = true;
+                        }
                     }
                     else
                     {
                         field.SetSecret(svc.EncryptValue(fd.Value));
+                        changed = true;
                     }
                 }
                 cred.Fields.Add(field);
             }
+
+            // A field the user deleted leaves no draft behind, so a shrinking count is a change too.
+            if (srcCred is not null && srcCred.Fields.Count != cred.Fields.Count) changed = true;
+            if (changed) cred.LastUpdateTime = DateTime.UtcNow;
+
             if (cred.Fields.Count > 0) result.Add(cred);
         }
         return result;
@@ -734,7 +823,8 @@ else
     {
         _showAdd = false;
         _editEntry = null;
-        _fSite = _fTags = _fError = string.Empty;
+        _fSite = _fError = string.Empty;
+        _fTags = new List<string>();
         _draft = new List<CredDraft>();
     }
 

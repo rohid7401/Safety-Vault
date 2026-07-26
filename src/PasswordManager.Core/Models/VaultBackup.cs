@@ -61,6 +61,10 @@ namespace PasswordManager.Core.Models
         /// <summary>Plaintext, whether or not the field is stored encrypted in the vault.</summary>
         public string Value { get; set; } = string.Empty;
 
+        /// <summary>Carried across so a restored secret keeps reporting when it really changed,
+        /// instead of appearing to have been changed on the day of the import. Null when unknown.</summary>
+        public DateTime? LastChanged { get; set; }
+
         public BackupRotation? Rotation { get; set; }
         public TwoFactorKind TwoFactorKind { get; set; } = TwoFactorKind.Totp;
         public long HotpCounter { get; set; }

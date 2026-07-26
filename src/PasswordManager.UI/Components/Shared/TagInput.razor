@@ -1,0 +1,140 @@
+@* Chip-style tag editor. Space commits the word being typed, so "Estudio Personal Finanzas"
+   becomes three tags without the user ever reaching for a comma — the ask from testers, who
+   were typing one-word tags on a phone and found the separator the slowest part. Enter and
+   comma commit too; backspace on an empty box takes back the last chip. *@
+
+<div class="tag-input @(_focused ? "focused" : "")" @onclick="FocusBox">
+    @foreach (var tag in Tags)
+    {
+        <span class="tag-chip" @key="tag">
+            @tag
+            <button type="button" class="tag-chip-x" aria-label="@RemoveLabel" tabindex="-1"
+                    @onclick:stopPropagation="true" @onclick="() => Remove(tag)">
+                <Icon Name="x" Size="11" StrokeWidth="2.5" />
+            </button>
+        </span>
+    }
+    <input @ref="_box" type="text" class="tag-input-box" value="@_pending"
+           placeholder="@(Tags.Count == 0 ? Placeholder : string.Empty)"
+           maxlength="@FieldLimits.Tag"
+           autocomplete="off" autocapitalize="none"
+           disabled="@(Tags.Count >= FieldLimits.TagsPerEntry)"
+           @oninput="OnInput" @onkeydown="OnKeyDown"
+           @onfocus="() => _focused = true" @onblur="OnBlur" />
+</div>
+
+@if (Available.Count > 0)
+{
+    var suggestions = Available
+        .Where(t => !Tags.Contains(t, StringComparer.OrdinalIgnoreCase))
+        .Where(t => _pending.Length == 0 || t.Contains(_pending, StringComparison.OrdinalIgnoreCase))
+        .Take(MaxSuggestions)
+        .ToList();
+
+    @if (suggestions.Count > 0 && Tags.Count < FieldLimits.TagsPerEntry)
+    {
+        <div class="tag-suggest">
+            @foreach (var s in suggestions)
+            {
+                <button type="button" class="tag-suggest-item" @onclick="() => Add(s)">
+                    <Icon Name="plus" Size="10" StrokeWidth="2.5" />@s
+                </button>
+            }
+        </div>
+    }
+}
+
+@code {
+    private const int MaxSuggestions = 8;
+
+    [Parameter, EditorRequired] public List<string> Tags { get; set; } = new();
+    [Parameter] public EventCallback<List<string>> TagsChanged { get; set; }
+
+    /// <summary>Tags already used elsewhere in the vault, offered as one-tap suggestions.</summary>
+    [Parameter] public List<string> Available { get; set; } = new();
+
+    [Parameter] public string Placeholder { get; set; } = string.Empty;
+    [Parameter] public string RemoveLabel { get; set; } = "Remove";
+
+    private ElementReference _box;
+    private string _pending = string.Empty;
+    private bool _focused;
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? string.Empty;
+
+        // A space (or comma) anywhere in the new text means "commit what came before it". Handling
+        // it here rather than on keydown also catches pasted text and phone keyboards that insert
+        // separators without emitting a key event.
+        if (raw.IndexOfAny(new[] { ' ', ',' }) >= 0)
+        {
+            var parts = raw.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+            var trailing = raw.Length > 0 && (raw[^1] == ' ' || raw[^1] == ',');
+
+            // Without a trailing separator the last piece is still being typed — keep it in the box.
+            var commitCount = trailing ? parts.Length : parts.Length - 1;
+            for (var i = 0; i < commitCount; i++) await AddCore(parts[i]);
+            _pending = trailing || parts.Length == 0 ? string.Empty : parts[^1];
+        }
+        else
+        {
+            _pending = raw;
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or "Tab")
+        {
+            if (_pending.Length > 0) { await Commit(); }
+        }
+        else if (e.Key == "Backspace" && _pending.Length == 0 && Tags.Count > 0)
+        {
+            // Pull the last chip back into the box so a mistyped tag can be corrected, not retyped.
+            var last = Tags[^1];
+            Tags.RemoveAt(Tags.Count - 1);
+            _pending = last;
+            await TagsChanged.InvokeAsync(Tags);
+        }
+    }
+
+    /// <summary>Committing on blur keeps a half-typed tag from vanishing when the user taps Save.</summary>
+    private async Task OnBlur()
+    {
+        _focused = false;
+        if (_pending.Length > 0) await Commit();
+    }
+
+    private async Task Commit()
+    {
+        await AddCore(_pending);
+        _pending = string.Empty;
+    }
+
+    private async Task Add(string tag)
+    {
+        await AddCore(tag);
+        _pending = string.Empty;
+        await _box.FocusAsync();
+    }
+
+    private async Task AddCore(string tag)
+    {
+        tag = tag.Trim();
+        if (tag.Length == 0 || Tags.Count >= FieldLimits.TagsPerEntry) return;
+        if (tag.Length > FieldLimits.Tag) tag = tag[..FieldLimits.Tag];
+        if (Tags.Contains(tag, StringComparer.OrdinalIgnoreCase)) return;
+
+        Tags.Add(tag);
+        await TagsChanged.InvokeAsync(Tags);
+    }
+
+    private async Task Remove(string tag)
+    {
+        Tags.Remove(tag);
+        await TagsChanged.InvokeAsync(Tags);
+    }
+
+    private async Task FocusBox() => await _box.FocusAsync();
+}
