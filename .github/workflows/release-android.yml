@@ -53,11 +53,19 @@ jobs:
       - name: Run tests
         run: dotnet test tests/PasswordManager.Tests/PasswordManager.Tests.csproj -c Release --nologo
 
+      # versionName comes from the tag; versionCode is the workflow run number plus
+      # an offset. The offset exists because the first uploads to Play were made by
+      # hand and burned the low codes (1, 2, 3) before this workflow ever ran — the
+      # run number restarts from 1, so without it Play rejects the upload with
+      # "Version code N has already been used". Raise CODE_OFFSET (never lower it)
+      # if a manual upload ever overtakes the CI again.
       - name: Compute version from tag
         id: version
         run: |
+          CODE_OFFSET=100
           TAG="${GITHUB_REF_NAME}"
           echo "name=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "code=$((CODE_OFFSET + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
 
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
@@ -69,7 +77,7 @@ jobs:
           -p:AndroidPackageFormat=aab
           -p:AndroidKeyStore=true
           -p:ApplicationDisplayVersion=${{ steps.version.outputs.name }}
-          -p:ApplicationVersion=${{ github.run_number }}
+          -p:ApplicationVersion=${{ steps.version.outputs.code }}
           -p:AndroidSigningKeyStore="$RUNNER_TEMP/release.keystore"
           -p:AndroidSigningKeyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           -p:AndroidSigningKeyPass=${{ secrets.ANDROID_KEY_PASSWORD }}
