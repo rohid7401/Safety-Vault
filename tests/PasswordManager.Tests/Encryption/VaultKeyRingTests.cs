@@ -1,5 +1,6 @@
 using PasswordManager.Infrastructure.Encryption;
 using Xunit;
+using PasswordManager.Core.Exceptions;
 
 namespace PasswordManager.Tests.Encryption
 {
@@ -26,8 +27,9 @@ namespace PasswordManager.Tests.Encryption
         {
             VaultKeyRing.Create(_dataDir, Passphrase);
 
-            Assert.Throws<UnauthorizedAccessException>(
+            var ex = Assert.Throws<LocalizedUnauthorizedAccessException>(
                 () => VaultKeyRing.Unlock(_dataDir, "a-totally-different-passphrase"));
+            Assert.Equal(AppErrorCode.BadCredentials, ex.Code);
         }
 
         [Fact]

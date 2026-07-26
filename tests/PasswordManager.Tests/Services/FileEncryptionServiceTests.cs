@@ -3,6 +3,7 @@ using PasswordManager.Infrastructure.Encryption;
 using PasswordManager.Infrastructure.Services;
 using PasswordManager.Tests.Helpers;
 using Xunit;
+using PasswordManager.Core.Exceptions;
 
 namespace PasswordManager.Tests.Services
 {
@@ -158,8 +159,9 @@ namespace PasswordManager.Tests.Services
         public async Task EncryptFilesAsync_NoFiles_Throws()
         {
             using var output = new MemoryStream();
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsAsync<LocalizedInvalidOperationException>(() =>
                 _service.EncryptFilesAsync(new List<(string, byte[])>(), _pgp.PublicKeyPath, output));
+            Assert.Equal(AppErrorCode.NoFilesToBundle, ex.Code);
         }
 
         [Fact]

@@ -5,11 +5,16 @@ using PasswordManager.Core.Interfaces;
 using PasswordManager.Core.Models;
 using PasswordManager.Infrastructure.Encryption;
 using PasswordManager.Infrastructure.Persistence;
+using PasswordManager.Core.Exceptions;
 
 namespace PasswordManager.Infrastructure.Services
 {
     public class AuthService : IAuthService
     {
+        /// <summary>Shortest passphrase accepted at registration. Shared with the message the
+        /// user sees, so the rule and its wording can never drift apart.</summary>
+        public const int MinPassphraseLength = 8;
+
         private readonly IPgpService _pgpService;
         private readonly AuthOptions _options;
 
@@ -45,19 +50,20 @@ namespace PasswordManager.Infrastructure.Services
             return all.Select(a => a.Username).ToList();
         }
 
-        public async Task<UserAccount> RegisterAsync(string username, string email, string passphrase)
+        public async Task<UserAccount> RegisterAsync(string username, string email, string passphrase,
+            IProgress<RegistrationStage>? progress = null)
         {
             if (string.IsNullOrWhiteSpace(username))
-                throw new ArgumentException("Username is required.");
+                throw new LocalizedArgumentException(AppErrorCode.UsernameRequired);
             if (string.IsNullOrWhiteSpace(email))
-                throw new ArgumentException("Email is required.");
-            if (string.IsNullOrWhiteSpace(passphrase) || passphrase.Length < 8)
-                throw new ArgumentException("Passphrase must be at least 8 characters.");
+                throw new LocalizedArgumentException(AppErrorCode.EmailRequired);
+            if (string.IsNullOrWhiteSpace(passphrase) || passphrase.Length < MinPassphraseLength)
+                throw new LocalizedArgumentException(AppErrorCode.PassphraseTooShort, MinPassphraseLength);
 
             await AccountsLock.WaitAsync();
             try
             {
-                return await RegisterCoreAsync(username, email, passphrase);
+                return await RegisterCoreAsync(username, email, passphrase, progress);
             }
             finally
             {
@@ -65,49 +71,61 @@ namespace PasswordManager.Infrastructure.Services
             }
         }
 
-        private async Task<UserAccount> RegisterCoreAsync(string username, string email, string passphrase)
+        private async Task<UserAccount> RegisterCoreAsync(string username, string email, string passphrase,
+            IProgress<RegistrationStage>? progress)
         {
             var all = await LoadAllAsync();
 
             if (all.Any(a => string.Equals(a.Username, username, StringComparison.OrdinalIgnoreCase)))
-                throw new InvalidOperationException("That username is already registered on this device.");
+                throw new LocalizedInvalidOperationException(AppErrorCode.UsernameTaken);
             if (all.Any(a => string.Equals(a.Email, email, StringComparison.OrdinalIgnoreCase)))
-                throw new InvalidOperationException("That email is already registered on this device.");
+                throw new LocalizedInvalidOperationException(AppErrorCode.EmailTaken);
 
             var vaultPath = _options.GetVaultPathFor(username);
             if (Directory.Exists(vaultPath) && Directory.EnumerateFileSystemEntries(vaultPath).Any())
-                throw new InvalidOperationException(
-                    "A vault folder already exists for this username. Please choose a different username.");
+                throw new LocalizedInvalidOperationException(AppErrorCode.VaultFolderExists);
             Directory.CreateDirectory(vaultPath);
 
-            // Generate the PGP key pair used only for encrypting files for contacts. The
-            // vault itself is never locked by PGP — see the Vault Key setup below.
             var publicKeyPath = Path.Combine(vaultPath, "public_key.asc");
             var privateKeyPath = Path.Combine(vaultPath, "private_key.asc");
-            _pgpService.GenerateKeyPair(publicKeyPath, privateKeyPath, passphrase);
 
-            // Set up the Vault Key: a random key wrapped by a passphrase-derived KEK
-            // (Argon2id). There is deliberately no separate password hash anywhere (see
-            // UserAccount) — the login check IS the KEK successfully unwrapping the Vault Key.
-            var vaultKey = VaultKeyRing.Create(vaultPath, passphrase);
-            try
+            // Everything below is CPU-bound and takes seconds: an RSA key pair, then an
+            // Argon2id derivation. Run inline it blocks whichever thread called us — on
+            // Android that is the UI thread, and the OS puts up "SafetyVault isn't responding"
+            // after five seconds. Task.Run moves it to the thread pool so the caller can keep
+            // painting; the progress reports below are what it paints.
+            await Task.Run(() =>
             {
-                // Seed the vault with the PGP key pair so it travels with the vault to any
-                // device that can unlock it — no separate key-file sync needed.
-                var seed = new VaultData
+                // The PGP key pair is used only for encrypting files for contacts. The vault
+                // itself is never locked by PGP — see the Vault Key setup below.
+                progress?.Report(RegistrationStage.GeneratingKeys);
+                _pgpService.GenerateKeyPair(publicKeyPath, privateKeyPath, passphrase);
+
+                // Set up the Vault Key: a random key wrapped by a passphrase-derived KEK
+                // (Argon2id). There is deliberately no separate password hash anywhere (see
+                // UserAccount) — the login check IS the KEK successfully unwrapping the Vault Key.
+                progress?.Report(RegistrationStage.SecuringVault);
+                var vaultKey = VaultKeyRing.Create(vaultPath, passphrase);
+                try
                 {
-                    PgpPublicKeyArmored = await File.ReadAllTextAsync(publicKeyPath),
-                    PgpPrivateKeyArmored = await File.ReadAllTextAsync(privateKeyPath),
-                };
-                var blobKey = VaultKeyRing.DeriveSubkey(vaultKey, VaultKeyRing.BlobKeyInfo);
-                // KekVaultRepository takes ownership of blobKey and zeroizes it on Dispose.
-                using var repo = new KekVaultRepository(blobKey, vaultPath);
-                await repo.SaveAsync(seed);
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(vaultKey);
-            }
+                    // Seed the vault with the PGP key pair so it travels with the vault to any
+                    // device that can unlock it — no separate key-file sync needed.
+                    progress?.Report(RegistrationStage.Finishing);
+                    var seed = new VaultData
+                    {
+                        PgpPublicKeyArmored = File.ReadAllText(publicKeyPath),
+                        PgpPrivateKeyArmored = File.ReadAllText(privateKeyPath),
+                    };
+                    var blobKey = VaultKeyRing.DeriveSubkey(vaultKey, VaultKeyRing.BlobKeyInfo);
+                    // KekVaultRepository takes ownership of blobKey and zeroizes it on Dispose.
+                    using var repo = new KekVaultRepository(blobKey, vaultPath);
+                    repo.SaveAsync(seed).GetAwaiter().GetResult();
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(vaultKey);
+                }
+            }).ConfigureAwait(false);
 
             var account = new UserAccount
             {
@@ -132,16 +150,20 @@ namespace PasswordManager.Infrastructure.Services
             // branches, so neither the wording nor the response time reveals whether the
             // account exists. The passphrase is verified cryptographically — it must unwrap
             // the Vault Key via its KEK; no separate password hash is consulted.
-            const string genericFailure = "Incorrect username/email or passphrase.";
-
+            //
+            // Both branches are Argon2id, which is slow by design; off the calling thread so a
+            // wrong passphrase on a phone does not freeze the screen (see RegisterCoreAsync).
             if (account is null)
             {
-                VaultKeyRing.PerformDummyUnlock(passphrase); // match the real path's Argon2id cost
-                throw new UnauthorizedAccessException(genericFailure);
+                // Match the real path's Argon2id cost.
+                await Task.Run(() => VaultKeyRing.PerformDummyUnlock(passphrase)).ConfigureAwait(false);
+                throw new LocalizedUnauthorizedAccessException(AppErrorCode.BadCredentials);
             }
 
-            if (!VaultKeyRing.CanUnlock(account.VaultPath, passphrase))
-                throw new UnauthorizedAccessException(genericFailure);
+            var unlocked = await Task.Run(() => VaultKeyRing.CanUnlock(account.VaultPath, passphrase))
+                .ConfigureAwait(false);
+            if (!unlocked)
+                throw new LocalizedUnauthorizedAccessException(AppErrorCode.BadCredentials);
 
             // Update LastLogin under the same lock/atomic-write path as registration (N2),
             // re-reading inside the lock so we don't clobber a concurrent change.

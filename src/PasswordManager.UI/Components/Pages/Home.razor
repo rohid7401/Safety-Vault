@@ -235,12 +235,10 @@
             if (await UnlockVaultAsync(account, _loginPassphrase))
                 Nav.NavigateTo("dashboard");
         }
-        catch (UnauthorizedAccessException ex)
-        {
-            _error = ex.Message;
-        }
         catch (Exception ex)
         {
+            // Including UnauthorizedAccessException, which used to be caught separately just to
+            // show ex.Message — the English sentence testers were seeing on a Spanish device.
             _error = UserError.Describe(L, ex);
         }
         finally
@@ -264,26 +262,21 @@
         { _error = L["home.err.passphraseMismatch"]; return; }
 
         _loading = true;
-        _info = L["home.generatingKeys"];
+        _info = StageText(RegistrationStage.GeneratingKeys);
         StateHasChanged();
-        await Task.Yield();
+
+        // Reported from a thread-pool thread, so hop back before touching component state.
+        var progress = new Progress<RegistrationStage>(stage =>
+            _ = InvokeAsync(() => { _info = StageText(stage); StateHasChanged(); }));
 
         try
         {
-            var account = await AuthService.RegisterAsync(_regUsername, _regEmail, _regPassphrase);
+            var account = await AuthService.RegisterAsync(_regUsername, _regEmail, _regPassphrase, progress);
             if (await UnlockVaultAsync(account, _regPassphrase))
             {
                 Toast.Success(L["home.welcome"]);
                 Nav.NavigateTo("dashboard");
             }
-        }
-        catch (InvalidOperationException ex)
-        {
-            _error = ex.Message; _info = string.Empty;
-        }
-        catch (ArgumentException ex)
-        {
-            _error = ex.Message; _info = string.Empty;
         }
         catch (Exception ex)
         {
@@ -295,6 +288,13 @@
         }
     }
 
+    private string StageText(RegistrationStage stage) => stage switch
+    {
+        RegistrationStage.GeneratingKeys => L["home.stage.generatingKeys"],
+        RegistrationStage.SecuringVault => L["home.stage.securingVault"],
+        _ => L["home.stage.finishing"],
+    };
+
     /// <summary>
     /// Creates the vault service and verifies vault integrity. Returns true if the vault
     /// was unlocked; false if a restore prompt was shown instead (integrity failure with
@@ -302,7 +302,12 @@
     /// </summary>
     private async Task<bool> UnlockVaultAsync(PasswordManager.Core.Models.UserAccount account, string passphrase)
     {
-        var vaultKey = PasswordManager.Infrastructure.Encryption.VaultKeyRing.Unlock(account.VaultPath, passphrase);
+        // Another Argon2id derivation, and this one runs on every sign-in. Off the UI thread
+        // for the same reason as the rest: on a phone it is comfortably long enough for
+        // Android to decide the app has hung and offer to close it.
+        var vaultKey = await Task.Run(() =>
+            PasswordManager.Infrastructure.Encryption.VaultKeyRing.Unlock(account.VaultPath, passphrase));
+
         byte[] blobKey, fieldKey;
         try
         {
@@ -331,7 +336,7 @@
             {
                 _pendingService = service;
                 _pendingAccount = account;
-                _restoreError = ex.Message;
+                _restoreError = UserError.Describe(L, ex);
                 _restoreFailure = string.Empty;
                 _showRestore = true;
                 return false;

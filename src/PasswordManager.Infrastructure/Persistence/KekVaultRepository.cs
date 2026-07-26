@@ -51,7 +51,7 @@ namespace PasswordManager.Infrastructure.Persistence
         public async Task<VaultData> RestoreFromBackupAsync()
         {
             if (!HasBackup())
-                throw new VaultIntegrityException("No backup is available to restore from.");
+                throw new VaultIntegrityException(AppErrorCode.NoBackupAvailable);
 
             // Verify the backup BEFORE overwriting the live vault.
             var restored = await LoadVerifiedAsync(_backupPath, backupAvailable: false);
@@ -66,7 +66,7 @@ namespace PasswordManager.Infrastructure.Persistence
         {
             var blob = await File.ReadAllBytesAsync(path);
             if (blob.Length < NonceBytes + TagBytes)
-                throw new VaultIntegrityException("Vault file is truncated or corrupt.", backupAvailable);
+                throw new VaultIntegrityException(AppErrorCode.VaultTruncated, backupAvailable);
 
             // Plain byte[] slices (not Span<byte>) — a ref struct can't be a local in an
             // async method under the project's C# language version.
@@ -82,9 +82,7 @@ namespace PasswordManager.Infrastructure.Persistence
             }
             catch (CryptographicException ex)
             {
-                throw new VaultIntegrityException(
-                    "Vault authentication failed — the file has been modified, replaced, or the passphrase is wrong.",
-                    ex, backupAvailable);
+                throw new VaultIntegrityException(AppErrorCode.VaultAuthenticationFailed, ex, backupAvailable);
             }
 
             try
@@ -93,7 +91,7 @@ namespace PasswordManager.Infrastructure.Persistence
             }
             catch (JsonException ex)
             {
-                throw new VaultIntegrityException("Vault contents are corrupt.", ex, backupAvailable);
+                throw new VaultIntegrityException(AppErrorCode.VaultCorrupt, ex, backupAvailable);
             }
         }
 

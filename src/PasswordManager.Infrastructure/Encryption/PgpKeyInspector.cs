@@ -1,5 +1,6 @@
 using Org.BouncyCastle.Bcpg.OpenPgp;
 using PasswordManager.Core.Models;
+using PasswordManager.Core.Exceptions;
 
 namespace PasswordManager.Infrastructure.Encryption
 {
@@ -32,7 +33,7 @@ namespace PasswordManager.Infrastructure.Encryption
                 return new PgpKeyDetails(fingerprint, uids);
             }
 
-            throw new ArgumentException("No public key found in the provided data.");
+            throw new LocalizedArgumentException(AppErrorCode.NoPublicKeyInData);
         }
     }
 }

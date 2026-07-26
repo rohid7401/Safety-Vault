@@ -25,14 +25,11 @@
   "tour.skip": "Saltar",
   "tour.next": "Siguiente",
   "tour.back": "Atrás",
-
   "lang.title": "Idioma",
-
   "nav.group.vault": "Bóveda",
   "nav.group.tools": "Herramientas",
   "nav.group.keys": "Claves y archivos",
   "nav.group.learn": "Aprender",
-
   "nav.passwords": "Contraseñas",
   "nav.notes": "Notas seguras",
   "nav.cards": "Tarjetas",
@@ -45,7 +42,6 @@
   "nav.encryptDirs": "Cifrar carpetas",
   "nav.walkthrough": "Tutorial",
   "nav.tutorial": "Cómo funciona PGP",
-
   "title.passwords": "Contraseñas",
   "title.notes": "Notas seguras",
   "title.cards": "Tarjetas",
@@ -58,7 +54,6 @@
   "title.encryptDirs": "Cifrar carpetas",
   "title.walkthrough": "Tutorial",
   "title.tutorial": "Cómo funciona PGP",
-
   "home.subtitle": "Tu bóveda privada. Vive solo en este dispositivo — nadie más puede leerla.",
   "home.signIn": "Iniciar sesión",
   "home.createAccount": "Crear cuenta",
@@ -86,14 +81,12 @@
   "home.err.passphraseMismatch": "Las frases no coinciden.",
   "home.generatingKeys": "Generando tu par de claves PGP... esto puede tardar unos segundos.",
   "home.welcome": "¡Bienvenido a SafetyVault!",
-
   "restore.title": "Falló la verificación de integridad de la bóveda",
   "restore.body": "No se pudo verificar la bóveda actual — puede haber sido modificada o dañada. Hay una copia de seguridad íntegra de tu guardado anterior. Restaurar reemplazará la bóveda actual con esa copia.",
   "restore.confirm": "Restaurar desde la copia",
   "restore.restoring": "Restaurando...",
   "restore.ok": "Bóveda restaurada desde la copia de seguridad.",
   "restore.cancelled": "No se pudo verificar la bóveda y no se abrió. Se canceló la restauración.",
-
   "dash.welcome": "Bienvenido de nuevo",
   "dash.statusTitle": "Bóveda desbloqueada y protegida",
   "dash.counts": "{0} contraseñas · {1} notas · {2} tarjetas",
@@ -110,7 +103,6 @@
   "dash.desc.encryptDirs": "Bloquea una carpeta entera",
   "dash.desc.walkthrough": "Un recorrido guiado por toda la app",
   "dash.desc.tutorial": "Una guía sencilla de 2 minutos",
-
   "whatsThis.passwords": "Una lista privada de tus accesos. Solo tú puedes abrirla — todo está cifrado, así que ni quien tenga el archivo puede leerlo.",
   "whatsThis.notes": "Un lugar seguro para texto que quieres mantener privado — códigos de recuperación, números secretos, notas personales. Permanece oculto hasta que lo reveles.",
   "whatsThis.cards": "Guarda los datos de tus tarjetas para no tener que memorizarlos. Quedan bloqueados y enmascarados hasta que tocas para revelarlos.",
@@ -122,7 +114,6 @@
   "whatsThis.encrypt-directory": "La misma idea que bloquear un archivo, pero para varios a la vez — todo se empaqueta en un .zip y se bloquea en un único archivo protegido.",
   "whatsThis.tutorial": "Un recorrido corto y sin tecnicismos de cómo funciona realmente el bloqueo y desbloqueo.",
   "whatsThis.data": "Vacía por completo un apartado de la bóveda. Sirve para volver a empezar si una importación salió mal y llenó la app de entradas basura.",
-
   "data.title": "Borrar datos",
   "data.body": "Vacía por completo un apartado. Úsalo para volver a empezar si una importación salió mal o si un apartado quedó inservible.",
   "data.count": "{0} entradas",
@@ -136,7 +127,6 @@
   "data.confirmTypePrompt": "Escribe {0} para confirmar",
   "data.deletedOk": "Se borraron {0} entradas.",
   "data.deleteFailed": "No se pudo borrar",
-
   "toast.passwordCopied": "Contraseña copiada — se borra del portapapeles en 30s.",
   "toast.totpCopied": "Código 2FA copiado — se borra del portapapeles en 30s.",
   "toast.movedToTrash": "Entrada movida a la papelera.",
@@ -149,7 +139,6 @@
   "toast.noteSaved": "Nota guardada.",
   "toast.noteUpdated": "Nota actualizada.",
   "toast.cardSaved": "Tarjeta guardada.",
-
   "vault.count": "{0} contraseñas en tu bóveda",
   "vault.searchPlaceholder": "github.com, juana.perez, trabajo…",
   "vault.tooMany": "Mostrando las primeras {0} de {1} coincidencias. Afina la búsqueda para ver el resto.",
@@ -216,7 +205,6 @@
   "vault.ago.days": "hace {0} días",
   "vault.ago.months": "hace {0} meses",
   "vault.ago.years": "hace {0} años",
-
   "notes.count": "{0} notas en tu bóveda",
   "notes.emptyTitle": "No hay notas seguras",
   "notes.emptyBody": "Añade notas cifradas para mantener a salvo tu información sensible.",
@@ -227,7 +215,6 @@
   "notes.field.content": "Contenido",
   "notes.field.contentPlaceholder": "Códigos de recuperación:\n1234-5678\n9012-3456",
   "notes.err.titleRequired": "El título es obligatorio.",
-
   "cards.count": "{0} tarjetas en tu bóveda",
   "cards.emptyTitle": "No hay tarjetas guardadas",
   "cards.emptyBody": "Guarda de forma segura los datos de tus tarjetas de crédito y débito.",
@@ -241,7 +228,6 @@
   "cards.field.expMonth": "Mes de vencimiento",
   "cards.field.expYear": "Año de vencimiento",
   "cards.err.required": "El nombre y el número de tarjeta son obligatorios.",
-
   "gen.strength": "Fuerza",
   "gen.strength.weak": "Débil",
   "gen.strength.fair": "Aceptable",
@@ -266,7 +252,6 @@
   "gen.conflict.wordTooLong": "La palabra «{0}» ({1} caracteres) es más larga que la longitud de la contraseña ({2}).",
   "gen.conflict.wordExcluded": "La palabra «{0}» contiene caracteres que estás excluyendo.",
   "gen.conflict.noCharset": "No hay ningún conjunto de caracteres activo para rellenar el resto de la contraseña.",
-
   "audit.emptyTitle": "Revisa la salud de tu bóveda",
   "audit.emptyBody": "Buscaremos contraseñas débiles, repetidas o antiguas — para que sepas qué corregir.",
   "audit.run": "Ejecutar auditoría",
@@ -286,7 +271,6 @@
   "audit.desc.reusedOne": "Contraseña compartida con otra entrada",
   "audit.desc.expired": "Venció el {0}",
   "audit.desc.noExpiration": "Sin fecha de caducidad definida",
-
   "io.exportTarget": "Formato de exportación",
   "io.target.native": "Respaldo SafetyVault (.json) — recomendado",
   "io.target.generic": "CSV genérico",
@@ -352,7 +336,6 @@
   "io.err.invalidJson": "El archivo no es un JSON válido de Bitwarden.",
   "io.err.tooMany": "El archivo contiene más de {0} entradas. Divídelo en partes más pequeñas.",
   "io.err.noUsable": "No se encontró ninguna entrada utilizable en el archivo.",
-
   "enc.lock": "Cifrar",
   "enc.unlock": "Descifrar",
   "enc.whoCanOpen": "¿Quién puede abrirlo?",
@@ -365,8 +348,6 @@
   "enc.err.selectRecipient": "Elige un destinatario.",
   "enc.err.recipientNotFound": "No se encontró la clave pública del destinatario.",
   "enc.err.passphraseRequired": "Se necesita la frase maestra.",
-
-
   "encFile.fileToLock": "Archivo a bloquear",
   "encFile.lockedToOpen": "Archivo bloqueado a abrir",
   "encFile.locking": "Bloqueando...",
@@ -377,7 +358,6 @@
   "encFile.hintDecrypt": "Necesitarás tu frase maestra para abrir un archivo bloqueado para ti. Tras desbloquear, elegirás dónde guardar el archivo recuperado.",
   "encFile.encryptedOk": "Archivo cifrado y guardado: {0}",
   "encFile.decryptedOk": "Archivo descifrado y guardado: {0}",
-
   "encDir.folderToLock": "Carpeta a bloquear",
   "encDir.outputFile": "Archivo de salida (opcional — déjalo vacío para guardarlo junto a la carpeta)",
   "encDir.lockedArchive": "Archivo bloqueado (.pgp)",
@@ -403,7 +383,6 @@
   "encDir.extractedOkMobile": "Archivo descifrado: {0} (ábrelo con tu gestor de archivos para extraer el contenido)",
   "encDir.err.noFiles": "Elige al menos un archivo.",
   "encDir.err.bundleTooLarge": "Los archivos elegidos superan el máximo de {0} MB.",
-
   "keys.hint": "Tu clave pública es segura de compartir. Tu clave privada está cifrada con tu frase maestra — nunca des ese archivo <em>junto con</em> tu frase a nadie. Haz una copia de <code>private_key.asc</code> en un lugar seguro.",
   "keys.yourKeys": "Tus claves",
   "keys.active": "Activa",
@@ -458,14 +437,12 @@
   "keys.ok.exported": "Clave pública exportada a {0}",
   "keys.ok.imported": "Se importó «{0}» a tu directorio de contactos.",
   "keys.ok.removed": "Clave eliminada.",
-
   "picker.folder": "Elegir carpeta",
   "picker.saveAs": "Guardar como...",
   "picker.attach": "Adjuntar archivo",
   "picker.folderTitle": "Elige una carpeta",
   "picker.saveAsTitle": "Elige dónde guardar el resultado",
   "picker.attachTitle": "Selecciona un archivo existente",
-
   "tl.intro": "Un recorrido de 2 minutos, en lenguaje sencillo, de cómo tu bóveda mantiene todo bajo llave — sin necesidad de conocimientos técnicos.",
   "tl.public": "Pública",
   "tl.private": "Privada",
@@ -494,5 +471,33 @@
   "tl.flow.yourPubKey": "tu clave pública",
   "tl.flow.encPgp": ".pgp cifrado",
   "tl.flow.privKeyPass": "tu clave privada + frase",
-  "tl.cta": "Ir a Gestión de claves"
+  "tl.cta": "Ir a Gestión de claves",
+  "error.usernameRequired": "Escribe un usuario.",
+  "error.emailRequired": "Escribe un correo electrónico.",
+  "error.passphraseTooShort": "La frase maestra debe tener al menos {0} caracteres.",
+  "error.usernameTaken": "Ese usuario ya está registrado en este dispositivo.",
+  "error.emailTaken": "Ese correo ya está registrado en este dispositivo.",
+  "error.vaultFolderExists": "Ya existe una carpeta de bóveda para ese usuario. Elige otro.",
+  "error.badCredentials": "Usuario, correo o frase maestra incorrectos.",
+  "error.keyringUnreadable": "No se pudo leer el llavero de la bóveda.",
+  "error.keyringCorrupt": "El llavero de la bóveda está dañado.",
+  "error.unsupportedKdf": "Función de derivación de claves no admitida: «{0}».",
+  "error.noBackupAvailable": "No hay ningún respaldo disponible para restaurar.",
+  "error.vaultTruncated": "El archivo de la bóveda está incompleto o dañado.",
+  "error.vaultCorrupt": "El contenido de la bóveda está dañado.",
+  "error.noPrivateKeyOrBadPassphrase": "No se encontró la llave privada, o la frase es incorrecta.",
+  "error.noEncryptionKeyInFile": "Ese archivo de llave pública no contiene una llave de cifrado.",
+  "error.noPublicKeyInData": "No se encontró ninguna llave pública en esos datos.",
+  "error.noFilesToBundle": "Selecciona al menos un archivo.",
+  "error.noColumnsSelected": "Selecciona al menos una columna para exportar.",
+  "error.pathEscapesKeyDirectory": "Esa ruta está fuera de la carpeta de llaves.",
+  "error.passwordLengthTooShort": "La longitud de la contraseña debe ser al menos {0}.",
+  "error.noCharacterSetEnabled": "Activa al menos un conjunto de caracteres.",
+  "error.generatorConflict": "Las opciones del generador se contradicen entre sí.",
+  "home.stage.generatingKeys": "Generando tu par de llaves PGP…",
+  "home.stage.securingVault": "Protegiendo tu bóveda…",
+  "home.stage.finishing": "Casi listo…",
+  "home.stageHint": "Toma unos segundos y solo pasa una vez.",
+  "error.vaultAuthFailed": "No se pudo autenticar la bóveda — puede haber sido modificada o reemplazada, o la frase es incorrecta.",
+  "error.keyServerUnreachable": "No se pudo conectar con keys.openpgp.org. Revisa tu conexión e inténtalo de nuevo."
 }

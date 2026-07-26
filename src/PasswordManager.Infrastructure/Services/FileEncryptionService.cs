@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using PasswordManager.Core.Interfaces;
+using PasswordManager.Core.Exceptions;
 
 namespace PasswordManager.Infrastructure.Services
 {
@@ -58,7 +59,7 @@ namespace PasswordManager.Infrastructure.Services
             if (!File.Exists(publicKeyPath))
                 throw new FileNotFoundException("Public key not found.", publicKeyPath);
             if (files.Count == 0)
-                throw new InvalidOperationException("No files to bundle.");
+                throw new LocalizedInvalidOperationException(AppErrorCode.NoFilesToBundle);
 
             var total = files.Sum(f => (long)f.Content.Length);
             if (total > MaxBundleSizeBytes)

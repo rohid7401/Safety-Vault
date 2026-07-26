@@ -5,6 +5,7 @@ using PasswordManager.Infrastructure.Encryption;
 using PasswordManager.Infrastructure.Persistence;
 using PasswordManager.Infrastructure.Services;
 using Xunit;
+using PasswordManager.Core.Exceptions;
 
 namespace PasswordManager.Tests.Services
 {
@@ -61,16 +62,18 @@ namespace PasswordManager.Tests.Services
             var auth = CreateAuthService();
             await auth.RegisterAsync("alice", "alice@example.com", Passphrase);
 
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            var ex = await Assert.ThrowsAsync<LocalizedUnauthorizedAccessException>(
                 () => auth.LoginAsync("alice", "wrong-passphrase"));
+            Assert.Equal(AppErrorCode.BadCredentials, ex.Code);
         }
 
         [Fact]
         public async Task LoginAsync_UnknownAccount_ThrowsUnauthorizedAccessException()
         {
             var auth = CreateAuthService();
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            var ex = await Assert.ThrowsAsync<LocalizedUnauthorizedAccessException>(
                 () => auth.LoginAsync("nobody", Passphrase));
+            Assert.Equal(AppErrorCode.BadCredentials, ex.Code);
         }
 
         // ─── N1: anti-enumeration ────────────────────────────────────────────
@@ -81,14 +84,18 @@ namespace PasswordManager.Tests.Services
             var auth = CreateAuthService();
             await auth.RegisterAsync("alice", "alice@example.com", Passphrase);
 
-            var wrongPass = await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            var wrongPass = await Assert.ThrowsAsync<LocalizedUnauthorizedAccessException>(
                 () => auth.LoginAsync("alice", "wrong-passphrase"));
-            var noAccount = await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            var noAccount = await Assert.ThrowsAsync<LocalizedUnauthorizedAccessException>(
                 () => auth.LoginAsync("nobody", Passphrase));
 
-            // The message must not reveal whether the account exists.
-            Assert.Equal(wrongPass.Message, noAccount.Message);
-            Assert.DoesNotContain("account", noAccount.Message, StringComparison.OrdinalIgnoreCase);
+            // Both branches must report the identical code: it is the code, not the prose, that
+            // now decides what the user is shown, so a difference here would leak whether the
+            // account exists no matter how carefully the two sentences were worded.
+            Assert.Equal(AppErrorCode.BadCredentials, wrongPass.Code);
+            Assert.Equal(AppErrorCode.BadCredentials, noAccount.Code);
+            Assert.Empty(wrongPass.Args);
+            Assert.Empty(noAccount.Args);
         }
 
         [Fact]
@@ -97,8 +104,9 @@ namespace PasswordManager.Tests.Services
             var auth = CreateAuthService();
             await auth.RegisterAsync("alice", "alice@example.com", Passphrase);
 
-            await Assert.ThrowsAsync<InvalidOperationException>(
+            var ex = await Assert.ThrowsAsync<LocalizedInvalidOperationException>(
                 () => auth.RegisterAsync("alice", "another@example.com", Passphrase));
+            Assert.Equal(AppErrorCode.UsernameTaken, ex.Code);
         }
 
         // ─── N2: concurrent registrations don't lose accounts ────────────────

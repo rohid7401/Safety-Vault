@@ -1,6 +1,7 @@
 using PasswordManager.Core.Interfaces;
 using PasswordManager.Core.Models;
 using PasswordManager.Infrastructure.Encryption;
+using PasswordManager.Core.Exceptions;
 
 namespace PasswordManager.Infrastructure.Services
 {
@@ -94,7 +95,7 @@ namespace PasswordManager.Infrastructure.Services
                 : root + Path.DirectorySeparatorChar;
 
             if (!full.StartsWith(rootWithSep, StringComparison.Ordinal))
-                throw new UnauthorizedAccessException("Resolved path escapes the key directory.");
+                throw new LocalizedUnauthorizedAccessException(AppErrorCode.PathEscapesKeyDirectory);
 
             return full;
         }

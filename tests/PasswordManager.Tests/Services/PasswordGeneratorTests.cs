@@ -70,7 +70,8 @@ namespace PasswordManager.Tests.Services
         public void Generate_LengthTooShort_Throws()
         {
             var options = new PasswordGeneratorOptions { Length = 2 };
-            Assert.Throws<ArgumentException>(() => _generator.Generate(options));
+            var ex = Assert.Throws<LocalizedArgumentException>(() => _generator.Generate(options));
+            Assert.Equal(AppErrorCode.PasswordLengthTooShort, ex.Code);
         }
 
         [Fact]
@@ -83,7 +84,8 @@ namespace PasswordManager.Tests.Services
                 IncludeDigits = false,
                 IncludeSpecial = false
             };
-            Assert.Throws<ArgumentException>(() => _generator.Generate(options));
+            var ex = Assert.Throws<LocalizedArgumentException>(() => _generator.Generate(options));
+            Assert.Equal(AppErrorCode.NoCharacterSetEnabled, ex.Code);
         }
 
         [Fact]

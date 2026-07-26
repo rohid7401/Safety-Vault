@@ -6,20 +6,25 @@ namespace PasswordManager.Core.Exceptions
     /// decrypt/deserialize. Callers should NEVER overwrite the vault when this is thrown —
     /// instead offer the user a restore from the last known-good backup.
     /// </summary>
-    public class VaultIntegrityException : Exception
+    public class VaultIntegrityException : Exception, ILocalizedError
     {
         /// <summary>True when a verified backup exists that the user can restore from.</summary>
         public bool BackupAvailable { get; }
 
-        public VaultIntegrityException(string message, bool backupAvailable = false)
-            : base(message)
+        public AppErrorCode Code { get; }
+        public object?[] Args { get; } = Array.Empty<object?>();
+
+        public VaultIntegrityException(AppErrorCode code, bool backupAvailable = false)
+            : base($"{code}")
         {
+            Code = code;
             BackupAvailable = backupAvailable;
         }
 
-        public VaultIntegrityException(string message, Exception inner, bool backupAvailable = false)
-            : base(message, inner)
+        public VaultIntegrityException(AppErrorCode code, Exception inner, bool backupAvailable = false)
+            : base($"{code}", inner)
         {
+            Code = code;
             BackupAvailable = backupAvailable;
         }
     }

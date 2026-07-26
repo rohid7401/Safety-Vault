@@ -4,10 +4,20 @@ namespace PasswordManager.Core.Interfaces
 {
     public interface IAuthService
     {
-        /// <summary>Registers a brand-new account. Auto-creates the underlying vault folder.</summary>
-        Task<UserAccount> RegisterAsync(string username, string email, string passphrase);
+        /// <summary>
+        /// Registers a brand-new account. Auto-creates the underlying vault folder. The
+        /// cryptographic work runs off the calling thread, so a UI caller stays responsive;
+        /// <paramref name="progress"/> reports which stage is running and is invoked from a
+        /// background thread, so a UI handler must marshal before touching component state.
+        /// </summary>
+        Task<UserAccount> RegisterAsync(string username, string email, string passphrase,
+            IProgress<RegistrationStage>? progress = null);
 
-        /// <summary>Validates credentials against the global accounts file.</summary>
+        /// <summary>
+        /// Validates credentials against the global accounts file. The Argon2id verification
+        /// runs off the calling thread — it is deliberately slow, and on a phone it is more
+        /// than enough to trip the OS "app is not responding" watchdog if run inline.
+        /// </summary>
         Task<UserAccount> LoginAsync(string usernameOrEmail, string passphrase);
 
         /// <summary>True if any account with that username or email already exists.</summary>

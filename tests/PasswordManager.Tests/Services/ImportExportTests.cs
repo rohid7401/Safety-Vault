@@ -128,8 +128,9 @@ namespace PasswordManager.Tests.Services
         [Fact]
         public void ExportToCsv_NoColumns_Throws()
         {
-            Assert.Throws<InvalidOperationException>(
+            var ex = Assert.Throws<LocalizedInvalidOperationException>(
                 () => _service.ExportToCsv(Rows(new ExportRow()), new List<ExportColumn>()));
+            Assert.Equal(AppErrorCode.NoColumnsSelected, ex.Code);
         }
 
         [Fact]

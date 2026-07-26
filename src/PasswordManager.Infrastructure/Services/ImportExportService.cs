@@ -11,7 +11,7 @@ namespace PasswordManager.Infrastructure.Services
         public string ExportToCsv(IReadOnlyList<ExportRow> rows, IReadOnlyList<ExportColumn> columns)
         {
             if (columns.Count == 0)
-                throw new InvalidOperationException("At least one column must be selected.");
+                throw new LocalizedInvalidOperationException(AppErrorCode.NoColumnsSelected);
 
             var sb = new StringBuilder();
             sb.AppendLine(string.Join(",", columns.Select(c => EscapeCsvField(c.Header))));

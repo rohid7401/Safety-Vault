@@ -18,7 +18,7 @@ namespace PasswordManager.Infrastructure.Services
             var word = options.IncludeWord ?? string.Empty;
 
             if (options.Length < 4)
-                throw new ArgumentException("Password length must be at least 4.");
+                throw new LocalizedArgumentException(AppErrorCode.PasswordLengthTooShort, 4);
 
             var conflicts = Validate(options);
             if (conflicts.Count > 0)
@@ -30,7 +30,7 @@ namespace PasswordManager.Infrastructure.Services
             if (word.Length == 0)
             {
                 if (charPool.Length == 0)
-                    throw new ArgumentException("At least one character set must be enabled.");
+                    throw new LocalizedArgumentException(AppErrorCode.NoCharacterSetEnabled);
 
                 char[] password;
                 do

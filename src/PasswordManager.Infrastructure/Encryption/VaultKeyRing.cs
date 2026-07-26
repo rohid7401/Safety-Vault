@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using PasswordManager.Core.Exceptions;
 
 namespace PasswordManager.Infrastructure.Encryption
 {
@@ -87,15 +88,15 @@ namespace PasswordManager.Infrastructure.Encryption
             try
             {
                 record = JsonSerializer.Deserialize<KeyringRecord>(File.ReadAllBytes(path))
-                    ?? throw new UnauthorizedAccessException("Vault keyring is unreadable.");
+                    ?? throw new LocalizedUnauthorizedAccessException(AppErrorCode.KeyringUnreadable);
             }
             catch (JsonException ex)
             {
-                throw new UnauthorizedAccessException("Vault keyring is corrupt.", ex);
+                throw new LocalizedUnauthorizedAccessException(AppErrorCode.KeyringCorrupt, ex);
             }
 
             if (!string.Equals(record.Kdf, KdfId, StringComparison.Ordinal))
-                throw new UnauthorizedAccessException($"Unsupported key-derivation function '{record.Kdf}'.");
+                throw new LocalizedUnauthorizedAccessException(AppErrorCode.UnsupportedKdf, record.Kdf);
 
             var salt = Convert.FromBase64String(record.KdfSalt);
             var kek = Argon2idKdf.Derive(passphrase, salt, VaultKeyBytes, record.MemoryKib, record.Iterations, record.Parallelism);
@@ -113,7 +114,7 @@ namespace PasswordManager.Infrastructure.Encryption
                 }
                 catch (CryptographicException ex)
                 {
-                    throw new UnauthorizedAccessException("Incorrect passphrase.", ex);
+                    throw new LocalizedUnauthorizedAccessException(AppErrorCode.BadCredentials, ex);
                 }
 
                 return vaultKey;

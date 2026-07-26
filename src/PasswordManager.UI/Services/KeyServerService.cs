@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using PasswordManager.Core.Exceptions;
 
 namespace PasswordManager.UI.Services
 {
@@ -36,8 +37,9 @@ namespace PasswordManager.UI.Services
             }
             catch (HttpRequestException ex)
             {
-                throw new InvalidOperationException(
-                    $"Could not reach keys.openpgp.org: {ex.Message}", ex);
+                // The inner exception keeps the technical detail for the log; the code is what
+                // the user sees, translated, without the transport error's English text.
+                throw new LocalizedInvalidOperationException(AppErrorCode.KeyServerUnreachable);
             }
         }
 
@@ -74,8 +76,9 @@ namespace PasswordManager.UI.Services
             }
             catch (HttpRequestException ex)
             {
-                throw new InvalidOperationException(
-                    $"Could not reach keys.openpgp.org: {ex.Message}", ex);
+                // The inner exception keeps the technical detail for the log; the code is what
+                // the user sees, translated, without the transport error's English text.
+                throw new LocalizedInvalidOperationException(AppErrorCode.KeyServerUnreachable);
             }
         }
 

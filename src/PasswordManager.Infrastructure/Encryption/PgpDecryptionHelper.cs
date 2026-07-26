@@ -1,4 +1,5 @@
 using Org.BouncyCastle.Bcpg.OpenPgp;
+using PasswordManager.Core.Exceptions;
 
 namespace PasswordManager.Infrastructure.Encryption
 {
@@ -16,7 +17,7 @@ namespace PasswordManager.Infrastructure.Encryption
                         return privateKey;
                 }
             }
-            throw new ArgumentException("No private key found or incorrect passphrase.");
+            throw new LocalizedArgumentException(AppErrorCode.NoPrivateKeyOrBadPassphrase);
         }
     }
 }

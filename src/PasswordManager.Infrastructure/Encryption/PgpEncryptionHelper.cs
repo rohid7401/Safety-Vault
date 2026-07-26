@@ -1,4 +1,5 @@
 using Org.BouncyCastle.Bcpg.OpenPgp;
+using PasswordManager.Core.Exceptions;
 
 namespace PasswordManager.Infrastructure.Encryption
 {
@@ -12,7 +13,7 @@ namespace PasswordManager.Infrastructure.Encryption
                     if (key.IsEncryptionKey)
                         return key;
 
-            throw new ArgumentException("No encryption key found in the public key file.");
+            throw new LocalizedArgumentException(AppErrorCode.NoEncryptionKeyInFile);
         }
     }
 }

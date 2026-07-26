@@ -25,14 +25,11 @@
   "tour.skip": "Skip",
   "tour.next": "Next",
   "tour.back": "Back",
-
   "lang.title": "Language",
-
   "nav.group.vault": "Vault",
   "nav.group.tools": "Tools",
   "nav.group.keys": "Keys & files",
   "nav.group.learn": "Learn",
-
   "nav.passwords": "Passwords",
   "nav.notes": "Secure notes",
   "nav.cards": "Cards",
@@ -45,7 +42,6 @@
   "nav.encryptDirs": "Encrypt directories",
   "nav.walkthrough": "Tutorial",
   "nav.tutorial": "How PGP works",
-
   "title.passwords": "Passwords",
   "title.notes": "Secure notes",
   "title.cards": "Cards",
@@ -58,7 +54,6 @@
   "title.encryptDirs": "Encrypt directories",
   "title.walkthrough": "Tutorial",
   "title.tutorial": "How PGP works",
-
   "home.subtitle": "Your private vault. It lives only on this device — nobody else can read it.",
   "home.signIn": "Sign in",
   "home.createAccount": "Create account",
@@ -86,14 +81,12 @@
   "home.err.passphraseMismatch": "Passphrases do not match.",
   "home.generatingKeys": "Generating your PGP key pair... this can take a few seconds.",
   "home.welcome": "Welcome to SafetyVault!",
-
   "restore.title": "Vault integrity check failed",
   "restore.body": "The current vault could not be verified — it may have been modified or corrupted. A known-good backup from your previous save is available. Restoring will replace the current vault with that backup.",
   "restore.confirm": "Restore from backup",
   "restore.restoring": "Restoring...",
   "restore.ok": "Vault restored from backup.",
   "restore.cancelled": "Vault could not be verified and was not opened. Restore was cancelled.",
-
   "dash.welcome": "Welcome back",
   "dash.statusTitle": "Vault unlocked & protected",
   "dash.counts": "{0} passwords · {1} notes · {2} cards",
@@ -110,7 +103,6 @@
   "dash.desc.encryptDirs": "Lock a whole folder",
   "dash.desc.walkthrough": "A guided tour of the whole app",
   "dash.desc.tutorial": "A 2-minute plain-language guide",
-
   "whatsThis.passwords": "A private list of your logins. Only you can open it — everything is scrambled, so even someone holding the file can't read it.",
   "whatsThis.notes": "A safe place for text you want kept private — recovery codes, secret numbers, personal notes. It stays hidden until you reveal it.",
   "whatsThis.cards": "Store your card details so you don't have to memorise them. They stay locked and masked until you tap to reveal.",
@@ -122,7 +114,6 @@
   "whatsThis.encrypt-directory": "Same idea as locking a file, but for several at once — everything is bundled into a .zip and locked into one protected file.",
   "whatsThis.tutorial": "A short, jargon-free walkthrough of how the locking and unlocking actually works.",
   "whatsThis.data": "Wipes an entire section of the vault. Use it to start over if an import went wrong and filled the app with junk entries.",
-
   "data.title": "Delete data",
   "data.body": "Empties an entire section. Use it to start over if an import went wrong or a section became unusable.",
   "data.count": "{0} entries",
@@ -136,7 +127,6 @@
   "data.confirmTypePrompt": "Type {0} to confirm",
   "data.deletedOk": "Deleted {0} entries.",
   "data.deleteFailed": "Could not delete",
-
   "toast.passwordCopied": "Password copied — clears from clipboard in 30s.",
   "toast.totpCopied": "2FA code copied — clears from clipboard in 30s.",
   "toast.movedToTrash": "Entry moved to trash.",
@@ -149,7 +139,6 @@
   "toast.noteSaved": "Note saved.",
   "toast.noteUpdated": "Note updated.",
   "toast.cardSaved": "Card saved.",
-
   "vault.count": "{0} passwords in your vault",
   "vault.searchPlaceholder": "github.com, jane.doe, work…",
   "vault.tooMany": "Showing the first {0} of {1} matches. Narrow your search to see the rest.",
@@ -216,7 +205,6 @@
   "vault.ago.days": "{0} days ago",
   "vault.ago.months": "{0} months ago",
   "vault.ago.years": "{0} years ago",
-
   "notes.count": "{0} notes in your vault",
   "notes.emptyTitle": "No secure notes",
   "notes.emptyBody": "Add encrypted notes to keep sensitive information safe.",
@@ -227,7 +215,6 @@
   "notes.field.content": "Content",
   "notes.field.contentPlaceholder": "Backup recovery codes:\n1234-5678\n9012-3456",
   "notes.err.titleRequired": "Title is required.",
-
   "cards.count": "{0} cards in your vault",
   "cards.emptyTitle": "No cards saved",
   "cards.emptyBody": "Store your credit and debit card information securely.",
@@ -241,7 +228,6 @@
   "cards.field.expMonth": "Expiry month",
   "cards.field.expYear": "Expiry year",
   "cards.err.required": "Name and card number are required.",
-
   "gen.strength": "Strength",
   "gen.strength.weak": "Weak",
   "gen.strength.fair": "Fair",
@@ -266,7 +252,6 @@
   "gen.conflict.wordTooLong": "The word \"{0}\" ({1} chars) is longer than the password length ({2}).",
   "gen.conflict.wordExcluded": "The word \"{0}\" contains characters you're excluding.",
   "gen.conflict.noCharset": "No character set is enabled to fill the rest of the password.",
-
   "audit.emptyTitle": "Check your vault's health",
   "audit.emptyBody": "We'll scan for passwords that are weak, repeated, or old — so you know what to fix.",
   "audit.run": "Run audit",
@@ -286,7 +271,6 @@
   "audit.desc.reusedOne": "Password shared with one other entry",
   "audit.desc.expired": "Expired on {0}",
   "audit.desc.noExpiration": "No expiry date set",
-
   "io.exportTarget": "Export format",
   "io.target.native": "SafetyVault backup (.json) — recommended",
   "io.target.generic": "Generic CSV",
@@ -352,7 +336,6 @@
   "io.err.invalidJson": "The file is not a valid Bitwarden JSON export.",
   "io.err.tooMany": "The file holds more than {0} entries. Split it into smaller parts.",
   "io.err.noUsable": "No usable entry was found in the file.",
-
   "enc.lock": "Lock (encrypt)",
   "enc.unlock": "Unlock (decrypt)",
   "enc.whoCanOpen": "Who can open it?",
@@ -365,8 +348,6 @@
   "enc.err.selectRecipient": "Select a recipient.",
   "enc.err.recipientNotFound": "Recipient public key not found.",
   "enc.err.passphraseRequired": "Passphrase is required.",
-
-
   "encFile.fileToLock": "File to lock",
   "encFile.lockedToOpen": "Locked file to open",
   "encFile.locking": "Locking...",
@@ -377,7 +358,6 @@
   "encFile.hintDecrypt": "You'll need your master passphrase to open a file locked for you. After unlocking you'll choose where to save the recovered file.",
   "encFile.encryptedOk": "File encrypted and saved: {0}",
   "encFile.decryptedOk": "File decrypted and saved: {0}",
-
   "encDir.folderToLock": "Folder to lock",
   "encDir.outputFile": "Output file (optional — leave blank to save next to the folder)",
   "encDir.lockedArchive": "Locked archive (.pgp)",
@@ -403,7 +383,6 @@
   "encDir.extractedOkMobile": "File decrypted: {0} (open it with your file manager to extract the contents)",
   "encDir.err.noFiles": "Choose at least one file.",
   "encDir.err.bundleTooLarge": "The chosen files exceed the {0} MB maximum.",
-
   "keys.hint": "Your public key is safe to share. Your private key is encrypted with your master passphrase — never give that file <em>plus</em> your passphrase to anyone. Back up <code>private_key.asc</code> somewhere safe.",
   "keys.yourKeys": "Your keys",
   "keys.active": "Active",
@@ -458,14 +437,12 @@
   "keys.ok.exported": "Exported public key to {0}",
   "keys.ok.imported": "Imported “{0}” into your contact directory.",
   "keys.ok.removed": "Key removed.",
-
   "picker.folder": "Choose folder",
   "picker.saveAs": "Save as...",
   "picker.attach": "Attach file",
   "picker.folderTitle": "Choose a folder",
   "picker.saveAsTitle": "Pick where to save the output",
   "picker.attachTitle": "Select an existing file",
-
   "tl.intro": "A 2-minute, plain-language walkthrough of how your vault keeps things locked — no tech background needed.",
   "tl.public": "Public",
   "tl.private": "Private",
@@ -494,5 +471,33 @@
   "tl.flow.yourPubKey": "your public key",
   "tl.flow.encPgp": "encrypted .pgp",
   "tl.flow.privKeyPass": "your private key + passphrase",
-  "tl.cta": "Go to Key management"
+  "tl.cta": "Go to Key management",
+  "error.usernameRequired": "Enter a username.",
+  "error.emailRequired": "Enter an email address.",
+  "error.passphraseTooShort": "The master passphrase must be at least {0} characters.",
+  "error.usernameTaken": "That username is already registered on this device.",
+  "error.emailTaken": "That email is already registered on this device.",
+  "error.vaultFolderExists": "A vault folder already exists for this username. Choose a different one.",
+  "error.badCredentials": "Incorrect username/email or passphrase.",
+  "error.keyringUnreadable": "The vault keyring could not be read.",
+  "error.keyringCorrupt": "The vault keyring is corrupt.",
+  "error.unsupportedKdf": "Unsupported key-derivation function '{0}'.",
+  "error.noBackupAvailable": "There is no backup available to restore from.",
+  "error.vaultTruncated": "The vault file is truncated or corrupt.",
+  "error.vaultCorrupt": "The vault contents are corrupt.",
+  "error.noPrivateKeyOrBadPassphrase": "No private key was found, or the passphrase is incorrect.",
+  "error.noEncryptionKeyInFile": "That public key file contains no encryption key.",
+  "error.noPublicKeyInData": "No public key was found in that data.",
+  "error.noFilesToBundle": "Select at least one file.",
+  "error.noColumnsSelected": "Select at least one column to export.",
+  "error.pathEscapesKeyDirectory": "That path is outside the key folder.",
+  "error.passwordLengthTooShort": "The password length must be at least {0}.",
+  "error.noCharacterSetEnabled": "Enable at least one character set.",
+  "error.generatorConflict": "The generator settings conflict with each other.",
+  "home.stage.generatingKeys": "Generating your PGP key pair…",
+  "home.stage.securingVault": "Securing your vault…",
+  "home.stage.finishing": "Almost done…",
+  "home.stageHint": "This takes a few seconds and only happens once.",
+  "error.vaultAuthFailed": "The vault could not be authenticated — it may have been modified or replaced, or the passphrase is wrong.",
+  "error.keyServerUnreachable": "Could not reach keys.openpgp.org. Check your connection and try again."
 }
