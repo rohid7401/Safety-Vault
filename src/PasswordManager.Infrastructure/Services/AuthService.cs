@@ -15,7 +15,6 @@ namespace PasswordManager.Infrastructure.Services
         /// user sees, so the rule and its wording can never drift apart.</summary>
         public const int MinPassphraseLength = 8;
 
-        private readonly IPgpService _pgpService;
         private readonly AuthOptions _options;
 
         // N2: serialize the load-modify-save of accounts.json so two concurrent operations
@@ -24,9 +23,8 @@ namespace PasswordManager.Infrastructure.Services
         // instances exist in the process.
         private static readonly SemaphoreSlim AccountsLock = new(1, 1);
 
-        public AuthService(IPgpService pgpService, AuthOptions options)
+        public AuthService(AuthOptions options)
         {
-            _pgpService = pgpService;
             _options = options;
             Directory.CreateDirectory(_options.AppDataPath);
             Directory.CreateDirectory(_options.VaultsRootPath);
@@ -86,21 +84,18 @@ namespace PasswordManager.Infrastructure.Services
                 throw new LocalizedInvalidOperationException(AppErrorCode.VaultFolderExists);
             Directory.CreateDirectory(vaultPath);
 
-            var publicKeyPath = Path.Combine(vaultPath, "public_key.asc");
-            var privateKeyPath = Path.Combine(vaultPath, "private_key.asc");
-
-            // Everything below is CPU-bound and takes seconds: an RSA key pair, then an
-            // Argon2id derivation. Run inline it blocks whichever thread called us — on
-            // Android that is the UI thread, and the OS puts up "SafetyVault isn't responding"
-            // after five seconds. Task.Run moves it to the thread pool so the caller can keep
-            // painting; the progress reports below are what it paints.
+            // The PGP key pair (an RSA-2048 generation, the slowest and most variable part of
+            // what registration used to do) is no longer created here. It is only ever needed
+            // for the "encrypt a file for a contact" feature, so it is now generated on demand
+            // the first time that feature is used — see
+            // PasswordManagerService.GenerateOwnPgpIdentityAsync. The vault itself is never
+            // locked by PGP; see the Vault Key setup below.
+            //
+            // What is left below is still CPU-bound (Argon2id) and still runs off the calling
+            // thread: inline it would block whichever thread called us — on Android that is the
+            // UI thread, and the OS puts up "SafetyVault isn't responding" after five seconds.
             await Task.Run(() =>
             {
-                // The PGP key pair is used only for encrypting files for contacts. The vault
-                // itself is never locked by PGP — see the Vault Key setup below.
-                progress?.Report(RegistrationStage.GeneratingKeys);
-                _pgpService.GenerateKeyPair(publicKeyPath, privateKeyPath, passphrase);
-
                 // Set up the Vault Key: a random key wrapped by a passphrase-derived KEK
                 // (Argon2id). There is deliberately no separate password hash anywhere (see
                 // UserAccount) — the login check IS the KEK successfully unwrapping the Vault Key.
@@ -108,14 +103,8 @@ namespace PasswordManager.Infrastructure.Services
                 var vaultKey = VaultKeyRing.Create(vaultPath, passphrase);
                 try
                 {
-                    // Seed the vault with the PGP key pair so it travels with the vault to any
-                    // device that can unlock it — no separate key-file sync needed.
                     progress?.Report(RegistrationStage.Finishing);
-                    var seed = new VaultData
-                    {
-                        PgpPublicKeyArmored = File.ReadAllText(publicKeyPath),
-                        PgpPrivateKeyArmored = File.ReadAllText(privateKeyPath),
-                    };
+                    var seed = new VaultData();
                     var blobKey = VaultKeyRing.DeriveSubkey(vaultKey, VaultKeyRing.BlobKeyInfo);
                     // KekVaultRepository takes ownership of blobKey and zeroizes it on Dispose.
                     using var repo = new KekVaultRepository(blobKey, vaultPath);
@@ -185,6 +174,43 @@ namespace PasswordManager.Infrastructure.Services
             }
 
             return account;
+        }
+
+        public async Task DeleteAccountAsync(string username, string passphrase)
+        {
+            await AccountsLock.WaitAsync();
+            try
+            {
+                var all = await LoadAllAsync();
+                var account = all.FirstOrDefault(a =>
+                    string.Equals(a.Username, username, StringComparison.OrdinalIgnoreCase));
+
+                // Same anti-enumeration-shaped check as LoginAsync: an unknown username and a
+                // wrong passphrase must fail identically.
+                if (account is null)
+                {
+                    await Task.Run(() => VaultKeyRing.PerformDummyUnlock(passphrase)).ConfigureAwait(false);
+                    throw new LocalizedUnauthorizedAccessException(AppErrorCode.BadCredentials);
+                }
+
+                var unlocked = await Task.Run(() => VaultKeyRing.CanUnlock(account.VaultPath, passphrase))
+                    .ConfigureAwait(false);
+                if (!unlocked)
+                    throw new LocalizedUnauthorizedAccessException(AppErrorCode.BadCredentials);
+
+                // Delete the vault folder before dropping the account entry: if this throws
+                // (e.g. a locked file), the account stays intact and the user can retry, rather
+                // than being left logged out with an orphaned, half-deleted vault on disk.
+                if (Directory.Exists(account.VaultPath))
+                    Directory.Delete(account.VaultPath, recursive: true);
+
+                all.Remove(account);
+                await SaveAllAsync(all);
+            }
+            finally
+            {
+                AccountsLock.Release();
+            }
         }
 
         // ─── Internals ───────────────────────────────────────────────────────

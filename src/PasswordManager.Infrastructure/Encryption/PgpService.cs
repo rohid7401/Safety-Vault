@@ -24,7 +24,7 @@ namespace PasswordManager.Infrastructure.Encryption
             return PgpKeyInspector.Inspect(stream);
         }
 
-        public void GenerateKeyPair(string publicKeyPath, string privateKeyPath, string passphrase)
+        public void GenerateKeyPair(string publicKeyPath, string privateKeyPath, string passphrase, string userId)
         {
             var rng = new SecureRandom();
             var keyPairGenerator = new RsaKeyPairGenerator();
@@ -37,7 +37,7 @@ namespace PasswordManager.Infrastructure.Encryption
             var keyRingGenerator = new PgpKeyRingGenerator(
                 PgpSignature.DefaultCertification,
                 pgpKeyPair,
-                "vault@safetyvault.local",
+                userId,
                 SymmetricKeyAlgorithmTag.Aes256,
                 HashAlgorithmTag.Sha256,
                 passphrase.ToCharArray(),

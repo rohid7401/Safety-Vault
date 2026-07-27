@@ -55,6 +55,49 @@ namespace PasswordManager.Core.Services
                 await File.WriteAllTextAsync(privatePath, vault.PgpPrivateKeyArmored);
         }
 
+        /// <summary>True once this account has generated the PGP identity used to encrypt
+        /// files for contacts. Registration no longer creates one automatically — see
+        /// <see cref="GenerateOwnPgpIdentityAsync"/> — so this is how a caller checks whether
+        /// the on-demand prompt should be shown.</summary>
+        public async Task<bool> HasOwnPgpIdentityAsync()
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+            return !string.IsNullOrEmpty(vault.PgpPublicKeyArmored);
+        }
+
+        /// <summary>
+        /// Generates this account's PGP identity (an RSA-2048 key pair) the first time it is
+        /// actually needed, rather than during registration: it is the slowest and most
+        /// variable-duration part of what registration used to do, yet most accounts never use
+        /// the file-encryption feature it exists for. <paramref name="passphrase"/> protects the
+        /// private key armor and should be the caller's vault passphrase, re-entered for this
+        /// call since it is never retained after login. <paramref name="userId"/> is embedded in
+        /// the key (conventionally "Name &lt;email@example.com&gt;") — it must contain the
+        /// account's real email, since that is what a keyserver search and the "is this the
+        /// right key?" mismatch check both match against; a placeholder here would make the key
+        /// unfindable by anyone searching for the owner's actual address. No-ops if an identity
+        /// already exists.
+        /// </summary>
+        public async Task GenerateOwnPgpIdentityAsync(
+            IPgpService pgpService, string vaultFolder, string passphrase, string userId)
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+            if (!string.IsNullOrEmpty(vault.PgpPublicKeyArmored)) return;
+
+            var publicPath = Path.Combine(vaultFolder, "public_key.asc");
+            var privatePath = Path.Combine(vaultFolder, "private_key.asc");
+
+            // CPU-bound (prime search): off the calling thread so a UI caller stays responsive.
+            await Task.Run(() => pgpService.GenerateKeyPair(publicPath, privatePath, passphrase, userId))
+                .ConfigureAwait(false);
+
+            vault.PgpPublicKeyArmored = await File.ReadAllTextAsync(publicPath);
+            vault.PgpPrivateKeyArmored = await File.ReadAllTextAsync(privatePath);
+            await _repository.SaveAsync(vault);
+        }
+
         // ─── Query ───────────────────────────────────────────────────────────
 
         public async Task<List<VaultEntry>> GetAllEntriesAsync()

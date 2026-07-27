@@ -119,6 +119,62 @@ namespace PasswordManager.Tests.Services
             Assert.Equal("already-here", await File.ReadAllTextAsync(publicPath));
         }
 
+        // ─── Own PGP identity (deferred generation) ─────────────────────────
+
+        [Fact]
+        public async Task HasOwnPgpIdentityAsync_FreshVault_ReturnsFalse()
+        {
+            await using var svc = await CreateServiceAsync();
+            Assert.False(await svc.HasOwnPgpIdentityAsync());
+        }
+
+        [Fact]
+        public async Task GenerateOwnPgpIdentityAsync_CreatesAndPersistsIdentity()
+        {
+            await using var svc = await CreateServiceAsync();
+            await svc.GenerateOwnPgpIdentityAsync(
+                new PgpService(), _dataDir, "correct-horse-battery-staple", "alice <alice@example.com>");
+
+            Assert.True(await svc.HasOwnPgpIdentityAsync());
+            Assert.True(File.Exists(Path.Combine(_dataDir, "public_key.asc")));
+            Assert.True(File.Exists(Path.Combine(_dataDir, "private_key.asc")));
+        }
+
+        [Fact]
+        public async Task GenerateOwnPgpIdentityAsync_AlreadyHasOne_DoesNotRegenerate()
+        {
+            await using (var svc = await CreateServiceAsync())
+                await svc.GenerateOwnPgpIdentityAsync(
+                    new PgpService(), _dataDir, "correct-horse-battery-staple", "alice <alice@example.com>");
+            var firstPublicKey = await File.ReadAllTextAsync(Path.Combine(_dataDir, "public_key.asc"));
+
+            await using (var svc2 = await CreateServiceAsync())
+                await svc2.GenerateOwnPgpIdentityAsync(
+                    new PgpService(), _dataDir, "a-different-phrase", "bob <bob@example.com>");
+
+            Assert.Equal(firstPublicKey, await File.ReadAllTextAsync(Path.Combine(_dataDir, "public_key.asc")));
+        }
+
+        /// <summary>
+        /// Regression test: the key's User ID used to be hardcoded to a placeholder address
+        /// ("vault@safetyvault.local") regardless of the account's real email, which silently
+        /// broke keyserver publishing — Hagrid indexes by the email inside the key's own UID, not
+        /// by anything the app tells it out of band, so the key could never be found (or
+        /// verified) by the address it was supposedly published under.
+        /// </summary>
+        [Fact]
+        public async Task GenerateOwnPgpIdentityAsync_EmbedsGivenUserIdInTheKey()
+        {
+            await using var svc = await CreateServiceAsync();
+            await svc.GenerateOwnPgpIdentityAsync(
+                new PgpService(), _dataDir, "correct-horse-battery-staple", "alice <alice@example.com>");
+
+            var armored = await File.ReadAllTextAsync(Path.Combine(_dataDir, "public_key.asc"));
+            var details = new PgpService().InspectPublicKey(armored);
+
+            Assert.True(details.HasUserIdFor("alice@example.com"));
+        }
+
         // ─── Empty vault ─────────────────────────────────────────────────────
 
         [Fact]

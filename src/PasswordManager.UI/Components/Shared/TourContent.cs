@@ -26,5 +26,19 @@ namespace PasswordManager.UI.Components.Shared
             new("file", "nav.encryptFiles", "whatsThis.encrypt-file"),
             new("folder", "nav.encryptDirs", "whatsThis.encrypt-directory"),
         };
+
+        /// <summary>
+        /// Shown in place of the "Your keys" card the first time someone opens Key Management
+        /// without a PGP identity yet: testers who didn't know what PGP was would land on a
+        /// bare "create identity" form with no idea why they needed one. This walks through what
+        /// the pair is for before the create button is ever reachable.
+        /// </summary>
+        public static readonly TourStep[] PgpSteps =
+        {
+            new("key", "pgpTour.what.title", "pgpTour.what.body"),
+            new("shield-check", "pgpTour.use.title", "pgpTour.use.body"),
+            new("lock-keyhole", "pgpTour.pair.title", "pgpTour.pair.body"),
+            new("check", "pgpTour.ready.title", "pgpTour.ready.body"),
+        };
     }
 }

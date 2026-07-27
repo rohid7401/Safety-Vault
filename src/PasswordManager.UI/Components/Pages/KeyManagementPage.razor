@@ -1,4 +1,4 @@
-﻿@page "/keys"
+@page "/keys"
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject IKeyDirectoryService KeyDir
@@ -12,244 +12,282 @@
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
 
-<div class="hint-row" style="margin-top:0; margin-bottom:16px;">
-    <Icon Name="info" Size="15" />
-    <span>@((MarkupString)L["keys.hint"])</span>
-</div>
+@if (HasOwnPgpIdentity)
+{
+    <div class="hint-row" style="margin-top:0; margin-bottom:16px;">
+        <Icon Name="info" Size="15" />
+        <span>@((MarkupString)L["keys.hint"])</span>
+    </div>
 
-<div class="dash-group-title" style="margin:0 2px 8px;">@L["keys.yourKeys"]</div>
+    <div class="dash-group-title" style="margin:0 2px 8px;">@L["keys.yourKeys"]</div>
 
-<div class="card" style="gap:12px;">
-    <div class="card-header">
-        <div>
-            <div class="card-title">@(AppState.Account?.Username)</div>
-            <div class="card-subtitle">@(AppState.Account?.Email)</div>
+    <div class="card" style="gap:12px;">
+        <div class="card-header">
+            <div>
+                <div class="card-title">@(AppState.Account?.Username)</div>
+                <div class="card-subtitle">@(AppState.Account?.Email)</div>
+            </div>
+            <span class="badge badge-success">@L["keys.active"]</span>
         </div>
-        <span class="badge badge-success">@L["keys.active"]</span>
-    </div>
-    <div class="key-row">
-        <span class="pill pill-public">@L["tl.public"]</span>
-        <span class="key-name">@OwnPublicKeyPath</span>
-    </div>
-    <div class="key-row">
-        <span class="pill pill-private">@L["tl.private"]</span>
-        <span class="key-name">@OwnPrivateKeyPath · @L["keys.keptSecret"]</span>
-    </div>
-    <button class="btn btn-primary btn-block" @onclick="ExportOwnPublicKey">
-        @L["keys.share"]
-    </button>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button class="btn btn-secondary btn-sm" style="flex:1;" @onclick="PublishOwnKey">
-            @L["keys.addToDirectory"]
+        <div class="key-row">
+            <span class="pill pill-public">@L["tl.public"]</span>
+            <span class="key-name">@OwnPublicKeyPath</span>
+        </div>
+        <div class="key-row">
+            <span class="pill pill-private">@L["tl.private"]</span>
+            <span class="key-name">@OwnPrivateKeyPath · @L["keys.keptSecret"]</span>
+        </div>
+        <button class="btn btn-primary btn-block" @onclick="ExportOwnPublicKey">
+            @L["keys.share"]
         </button>
-        <button class="btn btn-secondary btn-sm" style="flex:1;" @onclick="OpenPublishToServerModal">
-            @L["keys.publishServer"]
-        </button>
-    </div>
-</div>
-
-@* ─── Public keyserver ─── *@
-<div class="dash-group-title" style="margin:22px 2px 8px; display:flex; align-items:center; gap:6px;">
-    @L["keys.keyservers"]
-    <InfoTooltip>
-        <strong>@L["keys.what.title"]</strong>
-        <p style="margin:6px 0 0 0;">@L["keys.what.1"]</p>
-        <p style="margin:6px 0 0 0;">@L["keys.what.2"]</p>
-    </InfoTooltip>
-</div>
-
-<div class="card" style="gap:10px;">
-    <div class="field" style="margin-bottom:0;">
-        <label>@L["keys.searchByEmail"]</label>
-        <div class="input-group">
-            <input type="email" class="input" @bind="_searchEmail" inputmode="email" autocomplete="email" maxlength="@FieldLimits.Email"
-                   placeholder="alice@example.com" />
-            <button class="btn btn-primary" @onclick="SearchKeyserver" disabled="@_searching">
-                @(_searching ? L["keys.searching"] : L["keys.search"])
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" style="flex:1;" @onclick="PublishOwnKey">
+                @L["keys.addToDirectory"]
+            </button>
+            <button class="btn btn-secondary btn-sm" style="flex:1;" @onclick="OpenPublishToServerModal">
+                @L["keys.publishServer"]
             </button>
         </div>
     </div>
 
-    @if (_searchResultArmor is not null)
-    {
-        <div class="alert @(_searchEmailMismatch ? "alert-warning" : "alert-success")" style="margin-bottom:0;">
-            @L.Format("keys.foundFor", _searchEmail)
+    @* ─── Public keyserver ─── *@
+    <div class="dash-group-title" style="margin:22px 2px 8px; display:flex; align-items:center; gap:6px;">
+        @L["keys.keyservers"]
+        <InfoTooltip>
+            <strong>@L["keys.what.title"]</strong>
+            <p style="margin:6px 0 0 0;">@L["keys.what.1"]</p>
+            <p style="margin:6px 0 0 0;">@L["keys.what.2"]</p>
+        </InfoTooltip>
+    </div>
 
-            @if (_searchKeyDetails is not null)
-            {
-                <div style="margin-top:8px; font-size:12px;">
-                    <div style="color:var(--n-300); text-transform:uppercase; letter-spacing:.08em; margin-bottom:2px;">
-                        @L["keys.fingerprint"]
-                    </div>
-                    <code style="word-break:break-all;">@_searchKeyDetails.FingerprintDisplay</code>
-
-                    @if (_searchKeyDetails.UserIds.Count > 0)
-                    {
-                        <div style="color:var(--n-300); text-transform:uppercase; letter-spacing:.08em; margin:8px 0 2px;">
-                            @L["keys.identities"]
-                        </div>
-                        <ul style="margin:0; padding-left:16px;">
-                            @foreach (var uid in _searchKeyDetails.UserIds)
-                            {
-                                <li><code style="word-break:break-all;">@uid</code></li>
-                            }
-                        </ul>
-                    }
-                </div>
-
-                @if (_searchEmailMismatch)
-                {
-                    <div style="margin-top:8px; font-weight:600;">
-                        ⚠ @L.Format("keys.emailMismatch", _searchEmail)
-                    </div>
-                }
-                else
-                {
-                    <div style="margin-top:8px; color:var(--n-300);">@L["keys.verifyBeforeTrust"]</div>
-                }
-            }
-
-            <div style="margin-top:10px;">
-                <input type="text" class="input" @bind="_searchImportLabel" maxlength="@FieldLimits.Label"
-                       placeholder="@L["keys.displayNamePlaceholder"]" style="margin-bottom:8px;" />
-                <button class="btn btn-primary btn-sm" @onclick="ImportSearchResult">
-                    @L["keys.addToDirectory"]
+    <div class="card" style="gap:10px;">
+        <div class="field" style="margin-bottom:0;">
+            <label>@L["keys.searchByEmail"]</label>
+            <div class="input-group">
+                <input type="email" class="input" @bind="_searchEmail" inputmode="email" autocomplete="email" maxlength="@FieldLimits.Email"
+                       placeholder="alice@example.com" />
+                <button class="btn btn-primary" @onclick="SearchKeyserver" disabled="@_searching">
+                    @(_searching ? L["keys.searching"] : L["keys.search"])
                 </button>
             </div>
         </div>
-    }
-    else if (_searchAttempted && _searchResultArmor is null && !_searching)
+
+        @if (_searchResultArmor is not null)
+        {
+            <div class="alert @(_searchEmailMismatch ? "alert-warning" : "alert-success")" style="margin-bottom:0;">
+                @L.Format("keys.foundFor", _searchEmail)
+
+                @if (_searchKeyDetails is not null)
+                {
+                    <div style="margin-top:8px; font-size:12px;">
+                        <div style="color:var(--n-300); text-transform:uppercase; letter-spacing:.08em; margin-bottom:2px;">
+                            @L["keys.fingerprint"]
+                        </div>
+                        <code style="word-break:break-all;">@_searchKeyDetails.FingerprintDisplay</code>
+
+                        @if (_searchKeyDetails.UserIds.Count > 0)
+                        {
+                            <div style="color:var(--n-300); text-transform:uppercase; letter-spacing:.08em; margin:8px 0 2px;">
+                                @L["keys.identities"]
+                            </div>
+                            <ul style="margin:0; padding-left:16px;">
+                                @foreach (var uid in _searchKeyDetails.UserIds)
+                                {
+                                    <li><code style="word-break:break-all;">@uid</code></li>
+                                }
+                            </ul>
+                        }
+                    </div>
+
+                    @if (_searchEmailMismatch)
+                    {
+                        <div style="margin-top:8px; font-weight:600;">
+                            ⚠ @L.Format("keys.emailMismatch", _searchEmail)
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="margin-top:8px; color:var(--n-300);">@L["keys.verifyBeforeTrust"]</div>
+                    }
+                }
+
+                <div style="margin-top:10px;">
+                    <input type="text" class="input" @bind="_searchImportLabel" maxlength="@FieldLimits.Label"
+                           placeholder="@L["keys.displayNamePlaceholder"]" style="margin-bottom:8px;" />
+                    <button class="btn btn-primary btn-sm" @onclick="ImportSearchResult">
+                        @L["keys.addToDirectory"]
+                    </button>
+                </div>
+            </div>
+        }
+        else if (_searchAttempted && _searchResultArmor is null && !_searching)
+        {
+            <div class="alert alert-info" style="margin-bottom:0;">
+                @L["keys.noneFound"]
+            </div>
+        }
+    </div>
+
+    <div class="dash-group-title" style="margin:22px 2px 8px;">
+        @L["keys.directory"] @if (_keys is not null) { <text>(@_keys.Count)</text> }
+    </div>
+
+    <div class="card" style="gap:10px;">
+        <p style="margin:0; font-size:13px; color:var(--n-300); line-height:1.5;">
+            @L["keys.directoryBody"]
+        </p>
+        <button class="btn btn-secondary btn-block" @onclick="OpenImportModal">
+            @L["keys.importContact"]
+        </button>
+    </div>
+
+    @if (_keys is null)
     {
-        <div class="alert alert-info" style="margin-bottom:0;">
-            @L["keys.noneFound"]
+        <p style="color:var(--n-500);">@L["common.loading"]</p>
+    }
+    else if (_keys.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="icon-circle"><Icon Name="users" Size="30" StrokeWidth="1.8" /></div>
+            <h3>@L["keys.emptyTitle"]</h3>
+            <p>@L["keys.emptyBody"]</p>
         </div>
     }
-</div>
+    else
+    {
+        @foreach (var key in _keys)
+        {
+            <div class="card">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div class="entry-icon">
+                        <Icon Name="key" Size="15" StrokeWidth="1.8" />
+                    </div>
+                    <div style="flex:1; min-width:0;">
+                        <div class="card-title">@key.OwnerLabel</div>
+                        <div class="card-subtitle" style="word-break:break-all;">@L["keys.fingerprint"]: <code>@key.Fingerprint</code></div>
+                    </div>
+                    <button class="btn-icon" type="button" aria-label="Delete" style="color:var(--danger);"
+                            @onclick="() => RemoveKey(key.FileName)">
+                        <Icon Name="trash" Size="16" StrokeWidth="1.8" />
+                    </button>
+                </div>
+                <div class="key-row">
+                    <span class="key-name">@key.FullPath</span>
+                </div>
+            </div>
+        }
+    }
 
-<div class="dash-group-title" style="margin:22px 2px 8px;">
-    @L["keys.directory"] @if (_keys is not null) { <text>(@_keys.Count)</text> }
-</div>
+    @* ─── Import sheet ─── *@
+    <SheetModal Visible="_showImport" Title="@L["keys.importTitle"]" OnClose="CloseImportModal">
+        <ChildContent>
+            <p style="color:var(--n-400); font-size:13px; margin-bottom:14px;">
+                @((MarkupString)L["keys.importBody"])
+            </p>
 
-<div class="card" style="gap:10px;">
-    <p style="margin:0; font-size:13px; color:var(--n-300); line-height:1.5;">
-        @L["keys.directoryBody"]
-    </p>
-    <button class="btn btn-secondary btn-block" @onclick="OpenImportModal">
-        @L["keys.importContact"]
-    </button>
-</div>
+            <div class="field">
+                <label>@L["keys.displayName"]</label>
+                <input type="text" class="input" @bind="_importLabel" maxlength="@FieldLimits.Label"
+                       placeholder="Alice Johnson" />
+            </div>
 
-@if (_keys is null)
-{
-    <p style="color:var(--n-500);">@L["common.loading"]</p>
-}
-else if (_keys.Count == 0)
-{
-    <div class="empty-state">
-        <div class="icon-circle"><Icon Name="users" Size="30" StrokeWidth="1.8" /></div>
-        <h3>@L["keys.emptyTitle"]</h3>
-        <p>@L["keys.emptyBody"]</p>
-    </div>
+            <div class="field">
+                <label>@L["keys.publicKeyFile"]</label>
+                <PathPicker Value="@_importKeyPath"
+                            ValueChanged="@(v => _importKeyPath = v)"
+                            Mode="PathPicker.PickerMode.File"
+                            FileExtensions="@_ascExtensions"
+                            FilterTitle="@L["keys.pickKeyTitle"]"
+                            Placeholder="C:\Users\jane\Downloads\alice_public.asc" />
+                <small style="color:var(--n-500); font-size:12px;">@L["keys.supportedExt"]</small>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_importError))
+            {
+                <div class="alert alert-danger">@_importError</div>
+            }
+        </ChildContent>
+        <FooterContent>
+            <button class="btn btn-secondary" @onclick="CloseImportModal">@L["common.cancel"]</button>
+            <button class="btn btn-primary" @onclick="ImportKey" disabled="@_importing">
+                @(_importing ? L["io.importing"] : L["io.import"])
+            </button>
+        </FooterContent>
+    </SheetModal>
+
+    @* ─── Publish-to-server sheet ─── *@
+    <SheetModal Visible="_showPublishToServer" Title="@L["keys.publishTitle"]" OnClose="ClosePublishModal">
+        <ChildContent>
+            <p style="color:var(--n-400); font-size:13px; line-height:1.55;">
+                @((MarkupString)L.Format("keys.publishBody1", AppState.Account?.Email ?? ""))
+            </p>
+            <p style="color:var(--n-400); font-size:13px; line-height:1.55; margin-top:8px;">
+                @((MarkupString)L["keys.publishBody2"])
+            </p>
+
+            @if (_publishResult is not null)
+            {
+                <div class="alert alert-success" style="margin-top:10px;">
+                    @L["keys.uploadAccepted"] <code style="word-break:break-all;">@_publishResult.KeyFingerprint</code>.
+                    @L["keys.checkEmail"]
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_publishError))
+            {
+                <div class="alert alert-danger" style="margin-top:10px;">@_publishError</div>
+            }
+        </ChildContent>
+        <FooterContent>
+            <button class="btn btn-secondary" @onclick="ClosePublishModal">@L["common.cancel"]</button>
+            @if (_publishResult is null)
+            {
+                <button class="btn btn-primary" @onclick="PublishToServer" disabled="@_publishing">
+                    @(_publishing ? L["keys.uploading"] : L["keys.uploadKey"])
+                </button>
+            }
+            else
+            {
+                <button class="btn btn-primary" @onclick="ClosePublishModal">@L["common.done"]</button>
+            }
+        </FooterContent>
+    </SheetModal>
 }
 else
 {
-    @foreach (var key in _keys)
+    @* No PGP identity yet: a tutorial, then the create form — nothing else on this page is
+       reachable, so a tester never lands on a bare "create identity" button with no idea
+       what it means or why. Skipping the tutorial goes straight to the create form; it never
+       skips past creating the identity itself. *@
+    <div class="dash-group-title" style="margin:0 2px 8px;">@L["keys.yourKeys"]</div>
+
+    @if (_showPgpTutorial)
     {
-        <div class="card">
-            <div style="display:flex; align-items:center; gap:12px;">
-                <div class="entry-icon">
-                    <Icon Name="key" Size="15" StrokeWidth="1.8" />
-                </div>
-                <div style="flex:1; min-width:0;">
-                    <div class="card-title">@key.OwnerLabel</div>
-                    <div class="card-subtitle" style="word-break:break-all;">@L["keys.fingerprint"]: <code>@key.Fingerprint</code></div>
-                </div>
-                <button class="btn-icon" type="button" aria-label="Delete" style="color:var(--danger);"
-                        @onclick="() => RemoveKey(key.FileName)">
-                    <Icon Name="trash" Size="16" StrokeWidth="1.8" />
-                </button>
+        <div class="card" style="gap:12px;">
+            <TourSteps Steps="TourContent.PgpSteps" OnDone="DismissTutorial" />
+        </div>
+    }
+    else
+    {
+        <div class="card" style="gap:12px;">
+            <div class="card-title">@L["keys.noIdentity.title"]</div>
+
+            @if (!string.IsNullOrEmpty(_identityError))
+            {
+                <div class="alert alert-danger" style="margin-bottom:0;">@_identityError</div>
+            }
+
+            <div class="field" style="margin-bottom:0;">
+                <label>@L["home.masterPassphrase"]</label>
+                <PasswordField @bind-Value="_identityPassphrase" Placeholder="@L["home.placeholder.passphrase"]" />
             </div>
-            <div class="key-row">
-                <span class="key-name">@key.FullPath</span>
-            </div>
+
+            <button class="btn btn-primary btn-block" @onclick="GenerateIdentity" disabled="@_generatingIdentity">
+                @(_generatingIdentity ? L["keys.noIdentity.generating"] : L["keys.noIdentity.button"])
+            </button>
         </div>
     }
 }
-
-@* ─── Import sheet ─── *@
-<SheetModal Visible="_showImport" Title="@L["keys.importTitle"]" OnClose="CloseImportModal">
-    <ChildContent>
-        <p style="color:var(--n-400); font-size:13px; margin-bottom:14px;">
-            @((MarkupString)L["keys.importBody"])
-        </p>
-
-        <div class="field">
-            <label>@L["keys.displayName"]</label>
-            <input type="text" class="input" @bind="_importLabel" maxlength="@FieldLimits.Label"
-                   placeholder="Alice Johnson" />
-        </div>
-
-        <div class="field">
-            <label>@L["keys.publicKeyFile"]</label>
-            <PathPicker Value="@_importKeyPath"
-                        ValueChanged="@(v => _importKeyPath = v)"
-                        Mode="PathPicker.PickerMode.File"
-                        FileExtensions="@_ascExtensions"
-                        FilterTitle="@L["keys.pickKeyTitle"]"
-                        Placeholder="C:\Users\jane\Downloads\alice_public.asc" />
-            <small style="color:var(--n-500); font-size:12px;">@L["keys.supportedExt"]</small>
-        </div>
-
-        @if (!string.IsNullOrEmpty(_importError))
-        {
-            <div class="alert alert-danger">@_importError</div>
-        }
-    </ChildContent>
-    <FooterContent>
-        <button class="btn btn-secondary" @onclick="CloseImportModal">@L["common.cancel"]</button>
-        <button class="btn btn-primary" @onclick="ImportKey" disabled="@_importing">
-            @(_importing ? L["io.importing"] : L["io.import"])
-        </button>
-    </FooterContent>
-</SheetModal>
-
-@* ─── Publish-to-server sheet ─── *@
-<SheetModal Visible="_showPublishToServer" Title="@L["keys.publishTitle"]" OnClose="ClosePublishModal">
-    <ChildContent>
-        <p style="color:var(--n-400); font-size:13px; line-height:1.55;">
-            @((MarkupString)L.Format("keys.publishBody1", AppState.Account?.Email ?? ""))
-        </p>
-        <p style="color:var(--n-400); font-size:13px; line-height:1.55; margin-top:8px;">
-            @((MarkupString)L["keys.publishBody2"])
-        </p>
-
-        @if (_publishResult is not null)
-        {
-            <div class="alert alert-success" style="margin-top:10px;">
-                @L["keys.uploadAccepted"] <code style="word-break:break-all;">@_publishResult.KeyFingerprint</code>.
-                @L["keys.checkEmail"]
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(_publishError))
-        {
-            <div class="alert alert-danger" style="margin-top:10px;">@_publishError</div>
-        }
-    </ChildContent>
-    <FooterContent>
-        <button class="btn btn-secondary" @onclick="ClosePublishModal">@L["common.cancel"]</button>
-        @if (_publishResult is null)
-        {
-            <button class="btn btn-primary" @onclick="PublishToServer" disabled="@_publishing">
-                @(_publishing ? L["keys.uploading"] : L["keys.uploadKey"])
-            </button>
-        }
-        else
-        {
-            <button class="btn btn-primary" @onclick="ClosePublishModal">@L["common.done"]</button>
-        }
-    </FooterContent>
-</SheetModal>
 
 <style>
     /* Long file paths / fingerprints must wrap inside the card in portrait,
@@ -283,15 +321,62 @@ else
     private string _publishError = string.Empty;
     private KeyServerService.UploadResult? _publishResult;
 
+    // Own identity (deferred generation)
+    private bool _showPgpTutorial = true;
+    private bool _generatingIdentity;
+    private string _identityPassphrase = string.Empty;
+    private string _identityError = string.Empty;
+
     private string OwnPublicKeyPath =>
         AppState.Account is null ? "" : Path.Combine(AppState.Account.VaultPath, "public_key.asc");
     private string OwnPrivateKeyPath =>
         AppState.Account is null ? "" : Path.Combine(AppState.Account.VaultPath, "private_key.asc");
+    private bool HasOwnPgpIdentity => File.Exists(OwnPublicKeyPath);
+
+    private void DismissTutorial() => _showPgpTutorial = false;
+
+    private async Task GenerateIdentity()
+    {
+        if (AppState.Account is null || AppState.Service is null) return;
+        if (string.IsNullOrWhiteSpace(_identityPassphrase))
+        { _identityError = L["home.err.passphraseRequired"]; return; }
+
+        _identityError = string.Empty;
+        _generatingIdentity = true;
+        StateHasChanged();
+        try
+        {
+            // The typed phrase becomes the PGP private key's passphrase, so a typo here would
+            // silently create an identity that can never be unlocked with the real vault
+            // passphrase later. Verify it against the vault before spending the RSA-2048 cost.
+            var vaultPath = AppState.Account.VaultPath;
+            var matches = await Task.Run(() =>
+                PasswordManager.Infrastructure.Encryption.VaultKeyRing.CanUnlock(vaultPath, _identityPassphrase));
+            if (!matches)
+            { _identityError = L["keys.noIdentity.wrongPassphrase"]; return; }
+
+            var userId = $"{AppState.Account.Username} <{AppState.Account.Email}>";
+            await AppState.Service.GenerateOwnPgpIdentityAsync(Pgp, vaultPath, _identityPassphrase, userId);
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            _identityError = UserError.Describe(L, ex);
+        }
+        finally
+        {
+            // Never linger in memory longer than the one call that needed it.
+            _identityPassphrase = string.Empty;
+            _generatingIdentity = false;
+            StateHasChanged();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         L.OnChanged += StateHasChanged;
-        await Reload();
+        if (HasOwnPgpIdentity)
+            await Reload();
     }
 
     public void Dispose() => L.OnChanged -= StateHasChanged;

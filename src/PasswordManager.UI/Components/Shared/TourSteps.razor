@@ -16,7 +16,7 @@
 </div>
 
 <div class="tour-dots">
-    @for (var i = 0; i < TourContent.Steps.Length; i++)
+    @for (var i = 0; i < Steps.Length; i++)
     {
         <span class="tour-dot @(i == _index ? "active" : "")"></span>
     }
@@ -62,10 +62,14 @@
     /// <summary>False on the revisit page: there's nothing to "skip" when you opened it on purpose.</summary>
     [Parameter] public bool ShowSkip { get; set; } = true;
 
+    /// <summary>Defaults to the app-wide first-run tour; pass a different script (e.g.
+    /// <see cref="TourContent.PgpSteps"/>) to reuse this same stepper UI elsewhere.</summary>
+    [Parameter] public TourStep[] Steps { get; set; } = TourContent.Steps;
+
     private int _index;
 
-    private TourStep Current => TourContent.Steps[_index];
-    private bool IsLast => _index == TourContent.Steps.Length - 1;
+    private TourStep Current => Steps[_index];
+    private bool IsLast => _index == Steps.Length - 1;
 
     protected override void OnInitialized() => L.OnChanged += StateHasChanged;
     public void Dispose() => L.OnChanged -= StateHasChanged;

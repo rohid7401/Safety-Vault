@@ -17,7 +17,7 @@ namespace PasswordManager.Tests.Services
         private const string Passphrase = "correct-horse-battery-staple";
 
         private AuthService CreateAuthService() =>
-            new(new PgpService(), new AuthOptions { AppDataPath = _appDataDir });
+            new(new AuthOptions { AppDataPath = _appDataDir });
 
         [Fact]
         public async Task RegisterAsync_CreatesVaultKeyring()
@@ -28,8 +28,14 @@ namespace PasswordManager.Tests.Services
             Assert.True(File.Exists(Path.Combine(account.VaultPath, "vault.keyring.json")));
         }
 
+        /// <summary>
+        /// PGP key generation (RSA-2048, the slowest and most variable-duration part of what
+        /// registration used to do) no longer happens here — see
+        /// PasswordManagerServiceTests.GenerateOwnPgpIdentityAsync_* for where it lives now.
+        /// Most accounts never touch the file-encryption feature it exists for.
+        /// </summary>
         [Fact]
-        public async Task RegisterAsync_SeedsVaultWithOwnPgpKeyPair()
+        public async Task RegisterAsync_DoesNotGeneratePgpIdentity()
         {
             var auth = CreateAuthService();
             var account = await auth.RegisterAsync("alice", "alice@example.com", Passphrase);
@@ -39,11 +45,10 @@ namespace PasswordManager.Tests.Services
             using var repo = new KekVaultRepository(blobKey, account.VaultPath);
             var vault = await repo.LoadAsync();
 
-            Assert.False(string.IsNullOrEmpty(vault.PgpPublicKeyArmored));
-            Assert.False(string.IsNullOrEmpty(vault.PgpPrivateKeyArmored));
-            Assert.Equal(
-                await File.ReadAllTextAsync(Path.Combine(account.VaultPath, "public_key.asc")),
-                vault.PgpPublicKeyArmored);
+            Assert.True(string.IsNullOrEmpty(vault.PgpPublicKeyArmored));
+            Assert.True(string.IsNullOrEmpty(vault.PgpPrivateKeyArmored));
+            Assert.False(File.Exists(Path.Combine(account.VaultPath, "public_key.asc")));
+            Assert.False(File.Exists(Path.Combine(account.VaultPath, "private_key.asc")));
         }
 
         [Fact]
@@ -109,6 +114,44 @@ namespace PasswordManager.Tests.Services
             Assert.Equal(AppErrorCode.UsernameTaken, ex.Code);
         }
 
+        // ─── Delete account ────────────────────────────────────────────────
+
+        [Fact]
+        public async Task DeleteAccountAsync_CorrectPassphrase_RemovesAccountAndVaultFolder()
+        {
+            var auth = CreateAuthService();
+            var account = await auth.RegisterAsync("alice", "alice@example.com", Passphrase);
+
+            await auth.DeleteAccountAsync("alice", Passphrase);
+
+            Assert.False(await auth.AccountExistsAsync("alice"));
+            Assert.False(Directory.Exists(account.VaultPath));
+        }
+
+        [Fact]
+        public async Task DeleteAccountAsync_WrongPassphrase_ThrowsAndKeepsAccount()
+        {
+            var auth = CreateAuthService();
+            await auth.RegisterAsync("alice", "alice@example.com", Passphrase);
+
+            var ex = await Assert.ThrowsAsync<LocalizedUnauthorizedAccessException>(
+                () => auth.DeleteAccountAsync("alice", "wrong-passphrase"));
+
+            Assert.Equal(AppErrorCode.BadCredentials, ex.Code);
+            Assert.True(await auth.AccountExistsAsync("alice"));
+        }
+
+        [Fact]
+        public async Task DeleteAccountAsync_UnknownUsername_ThrowsBadCredentials()
+        {
+            var auth = CreateAuthService();
+
+            var ex = await Assert.ThrowsAsync<LocalizedUnauthorizedAccessException>(
+                () => auth.DeleteAccountAsync("nobody", Passphrase));
+
+            Assert.Equal(AppErrorCode.BadCredentials, ex.Code);
+        }
+
         // ─── N2: concurrent registrations don't lose accounts ────────────────
 
         [Fact]
@@ -132,11 +175,10 @@ namespace PasswordManager.Tests.Services
         /// <summary>
         /// Reproduces the exact sequence Home.razor's UnlockVaultAsync performs, end to end:
         /// register → add an entry → "close the app" → log in again on a fresh session →
-        /// re-derive the same keys → confirm the entry is still there and the PGP files
-        /// materialize.
+        /// re-derive the same keys → confirm the entry is still there.
         /// </summary>
         [Fact]
-        public async Task FullFlow_RegisterAddEntryThenLoginAgain_EntryPersistsAndPgpFilesExist()
+        public async Task FullFlow_RegisterAddEntryThenLoginAgain_EntryPersists()
         {
             var auth = CreateAuthService();
             var account = await auth.RegisterAsync("bob", "bob@example.com", Passphrase);
@@ -156,15 +198,11 @@ namespace PasswordManager.Tests.Services
             // Simulate a fresh app launch: log in again, independently re-deriving everything.
             var reloadedAccount = await auth.LoginAsync("bob", Passphrase);
             await using var svc2 = await UnlockLikeHomeRazorAsync(reloadedAccount.VaultPath, Passphrase);
-            await svc2.EnsurePgpKeyFilesAsync(reloadedAccount.VaultPath);
 
             var entries = await svc2.GetAllEntriesAsync();
             Assert.Single(entries);
             var entry = Assert.IsType<ServiceEntry>(entries[0]);
             Assert.Equal("s3cret", svc2.DecryptSecret(entry.Credentials[0].Fields[0]));
-
-            Assert.True(File.Exists(Path.Combine(reloadedAccount.VaultPath, "public_key.asc")));
-            Assert.True(File.Exists(Path.Combine(reloadedAccount.VaultPath, "private_key.asc")));
         }
 
         private static async Task<PasswordManagerService> UnlockLikeHomeRazorAsync(string vaultPath, string passphrase)

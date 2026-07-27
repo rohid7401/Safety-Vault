@@ -2,6 +2,7 @@
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject ToastService Toast
+@inject IAuthService AuthService
 @inject Loc L
 @implements IDisposable
 
@@ -37,6 +38,20 @@
     </div>
 }
 
+<div class="dash-group-title" style="margin:22px 2px 8px;">@L["data.dangerZone"]</div>
+
+<div class="card" style="flex-direction:row; align-items:center; gap:12px;">
+    <div class="entry-icon"><Icon Name="user" Size="15" StrokeWidth="1.8" /></div>
+    <div style="flex:1; min-width:0;">
+        <div style="font-size:14px; font-weight:600;">@L["data.deleteAccount.title"]</div>
+        <div style="font-size:12px; color:var(--n-400);">@L["data.deleteAccount.subtitle"]</div>
+    </div>
+    <button class="btn btn-secondary" type="button" style="flex:none; color:var(--danger);"
+            @onclick="AskDeleteAccount">
+        @L["data.deleteAccount.button"]
+    </button>
+</div>
+
 @* ── Confirmation: name-typing guard, not just a yes/no ── *@
 <SheetModal Visible="@(_pending is not null)" Title="@L["data.confirmTitle"]" OnClose="Cancel">
     <ChildContent>
@@ -62,6 +77,42 @@
         <button class="btn btn-primary" style="background:var(--danger); border-color:var(--danger);"
                 disabled="@(!TypedMatches || _deleting)" @onclick="Confirm">
             @(_deleting ? L["data.deleting"] : L["data.deleteAll"])
+        </button>
+    </FooterContent>
+</SheetModal>
+
+@* ── Delete account: username-typing guard + passphrase re-entry ── *@
+<SheetModal Visible="_showDeleteAccount" Title="@L["data.deleteAccount.confirmTitle"]" OnClose="CancelDeleteAccount">
+    <ChildContent>
+        <div class="alert alert-danger" style="margin-bottom:12px;">
+            @L["data.deleteAccount.confirmBody"]
+        </div>
+        <p style="margin:0 0 10px; font-size:13px; color:var(--n-400); line-height:1.5;">
+            @L["data.confirmIrreversible"]
+        </p>
+
+        @if (!string.IsNullOrEmpty(_deleteAccountError))
+        {
+            <div class="alert alert-danger" style="margin-bottom:10px;">@_deleteAccountError</div>
+        }
+
+        <div class="field">
+            <label>@L.Format("data.confirmTypePrompt", AppState.Account?.Username)</label>
+            <input type="text" class="input" @bind="_deleteUsernameTyped" @bind:event="oninput"
+                   autocomplete="off" autocapitalize="none" spellcheck="false"
+                   maxlength="@FieldLimits.Label" placeholder="@AppState.Account?.Username" />
+        </div>
+
+        <div class="field" style="margin-bottom:0;">
+            <label>@L["home.masterPassphrase"]</label>
+            <PasswordField @bind-Value="_deletePassphrase" Placeholder="@L["home.placeholder.passphrase"]" />
+        </div>
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="CancelDeleteAccount">@L["common.cancel"]</button>
+        <button class="btn btn-primary" style="background:var(--danger); border-color:var(--danger);"
+                disabled="@(!DeleteAccountArmed || _deletingAccount)" @onclick="ConfirmDeleteAccount">
+            @(_deletingAccount ? L["data.deleting"] : L["data.deleteAccount.button"])
         </button>
     </FooterContent>
 </SheetModal>
@@ -93,6 +144,61 @@
         string.Equals(_typed.Trim(), ConfirmWord, StringComparison.CurrentCultureIgnoreCase);
 
     private int Count(SectionKind kind) => _counts.TryGetValue(kind, out var n) ? n : 0;
+
+    // ─── Delete account ─────────────────────────────────────────────────
+
+    private bool _showDeleteAccount;
+    private string _deleteUsernameTyped = string.Empty;
+    private string _deletePassphrase = string.Empty;
+    private string _deleteAccountError = string.Empty;
+    private bool _deletingAccount;
+
+    private bool DeleteAccountArmed =>
+        string.Equals(_deleteUsernameTyped.Trim(), AppState.Account?.Username,
+            StringComparison.CurrentCultureIgnoreCase) &&
+        !string.IsNullOrWhiteSpace(_deletePassphrase);
+
+    private void AskDeleteAccount()
+    {
+        _showDeleteAccount = true;
+        _deleteUsernameTyped = string.Empty;
+        _deletePassphrase = string.Empty;
+        _deleteAccountError = string.Empty;
+    }
+
+    private void CancelDeleteAccount()
+    {
+        _showDeleteAccount = false;
+        _deleteUsernameTyped = string.Empty;
+        _deletePassphrase = string.Empty;
+        _deleteAccountError = string.Empty;
+    }
+
+    private async Task ConfirmDeleteAccount()
+    {
+        if (!DeleteAccountArmed || AppState.Account is null) return;
+
+        _deletingAccount = true;
+        StateHasChanged();
+        try
+        {
+            await AuthService.DeleteAccountAsync(AppState.Account.Username, _deletePassphrase);
+            Toast.Success(L["data.deleteAccount.ok"]);
+            AppState.Lock();
+            Nav.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            _deleteAccountError = UserError.Describe(L, ex);
+        }
+        finally
+        {
+            // Never linger in memory longer than the one call that needed it.
+            _deletePassphrase = string.Empty;
+            _deletingAccount = false;
+            StateHasChanged();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {

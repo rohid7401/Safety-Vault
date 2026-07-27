@@ -262,7 +262,7 @@
         { _error = L["home.err.passphraseMismatch"]; return; }
 
         _loading = true;
-        _info = StageText(RegistrationStage.GeneratingKeys);
+        _info = StageText(RegistrationStage.SecuringVault);
         StateHasChanged();
 
         // Reported from a thread-pool thread, so hop back before touching component state.
@@ -290,7 +290,6 @@
 
     private string StageText(RegistrationStage stage) => stage switch
     {
-        RegistrationStage.GeneratingKeys => L["home.stage.generatingKeys"],
         RegistrationStage.SecuringVault => L["home.stage.securingVault"],
         _ => L["home.stage.finishing"],
     };

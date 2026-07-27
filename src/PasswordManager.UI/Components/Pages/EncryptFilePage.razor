@@ -34,7 +34,10 @@
             <label>@L["enc.whoCanOpen"]</label>
             <select class="input" @bind="_recipientPath">
                 <option value="">@L["enc.selectRecipient"]</option>
-                <option value="@OwnPublicKeyPath">@L.Format("enc.myself", AppState.Account!.Username)</option>
+                @if (HasOwnPgpIdentity)
+                {
+                    <option value="@OwnPublicKeyPath">@L.Format("enc.myself", AppState.Account!.Username)</option>
+                }
                 @if (_keys is not null)
                 {
                     foreach (var k in _keys)
@@ -44,6 +47,17 @@
                 }
             </select>
         </div>
+
+        @if (!HasOwnPgpIdentity)
+        {
+            <div class="hint-row" style="margin:0;">
+                <Icon Name="info" Size="15" />
+                <span>
+                    @L["enc.noIdentity"]
+                    <a href="/keys" style="font-weight:600;">@L["enc.noIdentity.link"]</a>
+                </span>
+            </div>
+        }
 
         @if (!string.IsNullOrEmpty(_result))
         {
@@ -77,12 +91,23 @@ else
                    placeholder="@L["home.placeholder.passphrase"]" />
         </div>
 
+        @if (!HasOwnPgpIdentity)
+        {
+            <div class="hint-row" style="margin:0;">
+                <Icon Name="info" Size="15" />
+                <span>
+                    @L["enc.noIdentity"]
+                    <a href="/keys" style="font-weight:600;">@L["enc.noIdentity.link"]</a>
+                </span>
+            </div>
+        }
+
         @if (!string.IsNullOrEmpty(_result))
         {
             <div class="alert alert-@(_isError ? "danger" : "success")" style="margin-bottom:0;">@_result</div>
         }
 
-        <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunDecrypt" disabled="@_running">
+        <button class="btn btn-primary btn-block" style="height:44px;" @onclick="RunDecrypt" disabled="@(_running || !HasOwnPgpIdentity)">
             @(_running ? L["encFile.unlocking"] : L["encFile.unlockFile"])
         </button>
     </div>
@@ -112,6 +137,7 @@ else
 
     private string OwnPublicKeyPath => Path.Combine(AppState.Account!.VaultPath, "public_key.asc");
     private string OwnPrivateKeyPath => Path.Combine(AppState.Account!.VaultPath, "private_key.asc");
+    private bool HasOwnPgpIdentity => File.Exists(OwnPublicKeyPath);
 
     protected override async Task OnInitializedAsync()
     {

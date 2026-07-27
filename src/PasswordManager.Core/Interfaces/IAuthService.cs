@@ -28,5 +28,13 @@ namespace PasswordManager.Core.Interfaces
 
         /// <summary>Lists the usernames of registered accounts (no secrets).</summary>
         Task<List<string>> ListUsernamesAsync();
+
+        /// <summary>
+        /// Permanently deletes an account and its vault folder — the account entry, the
+        /// keyring, and every credential/note/card it held. Re-verifies the passphrase first
+        /// (the same check as <see cref="LoginAsync"/>) so this cannot be triggered by anything
+        /// short of proving ownership again, even from an already-unlocked session. Irreversible.
+        /// </summary>
+        Task DeleteAccountAsync(string username, string passphrase);
     }
 }
