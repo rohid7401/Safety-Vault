@@ -183,21 +183,25 @@
         try
         {
             await AuthService.DeleteAccountAsync(AppState.Account.Username, _deletePassphrase);
-            Toast.Success(L["data.deleteAccount.ok"]);
-            AppState.Lock();
-            Nav.NavigateTo("/");
         }
         catch (Exception ex)
-        {
-            _deleteAccountError = UserError.Describe(L, ex);
-        }
-        finally
         {
             // Never linger in memory longer than the one call that needed it.
             _deletePassphrase = string.Empty;
             _deletingAccount = false;
+            _deleteAccountError = UserError.Describe(L, ex);
             StateHasChanged();
+            return;
         }
+
+        // Success: the account and its vault are gone, so this component is about to be torn
+        // down by the navigation below. Nothing after AppState.Lock() may touch component state
+        // — a trailing StateHasChanged() on an already-navigated-away component is exactly what
+        // produced the "Something went wrong" Blazor error boundary testers hit here.
+        _deletePassphrase = string.Empty;
+        Toast.Success(L["data.deleteAccount.ok"]);
+        AppState.Lock();
+        Nav.NavigateTo("/");
     }
 
     protected override async Task OnInitializedAsync()
