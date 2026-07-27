@@ -1,9 +1,15 @@
-name: Release Android (Play internal testing)
+name: Release Android (Play closed testing)
 
-# Publishes to Google Play's "internal testing" track. Only runs when a
-# version tag is pushed (e.g. `git tag v1.0.1 && git push origin v1.0.1`) —
-# ordinary commits to KEK/master only build; they never publish. The tag's
-# own name becomes the app's version name.
+# Publishes to Google Play's closed testing track (API track id "alpha" —
+# the 12 testers are here). Only runs when a version tag is pushed (e.g.
+# `git tag v1.0.1 && git push origin v1.0.1`) — ordinary commits to
+# KEK/master only build; they never publish. The tag's own name becomes
+# the app's version name.
+#
+# This used to publish to "internal" only, requiring a manual "Promote
+# release" click in Play Console to reach testers. Publishing straight to
+# alpha skips that step — trade-off is there's no longer an internal,
+# testers-don't-see-it-yet build to sanity-check first.
 on:
   push:
     tags:
@@ -88,11 +94,11 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/release.keystore"
 
-      - name: Upload to Play internal testing
+      - name: Upload to Play closed testing
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.safetyvault.app
           releaseFiles: ${{ runner.temp }}/publish/*-Signed.aab
-          track: internal
+          track: alpha
           status: completed
