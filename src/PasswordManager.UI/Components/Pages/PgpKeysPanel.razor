@@ -1,4 +1,5 @@
-@page "/keys"
+@* "Your keys" panel of the PGP module. No longer routable on its own: PGP is one feature that
+   needs explaining as a whole, so PgpPage owns the route and shows this as a tab. *@
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject IKeyDirectoryService KeyDir
@@ -18,8 +19,6 @@
         <Icon Name="info" Size="15" />
         <span>@((MarkupString)L["keys.hint"])</span>
     </div>
-
-    <div class="dash-group-title" style="margin:0 2px 8px;">@L["keys.yourKeys"]</div>
 
     <div class="card" style="gap:12px;">
         <div class="card-header">
@@ -255,12 +254,10 @@
 }
 else
 {
-    @* No PGP identity yet: a tutorial, then the create form — nothing else on this page is
-       reachable, so a tester never lands on a bare "create identity" button with no idea
-       what it means or why. Skipping the tutorial goes straight to the create form; it never
-       skips past creating the identity itself. *@
-    <div class="dash-group-title" style="margin:0 2px 8px;">@L["keys.yourKeys"]</div>
-
+    @* No PGP identity yet: a tutorial, then the create form — PgpPage hides every other tab
+       while this is showing, so a tester never lands on a bare "create identity" button with no
+       idea what it means or why. Skipping the tutorial goes straight to the create form; it
+       never skips past creating the identity itself. *@
     @if (_showPgpTutorial)
     {
         <div class="card" style="gap:12px;">
@@ -333,6 +330,9 @@ else
         AppState.Account is null ? "" : Path.Combine(AppState.Account.VaultPath, "private_key.asc");
     private bool HasOwnPgpIdentity => File.Exists(OwnPublicKeyPath);
 
+    /// <summary>Lets PgpPage reveal the rest of the module once an identity exists.</summary>
+    [Parameter] public EventCallback OnIdentityCreated { get; set; }
+
     private void DismissTutorial() => _showPgpTutorial = false;
 
     private async Task GenerateIdentity()
@@ -358,6 +358,7 @@ else
             var userId = $"{AppState.Account.Username} <{AppState.Account.Email}>";
             await AppState.Service.GenerateOwnPgpIdentityAsync(Pgp, vaultPath, _identityPassphrase, userId);
             await Reload();
+            await OnIdentityCreated.InvokeAsync();
         }
         catch (Exception ex)
         {

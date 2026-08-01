@@ -2,6 +2,7 @@
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject VaultAutoLock AutoLock
+@inject ShellBackNavigation BackNav
 @inject ToastService Toast
 @inject IJSRuntime JS
 @inject Loc L
@@ -144,9 +145,7 @@ else
         ]),
         new("nav.group.keys",
         [
-            new NavItem("nav.keys", "keys", "key"),
-            new NavItem("nav.encryptFiles", "encrypt-file", "file"),
-            new NavItem("nav.encryptDirs", "encrypt-directory", "folder"),
+            new NavItem("nav.pgp", "pgp", "key"),
         ]),
         new("nav.group.learn",
         [
@@ -166,9 +165,7 @@ else
         ["import-export"] = "title.importExport",
         ["data"] = "title.data",
         ["walkthrough"] = "title.walkthrough",
-        ["keys"] = "title.keys",
-        ["encrypt-file"] = "title.encryptFiles",
-        ["encrypt-directory"] = "title.encryptDirs",
+        ["pgp"] = "title.pgp",
         ["tutorial"] = "title.tutorial",
     };
 
@@ -197,11 +194,24 @@ else
         Nav.LocationChanged += OnLocationChanged;
         L.OnChanged += StateHasChanged;
         AutoLock.LockRequested += OnAutoLockRequested;
+        BackNav.BackPressed += OnShellBackPressed;
 
         // Must run *before* the route swaps: once Blazor replaces the page content the browser
         // has already clamped the scroll offset to 0, and the position is gone.
         _locationChanging = Nav.RegisterLocationChangingHandler(SaveScrollBeforeNavigating);
     }
+
+    /// <summary>
+    /// Mirrors the app-bar back arrow, so the hardware button and the on-screen one never
+    /// disagree — with the drawer taking priority, since a press while it is open plainly means
+    /// "close this", not "leave the page behind it".
+    /// </summary>
+    private void OnShellBackPressed() => _ = InvokeAsync(() =>
+    {
+        if (_drawerOpen) CloseDrawer();
+        else GoHome();
+        StateHasChanged();
+    });
 
     private ValueTask SaveScrollBeforeNavigating(LocationChangingContext context) =>
         InvokeSafely("safetyVaultScroll.save", CurrentRoute);
@@ -242,6 +252,10 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Recomputed after every render rather than at each place that could change it, so the
+        // shell can never read a flag that a drawer toggle or a redirect has already invalidated.
+        BackNav.CanHandleBack = AppState.IsUnlocked && (_drawerOpen || ShowBack);
+
         if (!firstRender && !_restoreScrollAfterRender) return;
         _restoreScrollAfterRender = false;
         await InvokeSafely("safetyVaultScroll.restored", CurrentRoute);
@@ -264,6 +278,8 @@ else
         Nav.LocationChanged -= OnLocationChanged;
         L.OnChanged -= StateHasChanged;
         AutoLock.LockRequested -= OnAutoLockRequested;
+        BackNav.BackPressed -= OnShellBackPressed;
+        BackNav.CanHandleBack = false;
         _locationChanging?.Dispose();
     }
 

@@ -450,6 +450,10 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
     -webkit-tap-highlight-color: transparent;
     transition: background .15s, color .15s, box-shadow .15s;
 }
+/* Four-up variant (the PGP module's tabs). The default 12px side padding at 13px leaves
+   roughly 58px per label on a narrow phone, which several of them overflow — and .seg clips
+   rather than wraps, so they would simply be cut off. */
+.seg-4 .seg-opt { padding: 8px 4px; font-size: 12px; }
 .seg-opt + .seg-opt { border-left: 1px solid var(--color-divider); }
 .seg-opt.active { color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); }
 .seg-opt:not(.active):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }

@@ -1,0 +1,70 @@
+@page "/pgp"
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject Loc L
+@implements IDisposable
+
+@* The whole PGP feature behind one door. Key management and file/folder encryption used to sit
+   as three separate entries in the menu, which put a technical, optional feature on the same
+   footing as the vault itself and gave the user no single place where it is explained. They are
+   one idea, so they are now one screen with tabs. *@
+
+@if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
+
+@if (!HasIdentity)
+{
+    @* Nothing here works without a key pair, so the module stays collapsed to the explain-then-
+       create flow until one exists — no tabs to wander into and find broken. *@
+    <PgpKeysPanel OnIdentityCreated="OnIdentityCreated" />
+}
+else
+{
+    <div class="seg seg-4" style="margin-bottom:16px;">
+        @foreach (var tab in Tabs)
+        {
+            <button class="seg-opt @(_active == tab.Id ? "active" : "")" type="button"
+                    @onclick="() => _active = tab.Id">
+                @L[tab.LabelKey]
+            </button>
+        }
+    </div>
+
+    @if (_active == Tab.Keys)         { <PgpKeysPanel /> }
+    else if (_active == Tab.Files)    { <PgpFilesPanel /> }
+    else if (_active == Tab.Folders)  { <PgpFoldersPanel /> }
+    else                              { <PgpHowItWorks /> }
+}
+
+@code {
+    private enum Tab { Keys, Files, Folders, How }
+
+    private sealed record TabDef(Tab Id, string LabelKey);
+
+    private static readonly TabDef[] Tabs =
+    [
+        new(Tab.Keys, "pgp.tab.keys"),
+        new(Tab.Files, "pgp.tab.files"),
+        new(Tab.Folders, "pgp.tab.folders"),
+        new(Tab.How, "pgp.tab.how"),
+    ];
+
+    private Tab _active = Tab.Keys;
+
+    private bool HasIdentity =>
+        AppState.Account is not null &&
+        File.Exists(Path.Combine(AppState.Account.VaultPath, "public_key.asc"));
+
+    private void OnIdentityCreated() => _active = Tab.Keys;
+
+    protected override void OnInitialized()
+    {
+        AppState.OnStateChanged += StateHasChanged;
+        L.OnChanged += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnStateChanged -= StateHasChanged;
+        L.OnChanged -= StateHasChanged;
+    }
+}

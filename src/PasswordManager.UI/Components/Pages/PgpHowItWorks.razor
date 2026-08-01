@@ -1,0 +1,36 @@
+@inject Loc L
+@implements IDisposable
+
+@* The reference explanation for the whole module. It reuses the same strings as the first-run
+   PGP walkthrough (TourContent.PgpSteps) so the wording someone reads while creating their key
+   is the wording they find again later — two descriptions of the same thing would drift. *@
+
+@foreach (var step in TourContent.PgpSteps)
+{
+    <div class="card" style="gap:10px; margin-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <div class="entry-icon"><Icon Name="@step.Icon" Size="15" StrokeWidth="1.8" /></div>
+            <div class="card-title">@L[step.TitleKey]</div>
+        </div>
+        <p style="margin:0; font-size:13px; color:var(--n-300); line-height:1.55;">
+            @L[step.BodyKey]
+        </p>
+    </div>
+}
+
+<div class="dash-group-title" style="margin:22px 2px 8px;">@L["keys.what.title"]</div>
+
+<div class="card" style="gap:10px;">
+    <p style="margin:0; font-size:13px; color:var(--n-300); line-height:1.55;">@L["keys.what.1"]</p>
+    <p style="margin:0; font-size:13px; color:var(--n-300); line-height:1.55;">@L["keys.what.2"]</p>
+</div>
+
+<div class="hint-row">
+    <Icon Name="info" Size="15" />
+    <span>@((MarkupString)L["keys.hint"])</span>
+</div>
+
+@code {
+    protected override void OnInitialized() => L.OnChanged += StateHasChanged;
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+}

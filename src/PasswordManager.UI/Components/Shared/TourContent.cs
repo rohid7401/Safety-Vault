@@ -22,9 +22,9 @@ namespace PasswordManager.UI.Components.Shared
             new("shield", "nav.audit", "whatsThis.audit"),
             new("swap", "nav.importExport", "whatsThis.import-export"),
             new("trash", "nav.data", "whatsThis.data"),
-            new("key", "nav.keys", "whatsThis.keys"),
-            new("file", "nav.encryptFiles", "whatsThis.encrypt-file"),
-            new("folder", "nav.encryptDirs", "whatsThis.encrypt-directory"),
+            // One step for the whole PGP module: it used to be three, which made an optional
+            // extra look like three core features and stretched the first-run tour.
+            new("key", "nav.pgp", "whatsThis.pgp"),
         };
 
         /// <summary>

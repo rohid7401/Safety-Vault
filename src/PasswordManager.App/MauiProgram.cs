@@ -35,6 +35,7 @@ public static class MauiProgram
         // Shared UI services (from PasswordManager.UI)
         builder.Services.AddSingleton<AppState>();
         builder.Services.AddSingleton<VaultAutoLock>();
+        builder.Services.AddSingleton<ShellBackNavigation>();
         builder.Services.AddSingleton<ToastService>();
         builder.Services.AddSingleton<GeneratorPreferences>();
         builder.Services.AddHttpClient<KeyServerService>();
