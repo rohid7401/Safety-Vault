@@ -1,6 +1,9 @@
 @inherits LayoutComponentBase
 @inject AppState AppState
 @inject NavigationManager Nav
+@inject VaultAutoLock AutoLock
+@inject ToastService Toast
+@inject IJSRuntime JS
 @inject Loc L
 @implements IDisposable
 
@@ -118,6 +121,7 @@ else
 
 @code {
     private bool _drawerOpen;
+    private bool _restoreScrollAfterRender;
     private ErrorBoundary? _boundary;
 
     private sealed record NavItem(string LabelKey, string Href, string Icon);
@@ -185,17 +189,62 @@ else
         }
     }
 
+    private IDisposable? _locationChanging;
+
     protected override void OnInitialized()
     {
         AppState.OnStateChanged += StateHasChanged;
         Nav.LocationChanged += OnLocationChanged;
         L.OnChanged += StateHasChanged;
+        AutoLock.LockRequested += OnAutoLockRequested;
+
+        // Must run *before* the route swaps: once Blazor replaces the page content the browser
+        // has already clamped the scroll offset to 0, and the position is gone.
+        _locationChanging = Nav.RegisterLocationChangingHandler(SaveScrollBeforeNavigating);
     }
+
+    private ValueTask SaveScrollBeforeNavigating(LocationChangingContext context) =>
+        InvokeSafely("safetyVaultScroll.save", CurrentRoute);
+
+    /// <summary>
+    /// JS interop throws if the WebView is mid-teardown or the script has not landed yet, and a
+    /// remembered scroll offset is never worth surfacing an error over.
+    /// </summary>
+    private async ValueTask InvokeSafely(string identifier, params object?[] args)
+    {
+        try { await JS.InvokeVoidAsync(identifier, args); }
+        catch (JSException) { }
+        // Covers ObjectDisposedException too, which the WebView throws while tearing down.
+        catch (InvalidOperationException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    /// <summary>
+    /// Raised from the platform lifecycle callback, which is not the renderer's thread — hop
+    /// onto it before locking, since that re-renders every subscriber.
+    /// </summary>
+    private void OnAutoLockRequested() => _ = InvokeAsync(() =>
+    {
+        if (!AppState.IsUnlocked) return;
+        LockVault();
+        // Without a word the user just finds themselves back at the login screen and assumes
+        // the app dropped their session.
+        Toast.Info(L["home.autoLocked"]);
+    });
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
         _drawerOpen = false;
+        // Restoring here would target the outgoing page: the new route has not rendered yet.
+        _restoreScrollAfterRender = true;
         StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender && !_restoreScrollAfterRender) return;
+        _restoreScrollAfterRender = false;
+        await InvokeSafely("safetyVaultScroll.restored", CurrentRoute);
     }
 
     private void OpenDrawer() => _drawerOpen = true;
@@ -214,6 +263,8 @@ else
         AppState.OnStateChanged -= StateHasChanged;
         Nav.LocationChanged -= OnLocationChanged;
         L.OnChanged -= StateHasChanged;
+        AutoLock.LockRequested -= OnAutoLockRequested;
+        _locationChanging?.Dispose();
     }
 
     private void ResetBoundary() => _boundary?.Recover();

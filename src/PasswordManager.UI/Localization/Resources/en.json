@@ -81,6 +81,7 @@
   "home.err.passphraseMismatch": "Passphrases do not match.",
   "home.generatingKeys": "Generating your PGP key pair... this can take a few seconds.",
   "home.welcome": "Welcome to SafetyVault!",
+  "home.autoLocked": "Your vault was locked for security.",
   "restore.title": "Vault integrity check failed",
   "restore.body": "The current vault could not be verified — it may have been modified or corrupted. A known-good backup from your previous save is available. Restoring will replace the current vault with that backup.",
   "restore.confirm": "Restore from backup",

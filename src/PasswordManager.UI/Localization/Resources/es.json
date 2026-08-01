@@ -81,6 +81,7 @@
   "home.err.passphraseMismatch": "Las frases no coinciden.",
   "home.generatingKeys": "Generando tu par de claves PGP... esto puede tardar unos segundos.",
   "home.welcome": "¡Bienvenido a SafetyVault!",
+  "home.autoLocked": "Se bloqueó tu bóveda por seguridad.",
   "restore.title": "Falló la verificación de integridad de la bóveda",
   "restore.body": "No se pudo verificar la bóveda actual — puede haber sido modificada o dañada. Hay una copia de seguridad íntegra de tu guardado anterior. Restaurar reemplazará la bóveda actual con esa copia.",
   "restore.confirm": "Restaurar desde la copia",

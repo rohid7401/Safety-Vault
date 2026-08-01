@@ -63,6 +63,61 @@
             }, 300);
         });
 
+        // ── Remember where each page was scrolled to ──
+        // Blazor swaps the contents of `.page` on navigation but keeps the element, and the
+        // browser clamps scrollTop to 0 the moment the new (briefly empty) content is shorter
+        // than the old scroll offset. So leaving a page always lost your place, and coming back
+        // to a long list dumped you at the top. MainLayout drives this: it saves before letting
+        // a navigation proceed, and restores once the new route has rendered.
+        (function () {
+            var positions = {};
+            var currentKey = null;
+            // While a navigation is in flight the clamp-to-zero scroll event described above
+            // fires; recording it would overwrite the position we just saved.
+            var suspended = false;
+
+            function page() { return document.querySelector('.page'); }
+
+            // 'scroll' does not bubble, so listen in the capture phase to catch it on `.page`.
+            document.addEventListener('scroll', function (e) {
+                if (suspended || currentKey === null) return;
+                var el = e.target;
+                if (!el || !el.classList || !el.classList.contains('page')) return;
+                positions[currentKey] = el.scrollTop;
+            }, true);
+
+            function restore(target) {
+                // The new route may still be loading its data, so the content can be too short
+                // to hold the offset for a few frames. Keep trying briefly, then give up rather
+                // than fight a page that is genuinely shorter now.
+                var attempts = 0;
+                (function tick() {
+                    var el = page();
+                    if (el && el.scrollHeight - el.clientHeight >= target) {
+                        el.scrollTop = target;
+                        return;
+                    }
+                    if (++attempts < 30) requestAnimationFrame(tick);
+                })();
+            }
+
+            window.safetyVaultScroll = {
+                save: function (key) {
+                    var el = page();
+                    if (el && key !== null) positions[key] = el.scrollTop;
+                    suspended = true;
+                },
+                restored: function (key) {
+                    currentKey = key;
+                    suspended = false;
+                    var target = positions[key] || 0;
+                    var el = page();
+                    if (el) el.scrollTop = 0;   // never inherit the previous page's offset
+                    if (target > 0) restore(target);
+                }
+            };
+        })();
+
         // ── Swipe-down on the sheet grip to dismiss (drag handle gesture) ──
         (function () {
             var sheet = null, startY = 0, moved = 0;

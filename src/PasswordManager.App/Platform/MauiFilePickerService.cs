@@ -1,5 +1,6 @@
 using CommunityToolkit.Maui.Storage;
 using PasswordManager.UI.Abstractions;
+using PasswordManager.UI.Services;
 using FilePicker = Microsoft.Maui.Storage.FilePicker;
 
 namespace PasswordManager.App.Platform
@@ -7,13 +8,24 @@ namespace PasswordManager.App.Platform
     /// <summary>
     /// MAUI implementation of <see cref="IFilePickerService"/> over FilePicker,
     /// CommunityToolkit FolderPicker and FileSaver.
+    ///
+    /// <para>Every method here sends the user to a system picker, which on Android is a separate
+    /// activity — the app is backgrounded and would auto-lock mid-errand. Each one therefore opens
+    /// a <see cref="VaultAutoLock.ExpectPickerExcursion"/> scope. Holding that here rather than at
+    /// the call sites means a screen cannot forget it, and every path already runs inside a
+    /// try/catch, so the scope is always disposed.</para>
     /// </summary>
     public class MauiFilePickerService : IFilePickerService
     {
+        private readonly VaultAutoLock _autoLock;
+
+        public MauiFilePickerService(VaultAutoLock autoLock) => _autoLock = autoLock;
+
         public async Task<string?> PickFileAsync(string? filterTitle = null, string[]? extensions = null)
         {
             try
             {
+                using var _ = _autoLock.ExpectPickerExcursion();
                 var options = BuildOptions(filterTitle, extensions);
                 var result = await FilePicker.Default.PickAsync(options);
                 return result?.FullPath;
@@ -28,6 +40,7 @@ namespace PasswordManager.App.Platform
         {
             try
             {
+                using var _ = _autoLock.ExpectPickerExcursion();
                 var options = BuildOptions(filterTitle, extensions);
                 var result = await FilePicker.Default.PickAsync(options);
                 if (result is null) return null;
@@ -45,6 +58,7 @@ namespace PasswordManager.App.Platform
         {
             try
             {
+                using var _ = _autoLock.ExpectPickerExcursion();
                 var options = BuildOptions(filterTitle, extensions);
                 var results = await FilePicker.Default.PickMultipleAsync(options);
                 if (results is null) return Array.Empty<PickedFile>();
@@ -64,6 +78,7 @@ namespace PasswordManager.App.Platform
         {
             try
             {
+                using var _ = _autoLock.ExpectPickerExcursion();
                 var result = await FolderPicker.Default.PickAsync(default);
                 return result.IsSuccessful ? result.Folder?.Path : null;
             }
@@ -77,6 +92,7 @@ namespace PasswordManager.App.Platform
         {
             try
             {
+                using var _ = _autoLock.ExpectPickerExcursion();
                 using var stream = new MemoryStream(initialBytes ?? Array.Empty<byte>());
                 var result = await FileSaver.Default.SaveAsync(suggestedFileName, stream, CancellationToken.None);
                 return result.IsSuccessful ? result.FilePath : null;
@@ -91,6 +107,7 @@ namespace PasswordManager.App.Platform
         {
             try
             {
+                using var _ = _autoLock.ExpectPickerExcursion();
                 if (content.CanSeek) content.Position = 0;
                 var result = await FileSaver.Default.SaveAsync(suggestedFileName, content, CancellationToken.None);
                 return result.IsSuccessful ? result.FilePath : null;
