@@ -2,15 +2,16 @@
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject ToastService Toast
+@inject SecureClipboardService SecureClipboard
+@inject ViewPreferences ViewPrefs
 @inject Loc L
 @implements IDisposable
 
 @if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
 
-<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;">
-    <div style="flex:1;">
-        <p style="margin:0; font-size:13px; color:var(--n-400);">@L.Format("cards.count", _entries.Count)</p>
-    </div>
+<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px;">
+    <p style="margin:0; flex:1; min-width:0; font-size:13px; color:var(--n-400);">@L.Format("cards.count", _entries.Count)</p>
+    <ViewToggle Mode="Mode" ModeChanged="SetMode" />
     <button class="btn btn-primary" style="flex:none;" @onclick="OpenAddModal">
         <Icon Name="plus" Size="16" StrokeWidth="2.2" />@L["common.add"]
     </button>
@@ -24,65 +25,160 @@
         <p>@L["cards.emptyBody"]</p>
     </div>
 }
+else if (Mode == ViewMode.Grid)
+{
+    <div class="pw-grid">
+        @foreach (var card in _entries)
+        {
+            <button class="mini-plastic @HueClass(card)" type="button" @onclick="() => OpenDetail(card)">
+                <div class="mini-plastic-top">
+                    <span class="mini-plastic-brand">@BrandOf(card)</span>
+                    <span class="pw-dot @StatusClass(StatusOf(card))" title="@StatusText(StatusOf(card))"></span>
+                </div>
+                <div class="mini-plastic-num">···· @(_last4.GetValueOrDefault(card.Id, "••••"))</div>
+                <div class="mini-plastic-exp">@ExpiryText(card)</div>
+            </button>
+        }
+    </div>
+}
 else
 {
-    @foreach (var card in _entries)
-    {
-        <div class="credit-card">
-            <div class="credit-card-top">
-                <span class="credit-card-brand">@card.CardholderName</span>
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <button class="reveal-btn" type="button" style="color:var(--a-100);"
-                            @onclick="() => ToggleReveal(card.Id)">
-                        @(_revealed.Contains(card.Id) ? L["common.hide"] : L["cards.reveal"])
-                    </button>
-                    <button class="reveal-btn" type="button" style="color:var(--danger);" title="@L["common.moveToTrash"]"
-                            @onclick="() => DeleteCard(card.Id)">
-                        @L["common.delete"]
-                    </button>
-                </div>
-            </div>
-            @if (_revealed.Contains(card.Id))
-            {
-                <div class="credit-card-number">@AppState.Service!.DecryptField(card.CardNumber)</div>
-                <div class="credit-card-meta">
-                    <div>
-                        <div class="credit-card-meta-label">@L["cards.holder"]</div>
-                        <div class="credit-card-meta-value">@card.CardholderName</div>
-                    </div>
-                    <div>
-                        <div class="credit-card-meta-label">@L["cards.expires"]</div>
-                        <div class="credit-card-meta-value mono">@card.ExpiryMonth.ToString("D2")/@card.ExpiryYear</div>
-                    </div>
-                    <div>
-                        <div class="credit-card-meta-label">@L["cards.cvv"]</div>
-                        <div class="credit-card-meta-value mono">@AppState.Service!.DecryptField(card.Cvv)</div>
-                    </div>
-                </div>
-            }
-            else
-            {
-                <div class="credit-card-number">•••• •••• •••• @(_last4.GetValueOrDefault(card.Id, "••••"))</div>
-                <div class="credit-card-meta">
-                    <div>
-                        <div class="credit-card-meta-label">@L["cards.holder"]</div>
-                        <div class="credit-card-meta-value">@card.CardholderName</div>
-                    </div>
-                    <div>
-                        <div class="credit-card-meta-label">@L["cards.expires"]</div>
-                        <div class="credit-card-meta-value mono">@card.ExpiryMonth.ToString("D2")/@card.ExpiryYear</div>
-                    </div>
-                    <div>
-                        <div class="credit-card-meta-label">@L["cards.cvv"]</div>
-                        <div class="credit-card-meta-value mono">•••</div>
-                    </div>
-                </div>
-            }
-        </div>
-    }
+    <div class="pw-list">
+        @foreach (var card in _entries)
+        {
+            <button class="pw-row" type="button" @onclick="() => OpenDetail(card)">
+                <span class="pw-avatar c0"><Icon Name="card" Size="16" StrokeWidth="1.8" /></span>
+                <span class="pw-row-text">
+                    <span class="pw-title">@BrandOf(card) ···· @(_last4.GetValueOrDefault(card.Id, "••••"))</span>
+                    <span class="pw-sub">@card.CardholderName · @ExpiryText(card)</span>
+                </span>
+                <span class="pw-status @StatusClass(StatusOf(card))">@StatusText(StatusOf(card))</span>
+                <span class="pw-chevron"><Icon Name="chevron-right" Size="17" /></span>
+            </button>
+        }
+    </div>
 }
 
-<SheetModal Visible="_showAdd" Title="@L["cards.addTitle"]" ConfirmClose="@FormDirty" OnClose="CloseModal">
+@* ───── Detail sheet: the only place the number and CVV are shown ───── *@
+<SheetModal Visible="@(_detail is not null)" Title="" OnClose="CloseDetail">
+    <ChildContent>
+        @if (_detail is not null)
+        {
+            var det = _detail;
+            @* The plastic stays at the top purely as identification — you recognise your own card
+               by how it looks, not by reading the digits. *@
+            <div class="credit-card @HueClass(det)" style="margin-bottom:14px;">
+                <div class="credit-card-top">
+                    <span class="credit-card-brand">@BrandOf(det)</span>
+                    <span class="pw-status @StatusClass(StatusOf(det))">@StatusText(StatusOf(det))</span>
+                </div>
+                <div class="credit-card-number">
+                    @(_detailRevealed ? AppState.Service!.DecryptField(det.CardNumber) : $"•••• •••• •••• {_last4.GetValueOrDefault(det.Id, "••••")}")
+                </div>
+                <div class="credit-card-meta">
+                    <div>
+                        <div class="credit-card-meta-label">@L["cards.holder"]</div>
+                        <div class="credit-card-meta-value">@det.CardholderName</div>
+                    </div>
+                    <div>
+                        <div class="credit-card-meta-label">@L["cards.expires"]</div>
+                        <div class="credit-card-meta-value mono">@ExpiryText(det)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+                <button class="btn btn-primary" style="flex:1; height:40px;"
+                        @onclick="() => _detailRevealed = !_detailRevealed">
+                    <Icon Name="@(_detailRevealed ? "eye-off" : "eye")" Size="16" StrokeWidth="1.8" />
+                    @(_detailRevealed ? L["common.hide"] : L["cards.reveal"])
+                </button>
+                <button class="btn btn-secondary" style="flex:1; height:40px;"
+                        @onclick="() => CopyField(det.CardNumber)">
+                    <Icon Name="copy" Size="16" StrokeWidth="1.8" />@L["cards.copyNumber"]
+                </button>
+            </div>
+
+            @* Holder and expiry are not secrets, so they are simply readable; only the CVV stays
+               masked until asked for. *@
+            <div class="card-row">
+                <span class="card-row-label">@L["cards.holder"]</span>
+                <span class="card-row-value">@det.CardholderName</span>
+                <button class="btn-icon" type="button" aria-label="@L["common.copy"]"
+                        @onclick="() => CopyPlain(det.CardholderName)">
+                    <Icon Name="copy" Size="15" StrokeWidth="1.8" />
+                </button>
+            </div>
+            <div class="card-row">
+                <span class="card-row-label">@L["cards.expires"]</span>
+                <span class="card-row-value mono">@ExpiryText(det)</span>
+                <button class="btn-icon" type="button" aria-label="@L["common.copy"]"
+                        @onclick="() => CopyPlain(ExpiryText(det))">
+                    <Icon Name="copy" Size="15" StrokeWidth="1.8" />
+                </button>
+            </div>
+            <div class="card-row">
+                <span class="card-row-label">@L["cards.cvv"]</span>
+                <span class="card-row-value mono">
+                    @(_cvvRevealed ? AppState.Service!.DecryptField(det.Cvv) : "•••")
+                </span>
+                <button class="btn-icon" type="button" aria-label="Reveal"
+                        @onclick="() => _cvvRevealed = !_cvvRevealed">
+                    <Icon Name="@(_cvvRevealed ? "eye-off" : "eye")" Size="15" StrokeWidth="1.8" />
+                </button>
+                <button class="btn-icon" type="button" aria-label="@L["common.copy"]"
+                        @onclick="() => CopyField(det.Cvv)">
+                    <Icon Name="copy" Size="15" StrokeWidth="1.8" />
+                </button>
+            </div>
+
+            @* Both destructive-ish actions live at the foot, away from Reveal. Delete used to sit
+               beside Reveal at the top of the plastic, a thumb-width apart, which is how a card
+               gets lost by mistake. *@
+            <div style="display:flex; gap:8px; margin-top:16px;">
+                <button class="btn btn-secondary" style="flex:1;" @onclick="() => EditFromDetail(det)">
+                    <Icon Name="edit" Size="15" StrokeWidth="1.8" />@L["common.edit"]
+                </button>
+                <button class="btn btn-secondary" style="flex:1; color:var(--danger);"
+                        @onclick="() => DeleteFromDetail(det.Id)">
+                    <Icon Name="trash" Size="15" StrokeWidth="1.8" />@L["common.delete"]
+                </button>
+            </div>
+        }
+    </ChildContent>
+</SheetModal>
+
+<style>
+    .card-row {
+        display: flex; align-items: center; gap: 10px; min-height: 44px;
+        padding: 0 2px; border-top: 1px solid var(--color-divider);
+    }
+    .card-row:first-of-type { border-top: 0; }
+    .card-row-label { flex: none; width: 88px; font-size: 12px; color: var(--n-500); }
+    .card-row-value { flex: 1; min-width: 0; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-row-value.mono { font-family: var(--font-mono); }
+
+    /* Grid tile: the plastic in miniature, so a card is recognised by its look. */
+    .mini-plastic {
+        display: flex; flex-direction: column; justify-content: space-between;
+        min-height: 118px; padding: 12px; text-align: left; cursor: pointer;
+        border: 0; border-radius: 14px; color: var(--a-100); font-family: inherit;
+        box-shadow: var(--shadow-sm);
+    }
+    .mini-plastic.h0 { background: linear-gradient(135deg, var(--a-700), var(--n-900)); }
+    .mini-plastic.h1 { background: linear-gradient(135deg, var(--a-800), var(--n-900)); }
+    .mini-plastic.h2 { background: linear-gradient(135deg, #3f5170, var(--n-900)); }
+    .mini-plastic.h3 { background: linear-gradient(135deg, #4a4270, var(--n-900)); }
+    .mini-plastic.h4 { background: linear-gradient(135deg, #35566a, var(--n-900)); }
+    .mini-plastic-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .mini-plastic-brand { font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+    .mini-plastic-num { font-family: var(--font-mono); font-size: 14px; }
+    .mini-plastic-exp { font-size: 11px; color: var(--a-300); }
+</style>
+
+<SheetModal Visible="@(_showAdd || _editCard is not null)"
+            Title="@(_editCard is not null ? L["cards.editTitle"] : L["cards.addTitle"])"
+            ConfirmClose="@FormDirty" OnClose="CloseModal">
     <ChildContent>
         <div class="field">
             <label>@L["cards.field.holder"]</label>
@@ -122,15 +218,15 @@ else
     </ChildContent>
     <FooterContent>
         <button class="btn btn-secondary" @onclick="CloseModal">@L["common.cancel"]</button>
-        <button class="btn btn-primary" @onclick="SaveCard">@L["common.add"]</button>
+        <button class="btn btn-primary" @onclick="SaveCard">@(_editCard is not null ? L["common.save"] : L["common.add"])</button>
     </FooterContent>
 </SheetModal>
 
 @code {
     private List<CardEntry> _entries = new();
     private readonly Dictionary<Guid, string> _last4 = new();
-    private HashSet<Guid> _revealed = new();
     private bool _showAdd;
+    private CardEntry? _editCard;
 
     private string _formName = string.Empty;
     private string _formNumber = string.Empty;
@@ -156,6 +252,7 @@ else
     private void CloseModal()
     {
         _showAdd = false;
+        _editCard = null;
         _formName = _formNumber = _formCvv = _formError = string.Empty;
         _formMonth = 1;
         _formYear = 2025;
@@ -173,21 +270,160 @@ else
     {
         _entries = await AppState.Service!.GetEntriesAsync<CardEntry>();
         _last4.Clear();
+        _brand.Clear();
         foreach (var c in _entries)
         {
             try
             {
                 var digits = new string(AppState.Service!.DecryptField(c.CardNumber).Where(char.IsDigit).ToArray());
                 _last4[c.Id] = digits.Length >= 4 ? digits[^4..] : (digits.Length == 0 ? "••••" : digits);
+                _brand[c.Id] = BrandFromDigits(digits);
             }
             catch
             {
                 _last4[c.Id] = "••••";
+                _brand[c.Id] = L["cards.brand.unknown"];
             }
         }
     }
 
-    private void ToggleReveal(Guid id) { if (!_revealed.Remove(id)) _revealed.Add(id); }
+    // ─── Index presentation ──────────────────────────────────────────────
+
+    private readonly Dictionary<Guid, string> _brand = new();
+
+    private ViewMode Mode => ViewPrefs.Get(ViewScope.Cards);
+    private void SetMode(ViewMode mode) => ViewPrefs.Set(ViewScope.Cards, mode);
+
+    /// <summary>
+    /// The model stores no brand, so it is read off the number's opening digits (the issuer
+    /// prefixes) at load time, alongside the last four. Unrecognised numbers fall back to a
+    /// neutral word rather than guessing.
+    /// </summary>
+    private string BrandFromDigits(string digits)
+    {
+        if (digits.Length < 2) return L["cards.brand.unknown"];
+        if (digits[0] == '4') return "Visa";
+        if (digits.StartsWith("34") || digits.StartsWith("37")) return "Amex";
+        if (int.TryParse(digits[..2], out var two) && two is >= 51 and <= 55) return "Mastercard";
+        if (digits.StartsWith("2221") || digits.StartsWith("2720")) return "Mastercard";
+        if (digits.StartsWith("6011") || digits.StartsWith("65")) return "Discover";
+        return L["cards.brand.unknown"];
+    }
+
+    private string BrandOf(CardEntry c) => _brand.GetValueOrDefault(c.Id, L["cards.brand.unknown"]);
+
+    private static string ExpiryText(CardEntry c) => $"{c.ExpiryMonth:D2}/{c.ExpiryYear % 100:D2}";
+
+    private enum CardStatus { Valid, DueSoon, Expired }
+
+    /// <summary>A card counts as expired after the last day of its expiry month, which is how
+    /// issuers date them — 08/28 is usable through 31 August 2028.</summary>
+    private static CardStatus StatusOf(CardEntry c)
+    {
+        if (c.ExpiryYear <= 0 || c.ExpiryMonth is < 1 or > 12) return CardStatus.Valid;
+
+        var lastDay = new DateTime(c.ExpiryYear, c.ExpiryMonth, 1).AddMonths(1).AddDays(-1);
+        var today = DateTime.Today;
+        if (today > lastDay) return CardStatus.Expired;
+        return (lastDay - today).TotalDays <= 60 ? CardStatus.DueSoon : CardStatus.Valid;
+    }
+
+    private static string StatusClass(CardStatus s) => s switch
+    {
+        CardStatus.Expired => "danger",
+        CardStatus.DueSoon => "warn",
+        _ => "ok",
+    };
+
+    private string StatusText(CardStatus s) => s switch
+    {
+        CardStatus.Expired => L["cards.status.expired"],
+        CardStatus.DueSoon => L["cards.status.due"],
+        _ => L["cards.status.valid"],
+    };
+
+    /// <summary>Stable tint per card, so each keeps the same plastic between launches.</summary>
+    private static string HueClass(CardEntry c)
+    {
+        var h = 17;
+        unchecked
+        {
+            foreach (var ch in c.CardholderName) h = h * 31 + char.ToUpperInvariant(ch);
+            h = h * 31 + c.ExpiryMonth + c.ExpiryYear;
+        }
+        return $"h{(h & 0x7fffffff) % 5}";
+    }
+
+    // ─── Detail sheet ────────────────────────────────────────────────────
+
+    private CardEntry? _detail;
+    private bool _detailRevealed;
+    private bool _cvvRevealed;
+
+    private void OpenDetail(CardEntry c)
+    {
+        _detail = c;
+        _detailRevealed = false;
+        _cvvRevealed = false;
+    }
+
+    private void CloseDetail()
+    {
+        _detail = null;
+        // Neither the number nor the CVV may survive the sheet that revealed them.
+        _detailRevealed = false;
+        _cvvRevealed = false;
+    }
+
+    private void EditFromDetail(CardEntry c)
+    {
+        CloseDetail();
+        EditCard(c);
+    }
+
+    /// <summary>
+    /// Pre-fills the form with the decrypted card so the user can correct one field without
+    /// retyping the number. Both secrets are re-encrypted wholesale on save.
+    /// </summary>
+    private void EditCard(CardEntry c)
+    {
+        _editCard = c;
+        _formName = c.CardholderName;
+        _formMonth = c.ExpiryMonth;
+        _formYear = c.ExpiryYear;
+        try
+        {
+            _formNumber = AppState.Service!.DecryptField(c.CardNumber);
+            _formCvv = AppState.Service!.DecryptField(c.Cvv);
+        }
+        catch
+        {
+            // An unreadable card must not open a form that would then save the blanks over it.
+            _editCard = null;
+            Toast.Error(L["cards.err.unreadable"]);
+            return;
+        }
+        _formError = string.Empty;
+        _formSnapshot = CurrentFormSnapshot();
+    }
+
+    private async Task DeleteFromDetail(Guid id)
+    {
+        CloseDetail();
+        await DeleteCard(id);
+    }
+
+    private async Task CopyField(EncryptedField field)
+    {
+        await SecureClipboard.CopySensitiveAsync(AppState.Service!.DecryptField(field));
+        Toast.Success(L["toast.copied"]);
+    }
+
+    private async Task CopyPlain(string value)
+    {
+        await SecureClipboard.CopySensitiveAsync(value);
+        Toast.Success(L["toast.copied"]);
+    }
 
     private async Task DeleteCard(Guid id)
     {
@@ -211,19 +447,27 @@ else
 
         try
         {
-            var card = new CardEntry
+            var wasEdit = _editCard is not null;
+            if (_editCard is not null)
             {
-                CardholderName = _formName,
-                ExpiryMonth = _formMonth,
-                ExpiryYear = _formYear,
-            };
+                await AppState.Service!.UpdateCardEntryAsync(
+                    _editCard.Id, _formName, _formMonth, _formYear,
+                    _formNumber.Replace(" ", ""), _formCvv);
+            }
+            else
+            {
+                var card = new CardEntry
+                {
+                    CardholderName = _formName,
+                    ExpiryMonth = _formMonth,
+                    ExpiryYear = _formYear,
+                };
+                await AppState.Service!.AddCardEntryAsync(card, _formNumber.Replace(" ", ""), _formCvv);
+            }
 
-            await AppState.Service!.AddCardEntryAsync(card, _formNumber.Replace(" ", ""), _formCvv);
-
-            _showAdd = false;
-            _formName = _formNumber = _formCvv = _formError = string.Empty;
+            CloseModal();
             await LoadEntries();
-            Toast.Success(L["toast.cardSaved"]);
+            Toast.Success(wasEdit ? L["toast.cardUpdated"] : L["toast.cardSaved"]);
         }
         catch (Exception ex)
         {

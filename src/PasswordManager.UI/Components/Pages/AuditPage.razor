@@ -13,7 +13,9 @@
     <div class="empty-state">
         <div class="icon-circle"><Icon Name="shield" Size="30" StrokeWidth="1.8" /></div>
         <h3>@L["audit.emptyTitle"]</h3>
-        <p>@L["audit.emptyBody"]</p>
+        @* Trimmed: the long explanation of what an audit is belongs in the tutorial, not in the
+           way of the button that runs it. *@
+        <p>@L["audit.emptyShort"]</p>
         <button class="btn btn-primary btn-block btn-lg" style="max-width:320px;"
                 @onclick="RunAudit" disabled="@_loading">
             @(_loading ? L["audit.analyzing"] : L["audit.run"])
@@ -22,20 +24,30 @@
 }
 else
 {
-    <div class="grid-4" style="margin-bottom:18px;">
-        <div class="stat-card">
+    @* The headline the four figures below never quite said: how much there is to do, and
+       whether the numbers are still current. *@
+    <div class="dash-status">
+        <div class="dash-status-icon sm"><Icon Name="shield" Size="16" /></div>
+        <div style="flex:1; min-width:0;">
+            <div class="dash-status-title">@L.Format("audit.summary", _report.Issues.Count, _report.TotalPasswords)</div>
+            <div class="dash-status-sub">@L.Format("audit.ranAt", RelativeTime.Ago(L, _ranAt))</div>
+        </div>
+    </div>
+
+    <div class="grid-4" style="margin-bottom:16px;">
+        <div class="stat-card compact">
             <div class="stat-value">@_report.TotalPasswords</div>
             <div class="stat-label">@L["audit.total"]</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card compact">
             <div class="stat-value" style="color:var(--danger);">@_report.WeakCount</div>
             <div class="stat-label">@L["audit.weak"]</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card compact">
             <div class="stat-value" style="color:var(--orange);">@_report.ReusedCount</div>
             <div class="stat-label">@L["audit.reused"]</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card compact">
             <div class="stat-value" style="color:var(--warning);">@_report.ExpiredCount</div>
             <div class="stat-label">@L["audit.expired"]</div>
         </div>
@@ -47,14 +59,39 @@ else
     }
     else
     {
-        @foreach (var issue in _report.Issues.OrderByDescending(i => i.Severity))
+        <div class="filter-chips">
+            <button class="filter-chip @(_filter is null ? "active" : "")" type="button"
+                    @onclick="() => _filter = null">@L["audit.filter.all"]</button>
+            <button class="filter-chip @(_filter == AuditIssueType.WeakPassword ? "active" : "")" type="button"
+                    @onclick="() => _filter = AuditIssueType.WeakPassword">@L["audit.filter.weak"]</button>
+            <button class="filter-chip @(_filter == AuditIssueType.ReusedPassword ? "active" : "")" type="button"
+                    @onclick="() => _filter = AuditIssueType.ReusedPassword">@L["audit.filter.reused"]</button>
+            <button class="filter-chip @(_filter == AuditIssueType.ExpiredEntry ? "active" : "")" type="button"
+                    @onclick="() => _filter = AuditIssueType.ExpiredEntry">@L["audit.filter.expired"]</button>
+        </div>
+
+        var shown = Shown();
+
+        @if (shown.Count == 0)
         {
-            <div class="card" style="flex-direction:row; align-items:center; gap:12px;">
-                <div style="flex:1; min-width:0;">
-                    <div style="font-size:14px; font-weight:600;">@issue.EntryLabel</div>
-                    <div style="font-size:12px; color:var(--n-400);">@Describe(issue)</div>
-                </div>
-                <span class="badge badge-@issue.Severity.ToString().ToLower()">@TypeLabel(issue.Type)</span>
+            <div class="alert alert-info">@L["audit.noneOfType"]</div>
+        }
+        else
+        {
+            @* One grouped list with separators instead of a card per finding: a vault with
+               twenty issues was twenty floating boxes, and the severity was hard to scan. *@
+            <div class="pw-list">
+                @foreach (var issue in shown)
+                {
+                    <button class="pw-row" type="button" @onclick="() => GoToEntry(issue)">
+                        <span class="pw-row-text">
+                            <span class="pw-title">@issue.EntryLabel</span>
+                            <span class="pw-sub">@Describe(issue)</span>
+                        </span>
+                        <span class="badge badge-@issue.Severity.ToString().ToLower()">@TypeLabel(issue.Type)</span>
+                        <span class="pw-chevron"><Icon Name="chevron-right" Size="17" /></span>
+                    </button>
+                }
             </div>
         }
     }
@@ -67,6 +104,21 @@ else
 @code {
     private AuditReport? _report;
     private bool _loading;
+    private DateTime _ranAt;
+    private AuditIssueType? _filter;
+
+    /// <summary>Severity first, so the worst findings stay at the top of whichever filter is on.</summary>
+    private List<AuditIssue> Shown() => _report!.Issues
+        .Where(i => _filter is null || i.Type == _filter)
+        .OrderByDescending(i => i.Severity)
+        .ToList();
+
+    /// <summary>
+    /// Jumps to the passwords list pre-searched for the entry, which is as close to "open this
+    /// finding" as the vault index allows — the audit report carries a label, not an entry id.
+    /// </summary>
+    private void GoToEntry(AuditIssue issue) =>
+        Nav.NavigateTo($"vault?q={Uri.EscapeDataString(issue.EntryLabel)}");
 
     protected override void OnInitialized() => L.OnChanged += StateHasChanged;
 
@@ -102,6 +154,9 @@ else
         StateHasChanged();
 
         _report = await AppState.Service!.AuditVaultAsync(Auditor);
+        _ranAt = DateTime.UtcNow;
+        // A filter left over from the previous run could hide everything the new one found.
+        _filter = null;
 
         _loading = false;
     }

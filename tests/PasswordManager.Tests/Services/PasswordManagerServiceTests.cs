@@ -175,6 +175,73 @@ namespace PasswordManager.Tests.Services
             Assert.True(details.HasUserIdFor("alice@example.com"));
         }
 
+        // ─── Card editing ────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task UpdateCardEntryAsync_RewritesEveryFieldAndKeepsIdentity()
+        {
+            await using var svc = await CreateServiceAsync();
+            var card = new CardEntry { CardholderName = "JANE M DOE", ExpiryMonth = 8, ExpiryYear = 2028 };
+            await svc.AddCardEntryAsync(card, "4111111111111111", "123");
+
+            await svc.UpdateCardEntryAsync(card.Id, "JOHN Q PUBLIC", 11, 2030, "5555444433332222", "987");
+
+            var stored = (await svc.GetEntriesAsync<CardEntry>()).Single();
+            Assert.Equal(card.Id, stored.Id);              // same entry, not a delete-and-re-add
+            Assert.Equal("JOHN Q PUBLIC", stored.CardholderName);
+            Assert.Equal(11, stored.ExpiryMonth);
+            Assert.Equal(2030, stored.ExpiryYear);
+            Assert.Equal("5555444433332222", svc.DecryptField(stored.CardNumber));
+            Assert.Equal("987", svc.DecryptField(stored.Cvv));
+        }
+
+        [Fact]
+        public async Task UpdateCardEntryAsync_ReEncryptsRatherThanStoringPlaintext()
+        {
+            // The number and CVV are the whole point of the entry; an update path that forgot to
+            // encrypt would leave them readable in the vault file.
+            await using var svc = await CreateServiceAsync();
+            var card = new CardEntry { CardholderName = "JANE M DOE", ExpiryMonth = 1, ExpiryYear = 2030 };
+            await svc.AddCardEntryAsync(card, "4111111111111111", "123");
+
+            await svc.UpdateCardEntryAsync(card.Id, "JANE M DOE", 1, 2030, "5555444433332222", "987");
+
+            var stored = (await svc.GetEntriesAsync<CardEntry>()).Single();
+            Assert.DoesNotContain("5555444433332222", stored.CardNumber.CipherText);
+            Assert.DoesNotContain("987", stored.Cvv.CipherText);
+        }
+
+        // ─── Critical notes ──────────────────────────────────────────────────
+
+        [Fact]
+        public async Task SecureNote_CriticalFlag_RoundTrips()
+        {
+            await using var svc = await CreateServiceAsync();
+            await svc.AddSecureNoteAsync(new SecureNote { Title = "Recovery codes", IsCritical = true }, "abc");
+            await svc.AddSecureNoteAsync(new SecureNote { Title = "Shopping list" }, "milk");
+
+            var notes = await svc.GetEntriesAsync<SecureNote>();
+
+            Assert.True(notes.Single(n => n.Title == "Recovery codes").IsCritical);
+            Assert.False(notes.Single(n => n.Title == "Shopping list").IsCritical);
+        }
+
+        [Fact]
+        public void NoteWrittenBeforeTheCriticalFlagExisted_LoadsAsNotCritical()
+        {
+            // The flag is absent from every note already in a tester's vault, so the default has
+            // to be the safe, quiet one rather than marking everything critical.
+            const string json = """
+            {"Id":"11111111-1111-1111-1111-111111111111","Title":"Old note",
+             "Content":{"CipherText":"","Nonce":"","Tag":""},"Tags":[],"IsDeleted":false}
+            """;
+
+            var note = System.Text.Json.JsonSerializer.Deserialize<SecureNote>(json);
+
+            Assert.NotNull(note);
+            Assert.False(note!.IsCritical);
+        }
+
         // ─── Empty vault ─────────────────────────────────────────────────────
 
         [Fact]

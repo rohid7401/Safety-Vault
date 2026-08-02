@@ -2,15 +2,16 @@
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject ToastService Toast
+@inject SecureClipboardService SecureClipboard
+@inject ViewPreferences ViewPrefs
 @inject Loc L
 @implements IDisposable
 
 @if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
 
-<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;">
-    <div style="flex:1;">
-        <p style="margin:0; font-size:13px; color:var(--n-400);">@L.Format("notes.count", _entries.Count)</p>
-    </div>
+<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px;">
+    <p style="margin:0; flex:1; min-width:0; font-size:13px; color:var(--n-400);">@L.Format("notes.count", _entries.Count)</p>
+    <ViewToggle Mode="Mode" ModeChanged="SetMode" />
     <button class="btn btn-primary" style="flex:none;" @onclick="OpenAddModal">
         <Icon Name="plus" Size="16" StrokeWidth="2.2" />@L["common.add"]
     </button>
@@ -24,45 +25,121 @@
         <p>@L["notes.emptyBody"]</p>
     </div>
 }
+else if (Mode == ViewMode.Grid)
+{
+    <div class="pw-grid">
+        @foreach (var note in _entries)
+        {
+            <button class="pw-tile" type="button" @onclick="() => OpenDetail(note)">
+                <div class="pw-tile-top">
+                    <span class="pw-avatar @AvatarClass(note.Title)">@Initial(note.Title)</span>
+                    @if (note.IsCritical)
+                    {
+                        <span class="pw-dot danger" title="@L["notes.critical"]"></span>
+                    }
+                </div>
+                <div class="pw-tile-name">@note.Title</div>
+                @* A masked line, never the content: the point of the index is that nothing has
+                   to be hidden again after it is read. *@
+                <div class="note-mask-line">••••••••••••</div>
+            </button>
+        }
+    </div>
+}
 else
 {
-    @foreach (var note in _entries)
-    {
-        <div class="card">
-            <div style="display:flex; align-items:center; gap:12px;">
-                <div class="entry-icon">
-                    <Icon Name="note" Size="15" StrokeWidth="1.8" />
+    <div class="pw-list">
+        @foreach (var note in _entries)
+        {
+            <button class="pw-row" type="button" @onclick="() => OpenDetail(note)">
+                <span class="pw-avatar @AvatarClass(note.Title)">@Initial(note.Title)</span>
+                <span class="pw-row-text">
+                    <span class="pw-title">@note.Title</span>
+                    <span class="pw-sub">@SummaryFor(note)</span>
+                </span>
+                @if (note.Tags.Count > 0)
+                {
+                    <span class="pw-status ok">@note.Tags[0]</span>
+                }
+                <span class="pw-chevron"><Icon Name="chevron-right" Size="17" /></span>
+            </button>
+        }
+    </div>
+}
+
+@* ───── Detail sheet: the only place a note's content is shown ───── *@
+<SheetModal Visible="@(_detail is not null)" Title="" OnClose="CloseDetail">
+    <ChildContent>
+        @if (_detail is not null)
+        {
+            var det = _detail;
+            <div class="pw-det-head">
+                <span class="pw-avatar lg @AvatarClass(det.Title)">@Initial(det.Title)</span>
+                <div style="flex:1; min-width:0;">
+                    <div class="pw-det-name">@det.Title</div>
+                    <div class="pw-det-sub">@SummaryFor(det)</div>
                 </div>
-                <div class="card-title" style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@note.Title</div>
-                <button class="btn-icon" type="button" aria-label="Edit" title="Edit"
-                        @onclick="() => EditNote(note)">
+                <button class="btn-icon lg" type="button" aria-label="@L["common.edit"]"
+                        @onclick="() => EditFromDetail(det)">
                     <Icon Name="edit" Size="16" StrokeWidth="1.8" />
                 </button>
-                <button class="btn-icon" type="button" aria-label="Delete" title="Move to trash"
-                        style="color:var(--danger);" @onclick="() => DeleteNote(note.Id)">
+                <button class="btn-icon lg" type="button" aria-label="@L["common.moveToTrash"]"
+                        style="color:var(--danger);" @onclick="() => DeleteFromDetail(det.Id)">
                     <Icon Name="trash" Size="16" StrokeWidth="1.8" />
                 </button>
-                <button class="reveal-btn" type="button" @onclick="() => ToggleReveal(note.Id)">
-                    @(_revealed.Contains(note.Id) ? L["common.hide"] : L["common.show"])
-                </button>
             </div>
-            @if (_revealed.Contains(note.Id))
+
+            <div class="note-content-head">
+                <span class="note-content-label">@L["notes.field.content"]</span>
+                <div style="display:flex; gap:6px;">
+                    <button class="btn-mini" type="button" @onclick="() => _detailRevealed = !_detailRevealed">
+                        @(_detailRevealed ? L["common.hide"] : L["common.show"])
+                    </button>
+                    <button class="btn-mini" type="button" @onclick="() => CopyContent(det)">@L["common.copy"]</button>
+                </div>
+            </div>
+
+            @if (_detailRevealed)
             {
-                <pre style="margin:0; background:var(--color-bg); border-radius:var(--radius-md); padding:11px 13px; font-family:var(--font-mono); font-size:12.5px; color:var(--color-text); white-space:pre-wrap; line-height:1.5;">@AppState.Service!.DecryptField(note.Content)</pre>
+                <pre class="note-content">@AppState.Service!.DecryptField(det.Content)</pre>
             }
             else
             {
-                <div style="background:var(--color-bg); border-radius:var(--radius-md); padding:11px 13px; color:var(--n-500); font-size:13px; letter-spacing:2px;">•••••••••••••••••</div>
+                @* Masked, but one row of dots per real line — so the shape of the note (a
+                   one-liner or a page) is still visible without revealing a character. *@
+                <pre class="note-content masked">@MaskedLines(det)</pre>
             }
-            @if (note.Tags.Count > 0)
+
+            @if (det.Tags.Count > 0)
             {
-                <div class="tag-group">
-                    @foreach (var tag in note.Tags) { <span class="tag">@tag</span> }
+                <div class="tag-group" style="margin-top:12px;">
+                    @foreach (var tag in det.Tags) { <span class="tag">@tag</span> }
                 </div>
             }
-        </div>
+
+            <div class="cred-meta" style="margin-top:12px;">
+                <span title="@det.CreationTime.ToLocalTime().ToString("g")">
+                    <Icon Name="plus" Size="11" />@L.Format("vault.meta.created", RelativeTime.Ago(L, det.CreationTime))
+                </span>
+                <span title="@det.LastUpdateTime.ToLocalTime().ToString("g")">
+                    <Icon Name="refresh" Size="11" />@L.Format("notes.meta.updated", RelativeTime.Ago(L, det.LastUpdateTime))
+                </span>
+            </div>
+        }
+    </ChildContent>
+</SheetModal>
+
+<style>
+    .note-mask-line { font-size: 13px; letter-spacing: 2px; color: var(--n-600); }
+    .note-content-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+    .note-content-label { font-size: 12px; color: var(--n-400); }
+    .note-content {
+        margin: 0; background: var(--color-bg); border-radius: var(--radius-md);
+        padding: 11px 13px; font-family: var(--font-mono); font-size: 12.5px;
+        color: var(--color-text); white-space: pre-wrap; line-height: 1.5;
     }
-}
+    .note-content.masked { color: var(--n-600); letter-spacing: 2px; }
+</style>
 
 <SheetModal Visible="@(_showAdd || _editNote is not null)"
             Title="@(_editNote is not null ? L["notes.editTitle"] : L["notes.addTitle"])"
@@ -87,6 +164,9 @@ else
                       RemoveLabel="@L["vault.tags.remove"]" />
         </div>
 
+        <Toggle Label="@L["notes.critical"]" Hint="@L["notes.critical.hint"]"
+                Value="_formCritical" ValueChanged="@(v => _formCritical = v)" />
+
         @if (!string.IsNullOrEmpty(_formError))
         {
             <div class="alert alert-danger">@_formError</div>
@@ -100,7 +180,6 @@ else
 
 @code {
     private List<SecureNote> _entries = new();
-    private HashSet<Guid> _revealed = new();
 
     private bool _showAdd;
     private SecureNote? _editNote;
@@ -116,7 +195,8 @@ else
         .ToList();
 
     private string _formSnapshot = string.Empty;
-    private string CurrentFormSnapshot() => string.Join("", _formTitle, _formContent, string.Join(',', _formTags));
+    private bool _formCritical;
+    private string CurrentFormSnapshot() => string.Join("", _formTitle, _formContent, string.Join(',', _formTags), _formCritical);
     private bool FormDirty => _formSnapshot != CurrentFormSnapshot();
 
     protected override async Task OnInitializedAsync()
@@ -130,14 +210,100 @@ else
     private async Task LoadEntries()
     {
         _entries = await AppState.Service!.GetEntriesAsync<SecureNote>();
+
+        // Line counts are computed once here rather than per render, mirroring how the cards
+        // index derives its last-four digits: the index needs the shape of each note, and
+        // decrypting inside the render loop would repeat the work on every keystroke elsewhere.
+        _lines.Clear();
+        foreach (var n in _entries)
+        {
+            try
+            {
+                var text = AppState.Service!.DecryptField(n.Content);
+                _lines[n.Id] = string.IsNullOrEmpty(text) ? 0 : text.Split('\n').Length;
+            }
+            catch
+            {
+                _lines[n.Id] = 0;
+            }
+        }
     }
 
-    private void ToggleReveal(Guid id) { if (!_revealed.Remove(id)) _revealed.Add(id); }
+    // ─── Index presentation ──────────────────────────────────────────────
+
+    private readonly Dictionary<Guid, int> _lines = new();
+
+    private ViewMode Mode => ViewPrefs.Get(ViewScope.Notes);
+    private void SetMode(ViewMode mode) => ViewPrefs.Set(ViewScope.Notes, mode);
+
+    private static string Initial(string title)
+    {
+        foreach (var ch in title)
+            if (char.IsLetterOrDigit(ch)) return char.ToUpperInvariant(ch).ToString();
+        return "?";
+    }
+
+    /// <summary>Same stable five-tint scheme the passwords index uses — see VaultPage.AvatarClass.</summary>
+    private static string AvatarClass(string title)
+    {
+        var h = 17;
+        unchecked
+        {
+            foreach (var ch in title) h = h * 31 + char.ToUpperInvariant(ch);
+        }
+        return $"c{(h & 0x7fffffff) % 5}";
+    }
+
+    private string SummaryFor(SecureNote n) =>
+        L.Format("notes.summary", _lines.GetValueOrDefault(n.Id), RelativeTime.Ago(L, n.LastUpdateTime));
+
+    private string MaskedLines(SecureNote n)
+    {
+        var count = Math.Clamp(_lines.GetValueOrDefault(n.Id), 1, 12);
+        return string.Join("\n", Enumerable.Repeat("••••••••••••", count));
+    }
+
+    // ─── Detail sheet ────────────────────────────────────────────────────
+
+    private SecureNote? _detail;
+    private bool _detailRevealed;
+
+    private void OpenDetail(SecureNote n)
+    {
+        _detail = n;
+        _detailRevealed = false;
+    }
+
+    private void CloseDetail()
+    {
+        _detail = null;
+        // Never leave a note revealed for the next sheet that opens.
+        _detailRevealed = false;
+    }
+
+    private void EditFromDetail(SecureNote n)
+    {
+        CloseDetail();
+        EditNote(n);
+    }
+
+    private async Task DeleteFromDetail(Guid id)
+    {
+        CloseDetail();
+        await DeleteNote(id);
+    }
+
+    private async Task CopyContent(SecureNote n)
+    {
+        await SecureClipboard.CopySensitiveAsync(AppState.Service!.DecryptField(n.Content));
+        Toast.Success(L["toast.copied"]);
+    }
 
     private void OpenAddModal()
     {
         _formTitle = _formContent = _formError = string.Empty;
         _formTags = new List<string>();
+        _formCritical = false;
         _formSnapshot = CurrentFormSnapshot();
         _showAdd = true;
     }
@@ -148,6 +314,7 @@ else
         _formTitle = note.Title;
         _formContent = AppState.Service!.DecryptField(note.Content);
         _formTags = new List<string>(note.Tags);
+        _formCritical = note.IsCritical;
         _formError = string.Empty;
         _formSnapshot = CurrentFormSnapshot();
     }
@@ -177,16 +344,22 @@ else
         {
             if (_editNote is not null)
             {
+                // The content is re-encrypted here too. It used not to be: the form pre-filled
+                // the textarea with the decrypted note and then threw away whatever the user
+                // typed, so editing the body of a note silently did nothing.
+                var content = AppState.Service!.EncryptValue(_formContent);
                 await AppState.Service!.UpdateEntryAsync(_editNote.Id, e =>
                 {
                     var n = (SecureNote)e;
                     n.Title = _formTitle;
                     n.Tags = tags;
+                    n.Content = content;
+                    n.IsCritical = _formCritical;
                 });
             }
             else
             {
-                var note = new SecureNote { Title = _formTitle, Tags = tags };
+                var note = new SecureNote { Title = _formTitle, Tags = tags, IsCritical = _formCritical };
                 await AppState.Service!.AddSecureNoteAsync(note, _formContent);
             }
 
@@ -207,5 +380,6 @@ else
         _editNote = null;
         _formTitle = _formContent = _formError = string.Empty;
         _formTags = new List<string>();
+        _formCritical = false;
     }
 }

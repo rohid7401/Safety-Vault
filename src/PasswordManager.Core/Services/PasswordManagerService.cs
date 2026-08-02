@@ -145,6 +145,28 @@ namespace PasswordManager.Core.Services
             await AddEntryAsync(card);
         }
 
+        /// <summary>
+        /// Rewrites a card in place, re-encrypting the number and CVV. Editing used to be
+        /// impossible: the only way to correct a typo in a card number was to delete the entry
+        /// and add it again, losing its history. Takes the plaintext because the caller has
+        /// already decrypted it for the form.
+        /// </summary>
+        public async Task UpdateCardEntryAsync(
+            Guid id, string cardholderName, int expiryMonth, int expiryYear,
+            string plainCardNumber, string plainCvv)
+        {
+            ThrowIfDisposed();
+            await UpdateEntryAsync(id, e =>
+            {
+                if (e is not CardEntry card) return;
+                card.CardholderName = cardholderName;
+                card.ExpiryMonth = expiryMonth;
+                card.ExpiryYear = expiryYear;
+                card.CardNumber = EncryptField(plainCardNumber);
+                card.Cvv = EncryptField(plainCvv);
+            });
+        }
+
         private async Task AddEntryAsync(VaultEntry entry)
         {
             entry.CreationTime = DateTime.UtcNow;
