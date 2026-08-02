@@ -11,10 +11,9 @@
 
 @if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
 
-<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px;">
-    <div style="flex:1;">
-        <p style="margin:0; font-size:13px; color:var(--n-400);">@L.Format("vault.count", _entries.Count)</p>
-    </div>
+<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px;">
+    <p style="margin:0; flex:1; min-width:0; font-size:13px; color:var(--n-400);">@L.Format("vault.count", _entries.Count)</p>
+    <ViewToggle Mode="Mode" ModeChanged="SetMode" />
     <button class="btn btn-primary" style="flex:none;" @onclick="OpenAddModal">
         <Icon Name="plus" Size="16" StrokeWidth="2.2" />@L["common.add"]
     </button>
@@ -158,10 +157,8 @@ else
                    maxlength="@FieldLimits.Site" />
         </div>
 
-        <label class="form-check" style="margin-bottom:0;">
-            <span>@L["vault.grouped"]</span>
-            <input type="checkbox" @bind="_draftGrouped" />
-        </label>
+        <Toggle Label="@L["vault.grouped"]" Hint="@L["vault.grouped.hint"]"
+                Value="_draftGrouped" ValueChanged="@(v => _draftGrouped = v)" />
 
         @foreach (var cred in _draft)
         {
@@ -233,10 +230,8 @@ else
                     @if (f.Type is CredentialFieldType.Password or CredentialFieldType.Pin)
                     {
                         <div class="draft-rot">
-                            <label class="form-check" style="margin-bottom:0;">
-                                <span>@L["vault.rotate.enable"]</span>
-                                <input type="checkbox" @bind="f.Rotate" />
-                            </label>
+                            <Toggle Label="@L["vault.rotate.enable"]"
+                                    Value="f.Rotate" ValueChanged="@(v => f.Rotate = v)" />
                             @if (f.Rotate)
                             {
                                 <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">

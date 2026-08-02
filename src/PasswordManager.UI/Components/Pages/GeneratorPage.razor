@@ -64,22 +64,21 @@
                @bind:after="OnPrefsChanged" />
     </div>
 
-    <label class="form-check" style="margin-bottom:0;">
-        <span>@L["gen.uppercase"]</span>
-        <input type="checkbox" @bind="Prefs.Options.IncludeUppercase" @bind:after="OnPrefsChanged" />
-    </label>
-    <label class="form-check" style="margin-bottom:0;">
-        <span>@L["gen.lowercase"]</span>
-        <input type="checkbox" @bind="Prefs.Options.IncludeLowercase" @bind:after="OnPrefsChanged" />
-    </label>
-    <label class="form-check" style="margin-bottom:0;">
-        <span>@L["gen.digits"]</span>
-        <input type="checkbox" @bind="Prefs.Options.IncludeDigits" @bind:after="OnPrefsChanged" />
-    </label>
-    <label class="form-check" style="margin-bottom:0;">
-        <span>@L["gen.special"]</span>
-        <input type="checkbox" @bind="Prefs.Options.IncludeSpecial" @bind:after="OnPrefsChanged" />
-    </label>
+    @* The hint is a sample of the alphabet each switch adds, so the effect of turning one on is
+       visible without generating first. *@
+    <Toggle Label="@L["gen.uppercase"]" Hint="A B C D E"
+            Value="Prefs.Options.IncludeUppercase"
+            ValueChanged="@(v => SetCharSet(o => o.IncludeUppercase = v))" />
+    <Toggle Label="@L["gen.lowercase"]" Hint="a b c d e"
+            Value="Prefs.Options.IncludeLowercase"
+            ValueChanged="@(v => SetCharSet(o => o.IncludeLowercase = v))" />
+    <Toggle Label="@L["gen.digits"]" Hint="0 1 2 3 4"
+            Value="Prefs.Options.IncludeDigits"
+            ValueChanged="@(v => SetCharSet(o => o.IncludeDigits = v))" />
+    @* Passed as a C# string: an "@" inside a component attribute would be parsed as markup. *@
+    <Toggle Label="@L["gen.special"]" Hint="@("! @ # $ %")"
+            Value="Prefs.Options.IncludeSpecial"
+            ValueChanged="@(v => SetCharSet(o => o.IncludeSpecial = v))" />
 
     <div class="field" style="margin-bottom:0;">
         <label style="display:flex; align-items:center; gap:8px;">
@@ -162,6 +161,17 @@
     {
         Prefs.Notify();
         Refresh();
+    }
+
+    /// <summary>
+    /// The toggles bind to properties of a shared options object, which a lambda cannot assign
+    /// to directly through <c>ValueChanged</c>; the setter is passed in instead so every switch
+    /// still runs the same validate-and-regenerate path the old checkboxes did.
+    /// </summary>
+    private void SetCharSet(Action<PasswordGeneratorOptions> apply)
+    {
+        apply(Prefs.Options);
+        OnPrefsChanged();
     }
 
     /// <summary>Re-validate the options; regenerate only when there are no conflicts.</summary>

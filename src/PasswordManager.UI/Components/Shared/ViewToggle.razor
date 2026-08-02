@@ -1,0 +1,28 @@
+@* Switches a screen between its list and grid layouts. Stateless on purpose: the page owns the
+   value and persists it through ViewPreferences, so the same control serves every scope. *@
+@inject Loc L
+
+<div class="view-toggle">
+    <button class="view-opt @(Mode == ViewMode.List ? "active" : "")" type="button"
+            aria-label="@L["view.list"]" aria-pressed="@(Mode == ViewMode.List)"
+            @onclick="() => Select(ViewMode.List)">
+        <Icon Name="list" Size="16" StrokeWidth="1.8" />
+    </button>
+    <button class="view-opt @(Mode == ViewMode.Grid ? "active" : "")" type="button"
+            aria-label="@L["view.grid"]" aria-pressed="@(Mode == ViewMode.Grid)"
+            @onclick="() => Select(ViewMode.Grid)">
+        <Icon Name="grid" Size="16" StrokeWidth="1.8" />
+    </button>
+</div>
+
+@code {
+    [Parameter] public ViewMode Mode { get; set; }
+    [Parameter] public EventCallback<ViewMode> ModeChanged { get; set; }
+
+    private async Task Select(ViewMode mode)
+    {
+        if (mode == Mode) return;
+        Mode = mode;
+        await ModeChanged.InvokeAsync(mode);
+    }
+}

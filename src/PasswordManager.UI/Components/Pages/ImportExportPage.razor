@@ -113,15 +113,20 @@
     @if (_target != ExportTarget.NativeBackup)
     {
         <div class="field" style="margin-bottom:0;">
-            <label>@L["io.exportFields"]</label>
+            <div class="export-fields-head">
+                <label style="margin-bottom:0;">@L["io.exportFields"]</label>
+                @* Derived from the selection, never written down: the count and the total both
+                   change with the chosen target. *@
+                <span class="export-fields-count">
+                    @L.Format("io.columnsCount", _selected.Count, ExportPresets.SelectableFields(_target).Count)
+                </span>
+            </div>
             <div class="export-fields">
                 @foreach (var field in ExportPresets.SelectableFields(_target))
                 {
-                    <label class="form-check" style="margin-bottom:0;">
-                        <span>@L[FieldLabelKey(field)]</span>
-                        <input type="checkbox" checked="@_selected.Contains(field)"
-                               @onchange="e => ToggleField(field, e)" />
-                    </label>
+                    <Toggle Label="@L[FieldLabelKey(field)]"
+                            Value="_selected.Contains(field)"
+                            ValueChanged="@(v => SetField(field, v))" />
                 }
             </div>
             @if (_selected.Count == 0)
@@ -133,10 +138,11 @@
 
     <div class="field" style="margin-bottom:0;">
         <label>@L["io.protection"]</label>
-        <select class="input" @bind="_exportMode">
-            <option value="encrypted">@L["io.export.encrypted"]</option>
-            <option value="plaintext">@L["io.export.plaintext"]</option>
-        </select>
+        @* A two-option dropdown for what is really one yes/no decision. As a switch the
+           dangerous state is the visibly-off one, and the warning below reads as its consequence. *@
+        <Toggle Label="@L["io.encryptToggle"]" Hint="@L["io.encryptToggle.hint"]"
+                Value="@(_exportMode == "encrypted")"
+                ValueChanged="@(v => _exportMode = v ? "encrypted" : "plaintext")" />
     </div>
 
     @if (_exportMode == "plaintext")
@@ -158,11 +164,20 @@
 </div>
 
 <style>
+    /* Stacked, not two columns: a toggle row is a 44px touch target and needs the full width
+       for its label, so two per row would crowd both. */
     .export-fields {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 2px 12px;
+        display: flex;
+        flex-direction: column;
     }
+    .export-fields-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 5px;
+    }
+    .export-fields-count { font-size: 11.5px; color: var(--n-500); flex: none; }
 
     @@media (max-width: 460px) {
         .export-fields { grid-template-columns: 1fr; }
@@ -218,9 +233,9 @@
     private void SelectAllFields() =>
         _selected = ExportPresets.SelectableFields(_target).ToHashSet();
 
-    private void ToggleField(ExportField field, ChangeEventArgs e)
+    private void SetField(ExportField field, bool selected)
     {
-        if (e.Value is true) _selected.Add(field);
+        if (selected) _selected.Add(field);
         else _selected.Remove(field);
     }
 

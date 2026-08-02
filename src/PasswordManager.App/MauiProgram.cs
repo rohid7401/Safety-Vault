@@ -38,6 +38,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<ShellBackNavigation>();
         builder.Services.AddSingleton<ToastService>();
         builder.Services.AddSingleton<GeneratorPreferences>();
+        builder.Services.AddSingleton<IViewPreferenceStore, MauiViewPreferenceStore>();
+        builder.Services.AddSingleton<ViewPreferences>();
         builder.Services.AddHttpClient<KeyServerService>();
 
         // Localization

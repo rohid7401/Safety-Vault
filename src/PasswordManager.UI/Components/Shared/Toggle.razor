@@ -1,0 +1,33 @@
+@* On/off switch replacing the old checkboxes. The whole row is the target, not just the switch,
+   so it clears the 44px minimum a thumb needs — a bare checkbox never did. *@
+
+<label class="toggle-row @(Disabled ? "disabled" : "")">
+    <span class="toggle-text">
+        <span class="toggle-label">@Label</span>
+        @if (!string.IsNullOrEmpty(Hint))
+        {
+            <span class="toggle-hint @(Value ? "" : "off")">@Hint</span>
+        }
+    </span>
+
+    @* A real checkbox underneath keeps keyboard focus, the space bar and screen readers working;
+       the div is only its skin. *@
+    <input type="checkbox" class="toggle-input" checked="@Value" disabled="@Disabled"
+           @onchange="OnChanged" />
+    <span class="toggle @(Value ? "on" : "")" aria-hidden="true"><span class="knob"></span></span>
+</label>
+
+@code {
+    [Parameter] public bool Value { get; set; }
+    [Parameter] public EventCallback<bool> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private async Task OnChanged(ChangeEventArgs e)
+    {
+        if (Disabled) return;
+        Value = e.Value is bool b && b;
+        await ValueChanged.InvokeAsync(Value);
+    }
+}

@@ -135,6 +135,10 @@ else
             new NavItem("nav.passwords", "vault", "lock"),
             new NavItem("nav.notes", "vault/notes", "note"),
             new NavItem("nav.cards", "vault/cards", "card"),
+            // PGP closes the vault group rather than holding one of its own. Kept in step with
+            // Dashboard's own array — if these two disagree the drawer and the dashboard
+            // describe the app differently.
+            new NavItem("nav.pgp", "pgp", "key"),
         ]),
         new("nav.group.tools",
         [
@@ -142,10 +146,6 @@ else
             new NavItem("nav.audit", "audit", "shield"),
             new NavItem("nav.importExport", "import-export", "swap"),
             new NavItem("nav.data", "data", "trash"),
-        ]),
-        new("nav.group.keys",
-        [
-            new NavItem("nav.pgp", "pgp", "key"),
         ]),
         new("nav.group.learn",
         [

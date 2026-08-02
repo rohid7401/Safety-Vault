@@ -40,6 +40,8 @@ public static class Icons
         ["trash"] = """<path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 13h10l1-13"/>""",
         ["edit"] = """<path d="M4 20l4-1L20 7l-3-3L5 16z"/><path d="M14 6l3 3"/>""",
         ["user"] = """<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/>""",
+        ["list"] = """<path d="M4 6h1M4 12h1M4 18h1"/><path d="M9 6h11M9 12h11M9 18h11"/>""",
+        ["grid"] = """<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>""",
         ["users"] = """<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.5 3-5.5 6.5-5.5s6.5 2 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18.4 14.9c1.9.8 3.1 2.4 3.1 5.1"/>""",
         ["globe"] = """<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/>""",
         ["mail"] = """<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6l9-6"/>""",
