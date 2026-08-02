@@ -292,7 +292,7 @@
   "gen.excludeWhy.body": "Útil para saltar caracteres parecidos como 0/O, 1/l/I en fuentes que los confunden, o caracteres que algunos sitios rechazan.",
   "gen.includeWord": "Incluir una palabra",
   "gen.includeWord.hint": "Se inserta sin cambios en cada contraseña. Si entra en conflicto con los demás ajustes, se indica y se ofrece una corrección.",
-  "gen.includeWord.placeholder": "Ejemplo: yuki",
+  "gen.includeWord.placeholder": "Ejemplo: Yuki",
   "gen.error": "Generador",
   "gen.conflict.title": "Ajustes en conflicto",
   "gen.conflict.fix": "Solucionar automáticamente",
@@ -569,5 +569,7 @@
   "home.stage.finishing": "Casi listo…",
   "home.stageHint": "Toma unos segundos y ocurre una sola vez.",
   "error.vaultAuthFailed": "No se pudo autenticar la bóveda — puede haber sido modificada o reemplazada, o la frase es incorrecta.",
-  "error.keyServerUnreachable": "No se pudo conectar con keys.openpgp.org. Revisa tu conexión e inténtalo de nuevo."
+  "error.keyServerUnreachable": "No se pudo conectar con keys.openpgp.org. Revisa tu conexión e inténtalo de nuevo.",
+  "common.menu": "Menú",
+  "common.back": "Atrás"
 }

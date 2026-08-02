@@ -103,7 +103,10 @@
         </label>
         <input type="text" class="input" @bind="Prefs.Options.ExcludeChars"
                @bind:event="oninput" @bind:after="OnPrefsChanged"
-               placeholder="0Ol1I" />
+               @* Placeholder only, never a default: these characters are not in the generator's
+                  alphabet, so excluding them would do nothing anyway. The tooltip beside the
+                  label carries the real guidance (0/O, 1/l/I and the like). *@
+               placeholder="¥𝜇ℳⓂ¡" />
     </div>
 </div>
 

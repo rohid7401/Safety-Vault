@@ -843,6 +843,10 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
     line-height: 1.5;
     margin-bottom: 14px;
     border: none;
+    /* Alerts routinely carry a file path, which has no spaces to wrap at and so ran off the
+       side of the card. Break anywhere rather than let the text escape its frame. */
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 .alert-info { background: var(--a-900); color: var(--a-200); }
 .alert-success { background: color-mix(in srgb, var(--success) 12%, transparent); color: #86efac; }

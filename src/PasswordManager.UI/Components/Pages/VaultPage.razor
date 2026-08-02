@@ -841,9 +841,12 @@ else
         _fSite = _fError = string.Empty;
         _fTags = new List<string>();
         _draftGrouped = false;
+        // One field only. Opening straight into e-mail *and* password made the sheet look like a
+        // long form before the user had typed anything, and hid the fact that the entry is built
+        // field by field — people never found "add field" because nothing suggested it was needed.
         _draft = new List<CredDraft>
         {
-            new() { Fields = { new FieldDraft { Type = CredentialFieldType.Email }, new FieldDraft { Type = CredentialFieldType.Password } } },
+            new() { Fields = { new FieldDraft { Type = CredentialFieldType.Email } } },
         };
         _fSnapshot = CurrentSnapshot();
         _showAdd = true;
@@ -878,9 +881,10 @@ else
 
     private void AddField(CredDraft c) => c.Fields.Add(new FieldDraft { Type = CredentialFieldType.Text });
     private void RemoveField(CredDraft c, FieldDraft f) => c.Fields.Remove(f);
+    // Same single-field start as a new entry, so an added account looks like the first one.
     private void AddCredential() => _draft.Add(new CredDraft
     {
-        Fields = { new FieldDraft { Type = CredentialFieldType.Email }, new FieldDraft { Type = CredentialFieldType.Password } },
+        Fields = { new FieldDraft { Type = CredentialFieldType.Email } },
     });
     private void RemoveCredential(CredDraft c) { if (_draft.Count > 1) _draft.Remove(c); }
 

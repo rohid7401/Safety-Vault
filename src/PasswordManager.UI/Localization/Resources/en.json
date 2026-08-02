@@ -292,7 +292,7 @@
   "gen.excludeWhy.body": "Useful to skip lookalikes like 0/O, 1/l/I on fonts that confuse them, or characters that some websites reject.",
   "gen.includeWord": "Include a word",
   "gen.includeWord.hint": "Inserted unchanged into every password. If it conflicts with the other settings, the conflict is shown along with a fix.",
-  "gen.includeWord.placeholder": "Example: yuki",
+  "gen.includeWord.placeholder": "Example: Yuki",
   "gen.error": "Generator",
   "gen.conflict.title": "Conflicting settings",
   "gen.conflict.fix": "Fix automatically",
@@ -569,5 +569,7 @@
   "home.stage.finishing": "Almost done…",
   "home.stageHint": "Takes a few seconds and happens only once.",
   "error.vaultAuthFailed": "The vault could not be authenticated — it may have been modified or replaced, or the passphrase is wrong.",
-  "error.keyServerUnreachable": "Could not reach keys.openpgp.org. Check your connection and try again."
+  "error.keyServerUnreachable": "Could not reach keys.openpgp.org. Check your connection and try again.",
+  "common.menu": "Menu",
+  "common.back": "Back"
 }

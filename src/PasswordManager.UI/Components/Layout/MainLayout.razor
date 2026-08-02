@@ -32,10 +32,16 @@ else
     <OnboardingTour />
 
     <div class="app-shell">
+        @* The menu button sits on the same edge the drawer slides in from. It used to be on the
+           opposite side, so tapping right made a panel appear from the left. *@
         <header class="appbar">
+            <button class="appbar-btn appbar-menu-btn" aria-label="@L["common.menu"]" @onclick="OpenDrawer">
+                <Icon Name="menu" Size="24" />
+            </button>
+            <span class="appbar-title @(ShowBack ? "" : "brand")">@Title</span>
             @if (ShowBack)
             {
-                <button class="appbar-btn" aria-label="Back" @onclick="GoHome">
+                <button class="appbar-btn" aria-label="@L["common.back"]" @onclick="GoHome">
                     <Icon Name="arrow-left" Size="24" />
                 </button>
             }
@@ -45,10 +51,6 @@ else
                     <Icon Name="lock" Size="22" />
                 </div>
             }
-            <span class="appbar-title @(ShowBack ? "" : "brand")">@Title</span>
-            <button class="appbar-btn appbar-menu-btn" aria-label="Menu" @onclick="OpenDrawer">
-                <Icon Name="menu" Size="24" />
-            </button>
         </header>
 
         <div class="app-body">
