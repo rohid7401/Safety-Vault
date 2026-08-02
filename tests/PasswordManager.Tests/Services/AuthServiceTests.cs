@@ -114,6 +114,104 @@ namespace PasswordManager.Tests.Services
             Assert.Equal(AppErrorCode.UsernameTaken, ex.Code);
         }
 
+        // ─── Whitespace in identifiers and passphrase ──────────────────────
+
+        [Theory]
+        [InlineData("juan perez")]   // inside
+        [InlineData(" juan")]        // leading
+        [InlineData("juan ")]        // trailing — invisible, the dangerous one
+        [InlineData("juan\tperez")]
+        public async Task RegisterAsync_UsernameWithWhitespace_Rejected(string username)
+        {
+            var auth = CreateAuthService();
+
+            var ex = await Assert.ThrowsAsync<LocalizedArgumentException>(
+                () => auth.RegisterAsync(username, "a@example.com", Passphrase));
+
+            Assert.Equal(AppErrorCode.UsernameHasSpaces, ex.Code);
+        }
+
+        [Theory]
+        [InlineData("a b@example.com")]
+        [InlineData("a@example.com ")]
+        public async Task RegisterAsync_EmailWithWhitespace_Rejected(string email)
+        {
+            var auth = CreateAuthService();
+
+            var ex = await Assert.ThrowsAsync<LocalizedArgumentException>(
+                () => auth.RegisterAsync("alice", email, Passphrase));
+
+            Assert.Equal(AppErrorCode.EmailHasSpaces, ex.Code);
+        }
+
+        [Theory]
+        [InlineData(" correct-horse-battery")]
+        [InlineData("correct-horse-battery ")]
+        [InlineData("correct-horse-battery\n")]
+        public async Task RegisterAsync_PassphrasePaddedWithWhitespace_Rejected(string passphrase)
+        {
+            // The failure this prevents: the padding is folded into the key, so the vault only
+            // ever opens again for someone who reproduces a character they cannot see.
+            var auth = CreateAuthService();
+
+            var ex = await Assert.ThrowsAsync<LocalizedArgumentException>(
+                () => auth.RegisterAsync("alice", "a@example.com", passphrase));
+
+            Assert.Equal(AppErrorCode.PassphrasePadded, ex.Code);
+        }
+
+        [Fact]
+        public async Task RegisterAsync_PassphraseWithSpacesBetweenWords_IsAccepted()
+        {
+            // Several words is exactly what the app tells people to use, so this must keep working.
+            var auth = CreateAuthService();
+
+            var account = await auth.RegisterAsync("alice", "a@example.com", "correct horse battery staple");
+
+            Assert.Equal("alice", account.Username);
+            Assert.NotNull(await auth.LoginAsync("alice", "correct horse battery staple"));
+        }
+
+        [Theory]
+        [InlineData("juana")]
+        [InlineData("juana@")]
+        [InlineData("@example.com")]
+        [InlineData("juana@example")]
+        public async Task RegisterAsync_MalformedEmail_Rejected(string email)
+        {
+            var auth = CreateAuthService();
+
+            var ex = await Assert.ThrowsAsync<LocalizedArgumentException>(
+                () => auth.RegisterAsync("alice", email, Passphrase));
+
+            Assert.Equal(AppErrorCode.EmailInvalid, ex.Code);
+        }
+
+        [Theory]
+        [InlineData(".")]
+        [InlineData("..")]
+        public async Task RegisterAsync_DottedUsername_Rejected(string username)
+        {
+            // These survive filename sanitising and would point at the vaults folder or its parent
+            // instead of a folder of their own.
+            var auth = CreateAuthService();
+
+            var ex = await Assert.ThrowsAsync<LocalizedArgumentException>(
+                () => auth.RegisterAsync(username, "a@example.com", Passphrase));
+
+            Assert.Equal(AppErrorCode.UsernameInvalid, ex.Code);
+        }
+
+        [Fact]
+        public async Task LoginAsync_IdentityTypedWithSurroundingSpaces_StillFindsTheAccount()
+        {
+            var auth = CreateAuthService();
+            await auth.RegisterAsync("alice", "alice@example.com", Passphrase);
+
+            Assert.Equal("alice", (await auth.LoginAsync("  alice  ", Passphrase)).Username);
+            Assert.Equal("alice", (await auth.LoginAsync(" alice@example.com ", Passphrase)).Username);
+        }
+
         // ─── Delete account ────────────────────────────────────────────────
 
         [Fact]

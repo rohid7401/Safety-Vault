@@ -502,7 +502,8 @@ else
         _searchEmailMismatch = false;
         _searchImportLabel = string.Empty;
 
-        if (string.IsNullOrWhiteSpace(_searchEmail) || !_searchEmail.Contains('@'))
+        _searchEmail = _searchEmail.Trim();
+        if (!EmailAddress.IsValid(_searchEmail))
         { Toast.Warning(L["keys.err.emailInvalid"]); return; }
 
         _searching = true;

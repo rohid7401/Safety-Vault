@@ -571,5 +571,12 @@
   "error.vaultAuthFailed": "No se pudo autenticar la bóveda — puede haber sido modificada o reemplazada, o la frase es incorrecta.",
   "error.keyServerUnreachable": "No se pudo conectar con keys.openpgp.org. Revisa tu conexión e inténtalo de nuevo.",
   "common.menu": "Menú",
-  "common.back": "Atrás"
+  "common.back": "Atrás",
+  "gen.excludeChars.placeholder": "¥uMm¡",
+  "error.usernameHasSpaces": "El usuario no puede llevar espacios.",
+  "error.emailHasSpaces": "El correo no puede llevar espacios.",
+  "error.passphrasePadded": "La frase no puede empezar ni terminar con un espacio. Entre palabras sí, y es recomendable.",
+  "error.usernameInvalid": "Ese usuario no es válido. Usa letras o números.",
+  "io.err.nothingToExport": "No hay nada que exportar todavía. Añade al menos una entrada.",
+  "error.emailInvalid": "Ese correo no parece válido. Revisa que tenga la forma nombre@dominio.com"
 }

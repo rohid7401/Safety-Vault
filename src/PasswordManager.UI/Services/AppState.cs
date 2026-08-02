@@ -25,12 +25,25 @@ namespace PasswordManager.UI.Services
             NotifyStateChanged();
         }
 
-        public void Lock()
+        public void Lock() => Lock(notify: true);
+
+        /// <summary>
+        /// Ends the session.
+        ///
+        /// <para>Pass <paramref name="notify"/> as false when the caller navigates away in the
+        /// same breath. Announcing the change first re-renders whichever page is still on screen
+        /// — now in a locked state it was never written for — and every page guards itself with
+        /// <c>@if (AppState.Service is null) { Nav.NavigateTo("/"); return; }</c>, so the redirect
+        /// fires from inside the render pass. Navigating first is not an option either: the page
+        /// being opened still sees an unlocked vault and bounces to the dashboard. Staying quiet
+        /// and letting the navigation drive the next render avoids both.</para>
+        /// </summary>
+        public void Lock(bool notify)
         {
             _service?.Dispose();
             _service = null;
             _account = null;
-            NotifyStateChanged();
+            if (notify) NotifyStateChanged();
         }
 
         private void NotifyStateChanged() => OnStateChanged?.Invoke();

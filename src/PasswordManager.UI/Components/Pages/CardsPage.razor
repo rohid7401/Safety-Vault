@@ -193,14 +193,29 @@ else
                    inputmode="numeric" maxlength="@FieldLimits.CardNumber" />
         </div>
 
+        @* Pickers rather than number boxes: a month is always one of twelve, and typing let
+           people enter 13 or a year in the past without noticing. Both start at today, so the
+           suggested card is one expiring this month — the earliest date that is not already
+           expired. Older dates stay selectable: an expired card is still worth recording. *@
         <div class="grid-2">
             <div class="field">
                 <label>@L["cards.field.expMonth"]</label>
-                <input type="number" class="input" @bind="_formMonth" min="1" max="12" />
+                <select class="input" @bind="_formMonth">
+                    @for (var m = 1; m <= 12; m++)
+                    {
+                        var month = m;
+                        <option value="@month">@month.ToString("D2")</option>
+                    }
+                </select>
             </div>
             <div class="field">
                 <label>@L["cards.field.expYear"]</label>
-                <input type="number" class="input" @bind="_formYear" min="2024" max="2040" />
+                <select class="input" @bind="_formYear">
+                    @foreach (var year in SelectableYears)
+                    {
+                        <option value="@year">@year</option>
+                    }
+                </select>
             </div>
         </div>
 
@@ -231,9 +246,25 @@ else
     private string _formName = string.Empty;
     private string _formNumber = string.Empty;
     private string _formCvv = string.Empty;
-    private int _formMonth = 1;
-    private int _formYear = 2025;
+    private int _formMonth = DateTime.Today.Month;
+    private int _formYear = DateTime.Today.Year;
     private string _formError = string.Empty;
+
+    /// <summary>
+    /// A window around today rather than hard-coded bounds, which would have silently gone stale.
+    /// Reaches back far enough to record a card that already expired and forward past any real
+    /// issue date. Widened if an edited card falls outside it, so opening an old entry never
+    /// rewrites its year just by rendering the form.
+    /// </summary>
+    private IEnumerable<int> SelectableYears
+    {
+        get
+        {
+            var first = Math.Min(DateTime.Today.Year - 10, _formYear);
+            var last = Math.Max(DateTime.Today.Year + 20, _formYear);
+            for (var y = first; y <= last; y++) yield return y;
+        }
+    }
 
     private string _formSnapshot = string.Empty;
     private string CurrentFormSnapshot() =>
@@ -243,8 +274,8 @@ else
     private void OpenAddModal()
     {
         _formName = _formNumber = _formCvv = _formError = string.Empty;
-        _formMonth = 1;
-        _formYear = 2025;
+        _formMonth = DateTime.Today.Month;
+        _formYear = DateTime.Today.Year;
         _formSnapshot = CurrentFormSnapshot();
         _showAdd = true;
     }
@@ -254,8 +285,8 @@ else
         _showAdd = false;
         _editCard = null;
         _formName = _formNumber = _formCvv = _formError = string.Empty;
-        _formMonth = 1;
-        _formYear = 2025;
+        _formMonth = DateTime.Today.Month;
+        _formYear = DateTime.Today.Year;
     }
 
     protected override async Task OnInitializedAsync()

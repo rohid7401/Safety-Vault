@@ -276,6 +276,16 @@
                 ? await BuildBackupAsync()
                 : await BuildCsvAsync();
 
+            // Stop before writing anything. An empty export produced a real, saved, encrypted
+            // file reporting "0 entries" — which looks like a backup, and would be trusted as one
+            // until the day someone tried to restore from it.
+            if (count == 0)
+            {
+                _exportResult = L["io.err.nothingToExport"];
+                _exportError = true;
+                return;
+            }
+
             var plaintext = System.Text.Encoding.UTF8.GetBytes(content);
             var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             string? saved;

@@ -270,7 +270,9 @@ else
     private void LockVault()
     {
         _drawerOpen = false;
-        AppState.Lock();
+        // Quietly, then navigate: see AppState.Lock(bool). Announcing the lock first repaints
+        // whatever page is open with no vault behind it, and its redirect guard runs mid-render.
+        AppState.Lock(notify: false);
         Nav.NavigateTo("/");
     }
 

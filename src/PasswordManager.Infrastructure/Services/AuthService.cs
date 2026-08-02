@@ -55,8 +55,33 @@ namespace PasswordManager.Infrastructure.Services
                 throw new LocalizedArgumentException(AppErrorCode.UsernameRequired);
             if (string.IsNullOrWhiteSpace(email))
                 throw new LocalizedArgumentException(AppErrorCode.EmailRequired);
+
+            // Identifiers must carry no whitespace at all. Both are used to look the account up
+            // at sign-in, and the username also names the vault's folder — a space anywhere in
+            // either produces an account that looks fine and cannot be signed into, with nothing
+            // to recover from because the vault is local and there is no reset.
+            if (username.Any(char.IsWhiteSpace))
+                throw new LocalizedArgumentException(AppErrorCode.UsernameHasSpaces);
+            if (email.Any(char.IsWhiteSpace))
+                throw new LocalizedArgumentException(AppErrorCode.EmailHasSpaces);
+            if (!EmailAddress.IsValid(email))
+                throw new LocalizedArgumentException(AppErrorCode.EmailInvalid);
+
+            // "." and ".." survive filename sanitising and would resolve to the vaults folder
+            // itself or its parent rather than a folder of their own.
+            if (username.Trim('.').Length == 0)
+                throw new LocalizedArgumentException(AppErrorCode.UsernameInvalid);
+
             if (string.IsNullOrWhiteSpace(passphrase) || passphrase.Length < MinPassphraseLength)
                 throw new LocalizedArgumentException(AppErrorCode.PassphraseTooShort, MinPassphraseLength);
+
+            // Spaces between words are the point of a passphrase; a space at either end is not.
+            // It is invisible, easy for a phone keyboard to add on its own, and it is folded into
+            // the key — so the account unlocks only if the same invisible character is reproduced
+            // exactly. Rejected at registration rather than trimmed, because silently changing
+            // someone's secret is worse than telling them.
+            if (passphrase != passphrase.Trim())
+                throw new LocalizedArgumentException(AppErrorCode.PassphrasePadded);
 
             await AccountsLock.WaitAsync();
             try
@@ -74,9 +99,10 @@ namespace PasswordManager.Infrastructure.Services
         {
             var all = await LoadAllAsync();
 
-            if (all.Any(a => string.Equals(a.Username, username, StringComparison.OrdinalIgnoreCase)))
+            // Trimmed on both sides so a new "juan" cannot slip past an older, padded "juan ".
+            if (all.Any(a => string.Equals(a.Username.Trim(), username.Trim(), StringComparison.OrdinalIgnoreCase)))
                 throw new LocalizedInvalidOperationException(AppErrorCode.UsernameTaken);
-            if (all.Any(a => string.Equals(a.Email, email, StringComparison.OrdinalIgnoreCase)))
+            if (all.Any(a => string.Equals(a.Email.Trim(), email.Trim(), StringComparison.OrdinalIgnoreCase)))
                 throw new LocalizedInvalidOperationException(AppErrorCode.EmailTaken);
 
             var vaultPath = _options.GetVaultPathFor(username);
@@ -183,7 +209,7 @@ namespace PasswordManager.Infrastructure.Services
             {
                 var all = await LoadAllAsync();
                 var account = all.FirstOrDefault(a =>
-                    string.Equals(a.Username, username, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(a.Username.Trim(), username.Trim(), StringComparison.OrdinalIgnoreCase));
 
                 // Same anti-enumeration-shaped check as LoginAsync: an unknown username and a
                 // wrong passphrase must fail identically.
@@ -215,9 +241,18 @@ namespace PasswordManager.Infrastructure.Services
 
         // ─── Internals ───────────────────────────────────────────────────────
 
-        private static bool Matches(UserAccount account, string identity) =>
-            string.Equals(account.Username, identity, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(account.Email, identity, StringComparison.OrdinalIgnoreCase);
+        /// <summary>
+        /// Both sides are trimmed. Registration now refuses whitespace, but an account created
+        /// before that could still hold a padded identifier — comparing trimmed lets its owner
+        /// sign in by typing the name they can actually see, and can never make a match that
+        /// used to work stop working.
+        /// </summary>
+        private static bool Matches(UserAccount account, string identity)
+        {
+            var wanted = identity.Trim();
+            return string.Equals(account.Username.Trim(), wanted, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(account.Email.Trim(), wanted, StringComparison.OrdinalIgnoreCase);
+        }
 
         private async Task<List<UserAccount>> LoadAllAsync()
         {

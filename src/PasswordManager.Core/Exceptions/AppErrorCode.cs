@@ -19,6 +19,33 @@ namespace PasswordManager.Core.Exceptions
         /// <summary>Takes the minimum length as an argument.</summary>
         PassphraseTooShort,
 
+        /// <summary>
+        /// The username carries a space. It is both the login identifier and the name of the
+        /// vault's folder, and a space that the user cannot see — a trailing one, or one a phone
+        /// keyboard inserted — leaves an account that can never be signed into again.
+        /// </summary>
+        UsernameHasSpaces,
+
+        /// <summary>The e-mail carries a space; it is also a login identifier.</summary>
+        EmailHasSpaces,
+
+        /// <summary>
+        /// The e-mail is not shaped like a deliverable address. It identifies the account at
+        /// sign-in and becomes the PGP key's user ID, which is what a key server indexes — a
+        /// malformed one leaves a key nobody can find.
+        /// </summary>
+        EmailInvalid,
+
+        /// <summary>
+        /// The passphrase begins or ends with a space. Spaces *inside* are encouraged — the app
+        /// asks for several words — but padding at either end is invisible and unrepeatable, and
+        /// there is no recovery path once it is baked into the key.
+        /// </summary>
+        PassphrasePadded,
+
+        /// <summary>The username is made only of dots, which names no usable folder.</summary>
+        UsernameInvalid,
+
         UsernameTaken,
         EmailTaken,
         VaultFolderExists,

@@ -101,19 +101,13 @@
                 <p style="margin:6px 0 0 0;">@L["gen.excludeWhy.body"]</p>
             </InfoTooltip>
         </label>
+        @* The placeholder comes from the catalogue like every other one in the app, rather than
+           sitting inline here. It is decorative only: those characters are not in the generator's
+           alphabet, so excluding them would change nothing — the tooltip beside the label carries
+           the real guidance (0/O, 1/l/I and the like). *@
         <input type="text" class="input" @bind="Prefs.Options.ExcludeChars"
                @bind:event="oninput" @bind:after="OnPrefsChanged"
-               @* Placeholder only, never a default: these characters are not in the generator's
-                  alphabet, so excluding them would do nothing anyway. The tooltip beside the
-                  label carries the real guidance (0/O, 1/l/I and the like).
-                  Uses μ (U+03BC, Greek small mu — one UTF-16 code unit) rather than the visually
-                  similar 𝜇 (U+1D707, mathematical italic mu). The latter needs a surrogate pair
-                  and is the only supplementary-plane character anywhere in this app; it lined up
-                  exactly with the generator page failing to render past this field on device. A
-                  plain Chromium WebView round-trips it fine via setAttribute, so the break is
-                  likely in .NET's render-batch encoding for Android/Mono rather than the WebView
-                  itself — not confirmed on-device, but not worth the risk for a decorative string. *@
-               placeholder="¥μℳⓂ¡" />
+               placeholder="@L["gen.excludeChars.placeholder"]" />
     </div>
 </div>
 

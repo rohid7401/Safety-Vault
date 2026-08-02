@@ -194,13 +194,13 @@
             return;
         }
 
-        // Success: the account and its vault are gone, so this component is about to be torn
-        // down by the navigation below. Nothing after AppState.Lock() may touch component state
-        // — a trailing StateHasChanged() on an already-navigated-away component is exactly what
-        // produced the "Something went wrong" Blazor error boundary testers hit here.
+        // Success: the account and its vault are gone. Clear the session without announcing it —
+        // a notification here re-renders this page with no vault behind it, and its own
+        // render-time redirect guard then runs mid-render. The navigation is what should drive
+        // the next render.
         _deletePassphrase = string.Empty;
         Toast.Success(L["data.deleteAccount.ok"]);
-        AppState.Lock();
+        AppState.Lock(notify: false);
         Nav.NavigateTo("/");
     }
 

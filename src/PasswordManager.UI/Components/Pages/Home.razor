@@ -222,6 +222,10 @@
         _error = string.Empty;
         _info = string.Empty;
 
+        // Trimmed here too, so a keyboard's stray trailing space does not read as a wrong account.
+        // The passphrase is deliberately left exactly as typed — see HandleRegister.
+        _loginIdentity = _loginIdentity.Trim();
+
         if (string.IsNullOrWhiteSpace(_loginIdentity))
         { _error = L["home.err.identityRequired"]; return; }
         if (string.IsNullOrWhiteSpace(_loginPassphrase))
@@ -252,12 +256,27 @@
         _error = string.Empty;
         _info = string.Empty;
 
+        // The identifiers are trimmed rather than rejected for surrounding space: a keyboard that
+        // adds one after autocomplete is not a mistake worth stopping someone over. Space *inside*
+        // them is refused below, since that cannot be silently repaired without changing what the
+        // person meant to type.
+        _regUsername = _regUsername.Trim();
+        _regEmail = _regEmail.Trim();
+
         if (string.IsNullOrWhiteSpace(_regUsername))
         { _error = L["home.err.usernameRequired"]; return; }
-        if (string.IsNullOrWhiteSpace(_regEmail) || !_regEmail.Contains('@'))
+        if (_regUsername.Any(char.IsWhiteSpace))
+        { _error = L["error.usernameHasSpaces"]; return; }
+        if (_regEmail.Any(char.IsWhiteSpace))
+        { _error = L["error.emailHasSpaces"]; return; }
+        if (!EmailAddress.IsValid(_regEmail))
         { _error = L["home.err.emailInvalid"]; return; }
         if (string.IsNullOrWhiteSpace(_regPassphrase) || _regPassphrase.Length < 8)
         { _error = L["home.err.passphraseShort"]; return; }
+        // Never trimmed: the passphrase is hashed exactly as typed, so quietly changing it here
+        // would produce a vault that only opens for a phrase the user never knowingly chose.
+        if (_regPassphrase != _regPassphrase.Trim())
+        { _error = L["error.passphrasePadded"]; return; }
         if (_regPassphrase != _regPassphraseConfirm)
         { _error = L["home.err.passphraseMismatch"]; return; }
 

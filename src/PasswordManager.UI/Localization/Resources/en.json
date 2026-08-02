@@ -571,5 +571,12 @@
   "error.vaultAuthFailed": "The vault could not be authenticated — it may have been modified or replaced, or the passphrase is wrong.",
   "error.keyServerUnreachable": "Could not reach keys.openpgp.org. Check your connection and try again.",
   "common.menu": "Menu",
-  "common.back": "Back"
+  "common.back": "Back",
+  "gen.excludeChars.placeholder": "¥uMm¡",
+  "error.usernameHasSpaces": "The username cannot contain spaces.",
+  "error.emailHasSpaces": "The email cannot contain spaces.",
+  "error.passphrasePadded": "The passphrase cannot begin or end with a space. Between words it can, and it is recommended.",
+  "error.usernameInvalid": "That username is not valid. Use letters or numbers.",
+  "io.err.nothingToExport": "There is nothing to export yet. Add at least one entry.",
+  "error.emailInvalid": "That email does not look valid. Check it has the form name@domain.com"
 }
