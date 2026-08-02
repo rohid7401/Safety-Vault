@@ -6,6 +6,7 @@
 @inject ToastService Toast
 @inject ITotpService TotpService
 @inject SecureClipboardService SecureClipboard
+@inject ViewPreferences ViewPrefs
 @inject Loc L
 @implements IDisposable
 
@@ -24,7 +25,18 @@
     <input type="text" placeholder="@L["vault.searchPlaceholder"]" @bind="_search" @bind:event="oninput" />
 </div>
 
-@{ var matches = Cards(); }
+@* Quick filters. "Por rotar" carries its own count so the user can see there is something to
+   do without opening it. *@
+<div class="filter-chips">
+    <button class="filter-chip @(_filter == Filter.All ? "active" : "")" type="button"
+            @onclick="() => _filter = Filter.All">@L["vault.filter.all"]</button>
+    <button class="filter-chip @(_filter == Filter.Due ? "active" : "")" type="button"
+            @onclick="() => _filter = Filter.Due">@L["vault.filter.due"] · @DueCount</button>
+    <button class="filter-chip @(_filter == Filter.Multi ? "active" : "")" type="button"
+            @onclick="() => _filter = Filter.Multi">@L["vault.filter.multi"]</button>
+</div>
+
+@{ var matches = Filtered(); }
 
 @if (matches.Count == 0)
 {
@@ -41,110 +53,176 @@ else
         <div class="alert alert-warning">@L.Format("vault.tooMany", RenderCap, matches.Count)</div>
     }
 
-    @foreach (var card in matches.Take(RenderCap))
+    @* The index is an index: one row per service, no accounts, no secrets, no dates. Anything
+       that has to be revealed lives in the detail sheet, so a shoulder-surfer scrolling past
+       this screen sees nothing worth reading. *@
+    @if (Mode == ViewMode.Grid)
     {
-        var worst = WorstStatus(card.Credentials);
-        <div class="card">
-            <div style="display:flex; align-items:center; gap:12px;">
-                <div class="entry-icon"><Icon Name="lock" Size="15" StrokeWidth="1.8" /></div>
-                <div style="flex:1; min-width:0;">
-                    <div class="card-title" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@card.Entry.Site</div>
-                    @if (card.Credentials.Count == 1 && !string.IsNullOrEmpty(card.Credentials[0].Label))
-                    {
-                        <div class="card-subtitle">@card.Credentials[0].Label</div>
-                    }
-                </div>
-                @if (worst == ExpiryStatus.Expired)
-                {
-                    <span class="badge-expiry danger"><Icon Name="alert" Size="12" /> @L["vault.badge.expired"]</span>
-                }
-                else if (worst == ExpiryStatus.DueSoon)
-                {
-                    <span class="badge-expiry warn"><Icon Name="clock" Size="12" /> @L["vault.badge.dueSoon"]</span>
-                }
-                <button class="btn-icon" type="button" aria-label="Edit" title="Edit" @onclick="() => EditEntry(card.Entry)">
-                    <Icon Name="edit" Size="16" StrokeWidth="1.8" />
-                </button>
-                <button class="btn-icon" type="button" aria-label="Delete" title="@L["common.moveToTrash"]"
-                        style="color:var(--danger);" @onclick="() => DeleteEntry(card.Entry.Id)">
-                    <Icon Name="trash" Size="16" StrokeWidth="1.8" />
-                </button>
-            </div>
-
-            @foreach (var cred in card.Credentials)
+        <div class="pw-grid">
+            @foreach (var e in matches.Take(RenderCap))
             {
-                <div class="cred @(card.Credentials.Count > 1 ? "cred-grouped" : "")">
-                    @if (card.Credentials.Count > 1 && !string.IsNullOrEmpty(cred.Label))
-                    {
-                        <div class="cred-label">@cred.Label</div>
-                    }
-
-                    @foreach (var f in cred.Fields.Where(f => !f.IsSecret && !string.IsNullOrEmpty(f.PlainValue)))
-                    {
-                        <div class="cred-identity"><Icon Name="@FieldIcon(f.Type)" Size="13" /> <span>@f.PlainValue</span></div>
-                    }
-
-                    @foreach (var f in cred.Fields.Where(f => f.IsSecret && f.Type != CredentialFieldType.TwoFactor))
-                    {
-                        var revealed = _revealed.Contains(f.Id);
-                        <div class="secret-bar">
-                            <span class="secret-label"><Icon Name="@FieldIcon(f.Type)" Size="13" />@if (FieldName(f) is { Length: > 0 } fn) { <span>@fn</span>}</span>
-                            <span class="secret-value" style="font-family:var(--font-mono);">
-                                @(revealed ? AppState.Service!.DecryptSecret(f) : "••••••••••")
-                            </span>
-                            <button class="btn-icon" type="button" aria-label="Reveal" @onclick="() => ToggleReveal(f.Id)">
-                                <Icon Name="@(revealed ? "eye-off" : "eye")" Size="16" StrokeWidth="1.8" />
-                            </button>
-                            <button class="btn-icon" type="button" aria-label="Copy" @onclick="() => CopySecret(f)">
-                                <Icon Name="copy" Size="16" StrokeWidth="1.8" />
-                            </button>
-                        </div>
-                        @if (f.Rotation is not null)
+                var st = WorstStatus(e.Credentials);
+                <button class="pw-tile" type="button" @onclick="() => OpenDetail(e)">
+                    <div class="pw-tile-top">
+                        <span class="pw-avatar @AvatarClass(e.Site)">@Initial(e.Site)</span>
+                        @* Grid says status with a dot, list says it with a worded pill — the tile
+                           has no room for a sentence and the dot is enough at a glance. *@
+                        <span class="pw-dot @StatusClass(st)" title="@StatusText(st)"></span>
+                    </div>
+                    <div class="pw-tile-name">@e.Site</div>
+                    <div class="pw-tile-chips">
+                        <span class="pw-chip">@L.Format("vault.chip.accounts", e.Credentials.Count)</span>
+                        @if (HasTwoFactor(e))
                         {
-                            var st = f.GetExpiryStatus(DateTime.UtcNow);
-                            var days = (int)Math.Ceiling((f.Rotation.ExpiresAt - DateTime.UtcNow).TotalDays);
-                            <div class="rot-row">
-                                <span class="rot-status @(st == ExpiryStatus.Expired ? "danger" : st == ExpiryStatus.DueSoon ? "warn" : "muted")">
-                                    <Icon Name="refresh" Size="12" />
-                                    @(st == ExpiryStatus.Expired ? L.Format("vault.expiry.overdue", -days) : L.Format("vault.expiry.inDays", days))
-                                </span>
-                                <button class="btn-mini" type="button" @onclick="() => OpenRotate(card.Entry.Id, cred.Id, f.Id, f.Type)">
-                                    @L["vault.rotate.now"]
-                                </button>
-                            </div>
-                        }
-                    }
-
-                    @foreach (var f in cred.Fields.Where(f => f.Type == CredentialFieldType.TwoFactor))
-                    {
-                        <div class="cred-identity">
-                            <button class="tag-2fa" type="button" @onclick="() => ShowTotp(card.Entry.Site, f)">
-                                <Icon Name="shield-check" Size="12" />@L["vault.twofa"]
-                            </button>
-                        </div>
-                    }
-
-                    <div class="cred-meta">
-                        <span title="@cred.CreationTime.ToLocalTime().ToString("g")">
-                            <Icon Name="plus" Size="11" />@L.Format("vault.meta.created", Ago(cred.CreationTime))
-                        </span>
-                        @if (SecretChangedAt(cred) is DateTime changed)
-                        {
-                            <span title="@changed.ToLocalTime().ToString("g")">
-                                <Icon Name="refresh" Size="11" />@L.Format("vault.meta.secretChanged", Ago(changed))
-                            </span>
+                            <span class="pw-chip">2FA</span>
                         }
                     </div>
-                </div>
+                </button>
             }
-
-            @if (card.Entry.Tags.Count > 0)
+        </div>
+    }
+    else
+    {
+        <div class="pw-list">
+            @foreach (var e in matches.Take(RenderCap))
             {
-                <div class="tag-group">@foreach (var tag in card.Entry.Tags) { <span class="tag">@tag</span> }</div>
+                var st = WorstStatus(e.Credentials);
+                <button class="pw-row" type="button" @onclick="() => OpenDetail(e)">
+                    <span class="pw-avatar @AvatarClass(e.Site)">@Initial(e.Site)</span>
+                    <span class="pw-row-text">
+                        <span class="pw-title">@e.Site</span>
+                        <span class="pw-sub">@SummaryFor(e)</span>
+                    </span>
+                    <span class="pw-status @StatusClass(st)">@StatusText(st)</span>
+                    <span class="pw-chevron"><Icon Name="chevron-right" Size="17" /></span>
+                </button>
             }
         </div>
     }
 }
+
+@* ───── Detail sheet: the only place credentials are shown ───── *@
+<SheetModal Visible="@(_detail is not null)" Title="" OnClose="CloseDetail">
+    <ChildContent>
+        @if (_detail is not null)
+        {
+            var det = _detail;
+            var detStatus = WorstStatus(det.Credentials);
+            <div class="pw-det-head">
+                <span class="pw-avatar lg @AvatarClass(det.Site)">@Initial(det.Site)</span>
+                <div style="flex:1; min-width:0;">
+                    <div class="pw-det-name">@det.Site</div>
+                    <div class="pw-det-sub">@SummaryFor(det) · @StatusText(detStatus)</div>
+                </div>
+                <button class="btn-icon lg" type="button" aria-label="@L["common.edit"]"
+                        @onclick="() => EditFromDetail(det)">
+                    <Icon Name="edit" Size="16" StrokeWidth="1.8" />
+                </button>
+                <button class="btn-icon lg" type="button" aria-label="@L["common.moveToTrash"]"
+                        style="color:var(--danger);" @onclick="() => DeleteFromDetail(det.Id)">
+                    <Icon Name="trash" Size="16" StrokeWidth="1.8" />
+                </button>
+            </div>
+
+            @* One account expanded at a time: several open at once turns the sheet back into the
+               wall of secrets this redesign is removing. *@
+            @foreach (var cred in det.Credentials)
+            {
+                var open = _openAccount == cred.Id;
+                <div class="acct @(open ? "open" : "")">
+                    <button class="acct-head" type="button" @onclick="() => ToggleAccount(cred.Id)">
+                        <span class="pw-dot @StatusClass(WorstStatus(new[] { cred }))"></span>
+                        <span class="acct-head-text">
+                            <span class="acct-name">@(string.IsNullOrEmpty(cred.Label) ? L["vault.account"] : cred.Label)</span>
+                            <span class="acct-sub">@IdentityOf(cred)</span>
+                        </span>
+                        <span class="acct-chevron @(open ? "up" : "")"><Icon Name="chevron-down" Size="16" /></span>
+                    </button>
+
+                    @if (open)
+                    {
+                        <div class="acct-body">
+                            @foreach (var f in cred.Fields.Where(f => !f.IsSecret && !string.IsNullOrEmpty(f.PlainValue)))
+                            {
+                                <div class="cred-identity">
+                                    <Icon Name="@FieldIcon(f.Type)" Size="13" />
+                                    <span style="flex:1; min-width:0;">@f.PlainValue</span>
+                                    <button class="btn-icon" type="button" aria-label="@L["common.copy"]"
+                                            @onclick="() => CopyPlain(f.PlainValue)">
+                                        <Icon Name="copy" Size="15" StrokeWidth="1.8" />
+                                    </button>
+                                </div>
+                            }
+
+                            @foreach (var f in cred.Fields.Where(f => f.IsSecret && f.Type != CredentialFieldType.TwoFactor))
+                            {
+                                var revealed = _revealed.Contains(f.Id);
+                                <div class="secret-bar">
+                                    <span class="secret-label"><Icon Name="@FieldIcon(f.Type)" Size="13" />@if (FieldName(f) is { Length: > 0 } fn) { <span>@fn</span>}</span>
+                                    <span class="secret-value" style="font-family:var(--font-mono);">
+                                        @(revealed ? AppState.Service!.DecryptSecret(f) : "••••••••••")
+                                    </span>
+                                    <button class="btn-icon" type="button" aria-label="Reveal" @onclick="() => ToggleReveal(f.Id)">
+                                        <Icon Name="@(revealed ? "eye-off" : "eye")" Size="16" StrokeWidth="1.8" />
+                                    </button>
+                                    <button class="btn-icon" type="button" aria-label="Copy" @onclick="() => CopySecret(f)">
+                                        <Icon Name="copy" Size="16" StrokeWidth="1.8" />
+                                    </button>
+                                </div>
+                                @if (f.Rotation is not null)
+                                {
+                                    var rst = f.GetExpiryStatus(DateTime.UtcNow);
+                                    var days = (int)Math.Ceiling((f.Rotation.ExpiresAt - DateTime.UtcNow).TotalDays);
+                                    <div class="rot-row">
+                                        <span class="rot-status @(rst == ExpiryStatus.Expired ? "danger" : rst == ExpiryStatus.DueSoon ? "warn" : "muted")">
+                                            <Icon Name="refresh" Size="12" />
+                                            @(rst == ExpiryStatus.Expired ? L.Format("vault.expiry.overdue", -days) : L.Format("vault.expiry.inDays", days))
+                                        </span>
+                                        <button class="btn-mini" type="button" @onclick="() => OpenRotate(det.Id, cred.Id, f.Id, f.Type)">
+                                            @L["vault.rotate.now"]
+                                        </button>
+                                    </div>
+                                }
+                            }
+
+                            @foreach (var f in cred.Fields.Where(f => f.Type == CredentialFieldType.TwoFactor))
+                            {
+                                <div class="cred-identity">
+                                    <button class="tag-2fa" type="button" @onclick="() => ShowTotp(det.Site, f)">
+                                        <Icon Name="shield-check" Size="12" />@L["vault.twofa"]
+                                    </button>
+                                </div>
+                            }
+
+                            <div class="cred-meta">
+                                <span title="@cred.CreationTime.ToLocalTime().ToString("g")">
+                                    <Icon Name="plus" Size="11" />@L.Format("vault.meta.created", Ago(cred.CreationTime))
+                                </span>
+                                @if (SecretChangedAt(cred) is DateTime changed)
+                                {
+                                    <span title="@changed.ToLocalTime().ToString("g")">
+                                        <Icon Name="refresh" Size="11" />@L.Format("vault.meta.secretChanged", Ago(changed))
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <button class="acct-add" type="button" @onclick="() => EditFromDetail(det)">
+                <Icon Name="plus" Size="15" StrokeWidth="2" />@L["vault.addAccount"]
+            </button>
+
+            @if (det.Tags.Count > 0)
+            {
+                <div class="tag-group" style="margin-top:12px;">
+                    @foreach (var tag in det.Tags) { <span class="tag">@tag</span> }
+                </div>
+            }
+        }
+    </ChildContent>
+</SheetModal>
 
 @* ───── Add / Edit sheet (dynamic credential drafts) ───── *@
 <SheetModal Visible="@(_showAdd || _editEntry is not null)"
@@ -322,6 +400,103 @@ else
 </SheetModal>
 
 <style>
+    /* ── Index: rows and tiles ── */
+    .filter-chips { display: flex; gap: 7px; flex-wrap: wrap; margin: 12px 0 14px; }
+    .filter-chip {
+        padding: 6px 13px; min-width: 100px; border-radius: 100px; font-size: 12.5px;
+        font-family: inherit; cursor: pointer; color: var(--n-300);
+        background: var(--color-surface); border: 1px solid var(--color-divider);
+        transition: color .15s, border-color .15s;
+    }
+    .filter-chip.active { color: var(--a-300); border-color: var(--color-accent); }
+
+    /* The initial replaces the padlock that used to repeat on every row: a column of identical
+       icons carries no information, while the letter tells services apart at a glance. */
+    .pw-avatar {
+        width: 34px; height: 34px; flex: none; border-radius: 10px;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 14px; font-weight: 600; font-family: var(--font-heading);
+    }
+    .pw-avatar.lg { width: 42px; height: 42px; border-radius: 12px; font-size: 17px; }
+    .pw-avatar.c0 { background: var(--a-800); color: var(--a-300); }
+    .pw-avatar.c1 { background: var(--n-900); color: var(--n-300); }
+    .pw-avatar.c2 { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+    .pw-avatar.c3 { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--warning); }
+    .pw-avatar.c4 { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success); }
+
+    .pw-list {
+        display: flex; flex-direction: column;
+        background: var(--color-surface); border-radius: var(--radius-lg);
+        overflow: hidden; box-shadow: var(--shadow-sm);
+    }
+    .pw-row {
+        display: flex; align-items: center; gap: 11px; width: 100%;
+        min-height: 57px; padding: 10px 12px; text-align: left; cursor: pointer;
+        background: transparent; border: 0; border-top: 1px solid var(--color-divider);
+        color: var(--color-text); font-family: inherit;
+    }
+    .pw-row:first-child { border-top: 0; }
+    .pw-row:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
+    .pw-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .pw-title { font-size: 14.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pw-sub { font-size: 12px; color: var(--n-400); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pw-chevron { flex: none; color: var(--n-500); display: flex; }
+
+    /* List states its status in words; the grid uses the dot below. */
+    .pw-status { flex: none; font-size: 11px; padding: 3px 9px; border-radius: 100px; white-space: nowrap; }
+    .pw-status.ok { background: color-mix(in srgb, var(--success) 16%, transparent); color: var(--success); }
+    .pw-status.warn { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
+    .pw-status.danger { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+
+    .pw-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; }
+    .pw-dot.ok { background: var(--success); }
+    .pw-dot.warn { background: var(--warning); }
+    .pw-dot.danger { background: var(--danger); }
+
+    .pw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .pw-tile {
+        display: flex; flex-direction: column; gap: 8px; min-height: 126px;
+        padding: 12px; text-align: left; cursor: pointer;
+        background: var(--color-surface); border: 0; border-radius: 14px;
+        box-shadow: var(--shadow-sm); color: var(--color-text); font-family: inherit;
+    }
+    .pw-tile:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
+    .pw-tile-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .pw-tile-name { flex: 1; font-size: 13.5px; font-weight: 500; line-height: 1.25;
+                    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pw-tile-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .pw-chip { font-size: 10.5px; padding: 2px 7px; border-radius: 100px;
+               background: var(--n-900); color: var(--n-400); }
+
+    /* ── Detail sheet ── */
+    .pw-det-head { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
+    .pw-det-name { font-size: 17px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pw-det-sub { font-size: 12px; color: var(--n-400); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .btn-icon.lg { width: 34px; height: 34px; flex: none; }
+
+    .acct { border-radius: var(--radius-md); margin-bottom: 7px; }
+    /* The open account lifts off the sheet so it is obvious which one the secrets belong to. */
+    .acct.open { background: var(--n-900); box-shadow: 0 0 0 1px var(--n-800); }
+    .acct-head {
+        display: flex; align-items: center; gap: 10px; width: 100%;
+        min-height: 46px; padding: 8px 10px; text-align: left; cursor: pointer;
+        background: transparent; border: 0; color: var(--color-text); font-family: inherit;
+    }
+    .acct-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .acct-name { font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .acct-sub { font-size: 11.5px; color: var(--n-500); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .acct-chevron { flex: none; color: var(--n-500); display: flex; transition: transform .18s; }
+    .acct-chevron.up { transform: rotate(180deg); }
+    .acct-body { padding: 0 10px 10px; }
+
+    .acct-add {
+        display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%;
+        min-height: 44px; margin-top: 4px; cursor: pointer; font-family: inherit; font-size: 13px;
+        color: var(--a-300); background: transparent;
+        border: 1px dashed var(--color-divider); border-radius: var(--radius-md);
+    }
+    .acct-add:hover { border-color: var(--color-accent); }
+
     .cred { margin-top: 10px; }
     .cred-grouped { border-left: 2px solid var(--a-900); border-radius: 0; padding-left: 10px; }
     .cred-label { font-size: 12px; font-weight: 600; color: var(--a-200); margin-bottom: 4px; }
@@ -551,7 +726,140 @@ else
 
     // ─── Display projection ──────────────────────────────────────────────
 
-    private record DisplayCard(ServiceEntry Entry, IReadOnlyList<Credential> Credentials);
+    // ─── Index: view mode, filters, presentation ─────────────────────────
+
+    private enum Filter { All, Due, Multi }
+
+    private Filter _filter = Filter.All;
+
+    private ViewMode Mode => ViewPrefs.Get(ViewScope.Passwords);
+    private void SetMode(ViewMode mode) => ViewPrefs.Set(ViewScope.Passwords, mode);
+
+    private int DueCount => _entries.Count(e => WorstStatus(e.Credentials) != ExpiryStatus.None);
+
+    /// <summary>
+    /// One row per service. The old list split an ungrouped multi-account entry into a row per
+    /// account; now every account lives inside the detail sheet's accordion, so splitting here
+    /// would show the same service several times over.
+    /// </summary>
+    private List<ServiceEntry> Filtered() => _entries
+        .Where(Match)
+        .Where(e => _filter switch
+        {
+            Filter.Due => WorstStatus(e.Credentials) != ExpiryStatus.None,
+            Filter.Multi => e.Credentials.Count > 1,
+            _ => true,
+        })
+        .ToList();
+
+    private static string Initial(string site)
+    {
+        foreach (var ch in site)
+            if (char.IsLetterOrDigit(ch)) return char.ToUpperInvariant(ch).ToString();
+        return "?";
+    }
+
+    /// <summary>
+    /// Picks one of five tints from the name, so a service keeps the same colour every time and
+    /// becomes recognisable by shape alone in a long list.
+    /// </summary>
+    private static string AvatarClass(string site)
+    {
+        // Deliberately not string.GetHashCode(): .NET randomises it per process, so the colour
+        // would change on every launch and the recognition this exists for would be lost.
+        var h = 17;
+        unchecked
+        {
+            foreach (var ch in site) h = h * 31 + char.ToUpperInvariant(ch);
+        }
+        return $"c{(h & 0x7fffffff) % 5}";
+    }
+
+    private static string StatusClass(ExpiryStatus s) => s switch
+    {
+        ExpiryStatus.Expired => "danger",
+        ExpiryStatus.DueSoon => "warn",
+        _ => "ok",
+    };
+
+    private string StatusText(ExpiryStatus s) => s switch
+    {
+        ExpiryStatus.Expired => L["vault.badge.expired"],
+        ExpiryStatus.DueSoon => L["vault.badge.dueSoon"],
+        _ => L["vault.badge.ok"],
+    };
+
+    private static bool HasTwoFactor(ServiceEntry e) =>
+        e.Credentials.Any(c => c.Fields.Any(f => f.Type == CredentialFieldType.TwoFactor));
+
+    /// <summary>First non-secret value of an account — what identifies it without revealing anything.</summary>
+    private string IdentityOf(Credential cred) =>
+        cred.Fields.FirstOrDefault(f => !f.IsSecret && !string.IsNullOrEmpty(f.PlainValue))?.PlainValue
+        ?? L["vault.noIdentity"];
+
+    /// <summary>
+    /// One line under the service name: the account names when there are several, otherwise the
+    /// single account's identifier. Never a secret.
+    /// </summary>
+    private string SummaryFor(ServiceEntry e)
+    {
+        if (e.Credentials.Count == 0) return L["vault.noAccounts"];
+        if (e.Credentials.Count == 1)
+        {
+            var only = e.Credentials[0];
+            return string.IsNullOrEmpty(only.Label) ? IdentityOf(only) : only.Label;
+        }
+
+        var names = e.Credentials
+            .Select(c => string.IsNullOrEmpty(c.Label) ? IdentityOf(c) : c.Label)
+            .Take(3);
+        return L.Format("vault.summary.accounts", e.Credentials.Count, string.Join(", ", names));
+    }
+
+    // ─── Detail sheet ────────────────────────────────────────────────────
+
+    private ServiceEntry? _detail;
+    private Guid? _openAccount;
+
+    private void OpenDetail(ServiceEntry e)
+    {
+        _detail = e;
+        // Open the only account straight away; with several, make the user pick.
+        _openAccount = e.Credentials.Count == 1 ? e.Credentials[0].Id : null;
+    }
+
+    private void CloseDetail()
+    {
+        _detail = null;
+        _openAccount = null;
+        // Anything revealed belonged to the sheet that is closing; leaving it revealed would
+        // bring the secret straight back on screen the next time any sheet opens.
+        _revealed.Clear();
+    }
+
+    private void ToggleAccount(Guid credId)
+    {
+        _openAccount = _openAccount == credId ? null : credId;
+        _revealed.Clear();
+    }
+
+    private void EditFromDetail(ServiceEntry e)
+    {
+        CloseDetail();
+        EditEntry(e);
+    }
+
+    private async Task DeleteFromDetail(Guid id)
+    {
+        CloseDetail();
+        await DeleteEntry(id);
+    }
+
+    private async Task CopyPlain(string value)
+    {
+        await SecureClipboard.CopySensitiveAsync(value);
+        Toast.Success(L["toast.copied"]);
+    }
 
     /// <summary>
     /// Cards drawn at once. Every card is a good few DOM nodes, so rendering an unbounded
@@ -561,20 +869,6 @@ else
     /// data"), which is what anyone with a real vault this size would do anyway.
     /// </summary>
     private const int RenderCap = 200;
-
-    private List<DisplayCard> Cards()
-    {
-        var cards = new List<DisplayCard>();
-        foreach (var e in _entries.Where(Match))
-        {
-            if (e.Grouped || e.Credentials.Count <= 1)
-                cards.Add(new DisplayCard(e, e.Credentials));
-            else
-                foreach (var c in e.Credentials)
-                    cards.Add(new DisplayCard(e, new[] { c }));
-        }
-        return cards;
-    }
 
     private bool Match(ServiceEntry e)
     {
