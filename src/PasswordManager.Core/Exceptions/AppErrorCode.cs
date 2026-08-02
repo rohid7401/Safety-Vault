@@ -57,6 +57,12 @@ namespace PasswordManager.Core.Exceptions
         /// <summary>The public key server could not be reached (offline, DNS, TLS).</summary>
         KeyServerUnreachable,
 
+        /// <summary>
+        /// The stored 2FA secret is not valid Base32. Its alphabet is A–Z and 2–7, so a secret
+        /// typed by hand from a screen full of digits is rejected on the 0, 1, 8 or 9.
+        /// </summary>
+        InvalidTotpSecret,
+
         // ── Password generator ───────────────────────────────────────────────
         /// <summary>Takes the minimum length as an argument.</summary>
         PasswordLengthTooShort,

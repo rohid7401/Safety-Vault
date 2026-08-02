@@ -895,6 +895,16 @@ else
         _fError = string.Empty;
         if (string.IsNullOrWhiteSpace(_fSite)) { _fError = L["vault.err.siteRequired"]; return; }
 
+        // Caught here so the user is told while the value is still in front of them. Otherwise a
+        // mistyped secret saves happily and only fails weeks later, on the day they actually need
+        // the code.
+        var badTotp = _draft
+            .SelectMany(c => c.Fields)
+            .Any(f => f.Type == CredentialFieldType.TwoFactor
+                      && !string.IsNullOrWhiteSpace(f.Value)
+                      && !TotpService.IsValidSecret(f.Value));
+        if (badTotp) { _fError = L["error.invalidTotpSecret"]; return; }
+
         var svc = AppState.Service!;
         var creds = BuildCredentials(svc, _editEntry);
         if (creds.Count == 0) { _fError = L["vault.err.needField"]; return; }
@@ -1069,6 +1079,16 @@ else
         _totpLabel = label;
         _totpSecret = AppState.Service!.DecryptSecret(f);
         if (string.IsNullOrEmpty(_totpSecret)) { _totpSecret = null; return; }
+
+        // Checked before the sheet opens rather than letting GenerateCode throw: it also runs on
+        // the refresh timer, where an exception would escape onto a background thread instead of
+        // reaching the page's error boundary.
+        if (!TotpService.IsValidSecret(_totpSecret))
+        {
+            _totpSecret = null;
+            Toast.Error(L["error.invalidTotpSecret"]);
+            return;
+        }
 
         RefreshTotp();
         _totpTimer?.Dispose();

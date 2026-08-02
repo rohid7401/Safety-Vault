@@ -76,22 +76,51 @@ tests/
 `PasswordManager.UI` no depende de MAUI: es una librería Razor pura pensada para que
 un futuro shell Blazor WebAssembly (web) pueda reusar toda la UI sin reescribirla.
 
+## Inicio rápido
+
+Para tener la app corriendo en Windows desde cero:
+
+```powershell
+# 1. Requisitos (una sola vez)
+winget install --id Microsoft.DotNet.SDK.8 -e
+winget install --id Microsoft.DotNet.SDK.9 -e
+winget install --id Git.Git -e
+dotnet workload install maui
+
+# 2. Clonar y restaurar
+git clone https://github.com/rohid7401/Safety-Vault.git
+cd Safety-Vault
+dotnet restore
+
+# 3. Correr la app de escritorio
+dotnet build src/PasswordManager.App/PasswordManager.App.csproj -f net8.0-windows10.0.19041.0 -t:Run
+```
+
+La app abre una ventana propia. La primera pantalla es el registro: creá una cuenta con
+tu frase maestra y quedás dentro. Todo se guarda **solo en esa máquina**, en
+`%LOCALAPPDATA%\Packages\...\LocalState\SecureVault` — no hay servidor ni sincronización.
+
+Para Android, seguí después la sección [Android](#android).
+
 ## Requisitos comunes (todas las plataformas)
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) — Core/Infrastructure/UI/tests
-- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) — necesario para Android,
-  que usa `net9.0-android36.0`: la API 36 solo existe en el workload de Android de .NET 9
-- Workload de MAUI:
-  ```
-  dotnet workload install maui
-  ```
-- Git
+| Requisito | Para qué |
+|---|---|
+| [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) | Core, Infrastructure, UI, tests y el target de Windows |
+| [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) | Solo Android: usa `net9.0-android36.0`, y la API 36 únicamente existe en el workload de Android de .NET 9 |
+| Workload de MAUI (`dotnet workload install maui`) | Compilar cualquier target de la app |
+| Git | Clonar el repositorio |
 
-Verificar que todo esté instalado:
+Verificar que quedó todo:
+
 ```
-dotnet --list-sdks
-dotnet workload list
+dotnet --list-sdks     # deben aparecer un 8.x y un 9.x
+dotnet workload list   # debe aparecer "maui"
 ```
+
+> Los proyectos `Core`, `Infrastructure`, `UI` y los tests son `net8.0` puro: se compilan
+> y se testean **sin** el workload de MAUI ni SDKs de plataforma. Solo
+> `PasswordManager.App` necesita todo lo demás.
 
 ## Clonar el repositorio
 
@@ -107,6 +136,10 @@ dotnet restore
 dotnet test tests/PasswordManager.Tests/PasswordManager.Tests.csproj
 ```
 
+Es la forma más rápida de comprobar que el entorno quedó bien: no toca MAUI ni Android,
+así que si esto pasa, el problema de cualquier otro comando está en las herramientas de
+esa plataforma y no en el código.
+
 ## Windows
 
 Sin requisitos adicionales más allá de los comunes.
@@ -114,6 +147,9 @@ Sin requisitos adicionales más allá de los comunes.
 ```
 dotnet build src/PasswordManager.App/PasswordManager.App.csproj -f net8.0-windows10.0.19041.0 -t:Run
 ```
+
+`-t:Run` compila y lanza. Sin ese flag solo compila, y el ejecutable queda en
+`src/PasswordManager.App/bin/Debug/net8.0-windows10.0.19041.0/win10-x64/`.
 
 O abrir `PasswordManager.sln` en Visual Studio 2022 (workload **.NET Multi-platform
 App UI development**), seleccionar el target Windows y F5.
@@ -132,8 +168,10 @@ build de desarrollo (`-t:Run`).
 
 ## Android
 
-La app apunta a **Android 16 (API 36)**, mínimo Android 7.0 (API 24). Google Play exige
-API 36 para poder publicar actualizaciones a partir del **30 de agosto de 2026**.
+La app apunta a **Android 16 (API 36)**, con mínimo Android 7.0 (API 24). El target alto
+es deliberado: API 36 es el nivel que exige la política vigente de Android para
+distribuir apps, y solo existe en el workload de Android de .NET 9 — de ahí que ese
+target use `net9.0` mientras el resto de la solución se queda en `net8.0`.
 
 ### Requisitos adicionales
 
@@ -169,10 +207,13 @@ Si el SDK no está en la ruta por defecto, agregar
 
 ### Compilar y correr (dispositivo físico por USB o emulador)
 
-Con el dispositivo conectado y depuración USB activada (o el emulador ya iniciado):
+En un teléfono físico, antes que nada: **Ajustes → Acerca del teléfono → tocar 7 veces
+"Número de compilación"** para habilitar las opciones de desarrollador, y ahí activar
+**Depuración por USB**. Al conectarlo, el teléfono pregunta si confiar en la
+computadora — hay que aceptar, o `adb` lo ve como "unauthorized".
 
 ```
-adb devices     # confirmar que aparece
+adb devices     # debe listar el dispositivo como "device", no "unauthorized"
 
 dotnet build src/PasswordManager.App/PasswordManager.App.csproj -f net9.0-android36.0 -t:Run
 ```
@@ -194,33 +235,6 @@ dotnet build src/PasswordManager.App/PasswordManager.App.csproj -f net9.0-androi
   -p:JavaSdkDirectory="C:\Program Files\Microsoft\jdk-17.0.19.10-hotspot" `
   -p:AndroidSdkDirectory="<SDK_ROOT>"
 ```
-
-### Publicar a Google Play
-
-El workflow [`release-android.yml`](.github/workflows/release-android.yml) publica al
-track de **internal testing** automáticamente al empujar un tag de versión:
-
-```
-git tag v1.0.1
-git push origin v1.0.1
-```
-
-El nombre del tag se convierte en el `versionName`; el `versionCode` sale del número de
-ejecución del workflow más un offset (ver el comentario en el YAML). El workflow corre
-los tests antes de publicar, así que un test roto detiene el release.
-
-Secrets requeridos en el repositorio de GitHub:
-
-| Secret | Contenido |
-|---|---|
-| `ANDROID_KEYSTORE_BASE64` | El `.keystore` de firma, codificado en base64 |
-| `ANDROID_KEY_ALIAS` | Alias de la llave dentro del keystore |
-| `ANDROID_KEY_PASSWORD` | Contraseña de la llave |
-| `ANDROID_KEYSTORE_PASSWORD` | Contraseña del keystore |
-| `PLAY_SERVICE_ACCOUNT_JSON` | JSON de la cuenta de servicio de Google Play con permiso de publicación |
-
-Para generar el `.aab` firmado localmente (sin publicar), ver los parámetros del paso
-"Publish signed .aab" en ese mismo workflow.
 
 ## macOS (Mac Catalyst)
 

@@ -91,11 +91,19 @@ else
 
             <div class="note-content-head">
                 <span class="note-content-label">@L["notes.field.content"]</span>
-                <div style="display:flex; gap:6px;">
-                    <button class="btn-mini" type="button" @onclick="() => _detailRevealed = !_detailRevealed">
-                        @(_detailRevealed ? L["common.hide"] : L["common.show"])
+                @* Icons rather than the words "Show"/"Copy": they sit beside a label, and the two
+                   text buttons read as a sentence competing with it. *@
+                <div style="display:flex; gap:4px;">
+                    <button class="btn-icon" type="button"
+                            aria-label="@(_detailRevealed ? L["common.hide"] : L["common.show"])"
+                            title="@(_detailRevealed ? L["common.hide"] : L["common.show"])"
+                            @onclick="() => _detailRevealed = !_detailRevealed">
+                        <Icon Name="@(_detailRevealed ? "eye-off" : "eye")" Size="16" StrokeWidth="1.8" />
                     </button>
-                    <button class="btn-mini" type="button" @onclick="() => CopyContent(det)">@L["common.copy"]</button>
+                    <button class="btn-icon" type="button" aria-label="@L["common.copy"]"
+                            title="@L["common.copy"]" @onclick="() => CopyContent(det)">
+                        <Icon Name="copy" Size="16" StrokeWidth="1.8" />
+                    </button>
                 </div>
             </div>
 

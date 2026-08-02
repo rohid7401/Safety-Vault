@@ -62,6 +62,8 @@ namespace PasswordManager.UI
             AppErrorCode.PathEscapesKeyDirectory => "error.pathEscapesKeyDirectory",
             AppErrorCode.KeyServerUnreachable => "error.keyServerUnreachable",
 
+            AppErrorCode.InvalidTotpSecret => "error.invalidTotpSecret",
+
             AppErrorCode.PasswordLengthTooShort => "error.passwordLengthTooShort",
             AppErrorCode.NoCharacterSetEnabled => "error.noCharacterSetEnabled",
 

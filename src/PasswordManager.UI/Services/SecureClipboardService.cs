@@ -16,7 +16,14 @@ namespace PasswordManager.UI.Services
     /// </summary>
     public class SecureClipboardService
     {
-        private static readonly TimeSpan DefaultClearAfter = TimeSpan.FromSeconds(30);
+        /// <summary>
+        /// Two minutes. Thirty seconds was not enough in practice: switching to the browser or
+        /// another app, finding the field and pasting routinely took longer, and the copy had
+        /// already been wiped — so people copied again, leaving more copies behind rather than
+        /// fewer. The window is longer but it is still bounded, and a fresh copy always cancels
+        /// the previous timer.
+        /// </summary>
+        public static readonly TimeSpan DefaultClearAfter = TimeSpan.FromMinutes(2);
 
         private readonly IClipboardService _clipboard;
         private readonly TimeSpan _clearAfter;

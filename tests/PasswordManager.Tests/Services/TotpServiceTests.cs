@@ -1,3 +1,4 @@
+using PasswordManager.Core.Exceptions;
 using PasswordManager.Infrastructure.Services;
 using Xunit;
 
@@ -67,9 +68,46 @@ namespace PasswordManager.Tests.Services
         }
 
         [Fact]
-        public void GenerateCode_InvalidBase32_ThrowsFormatException()
+        public void GenerateCode_InvalidBase32_ThrowsTranslatableError()
         {
-            Assert.Throws<FormatException>(() => _totp.GenerateCode("!!!INVALID!!!"));
+            // Was a FormatException naming the offending character in English, which reached the
+            // user as the generic "something went wrong".
+            var ex = Assert.Throws<LocalizedArgumentException>(() => _totp.GenerateCode("!!!INVALID!!!"));
+            Assert.Equal(AppErrorCode.InvalidTotpSecret, ex.Code);
+        }
+
+        [Theory]
+        // Base32 has no 0, 1, 8 or 9, so a secret someone typed as plain digits is rejected —
+        // exactly what a tester hit after entering random numbers.
+        [InlineData("10948320")]
+        [InlineData("000000")]
+        [InlineData("!!!INVALID!!!")]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData(null)]
+        public void IsValidSecret_RejectsWhatCannotProduceCodes(string? secret)
+        {
+            Assert.False(_totp.IsValidSecret(secret));
+        }
+
+        [Theory]
+        [InlineData("JBSWY3DPEHPK3PXP")]
+        [InlineData("jbswy3dpehpk3pxp")]      // case-insensitive
+        [InlineData("JBSW Y3DP EHPK 3PXP")]   // grouped the way sites display it
+        [InlineData("JBSWY3DPEHPK3PXP====")]  // padded
+        [InlineData("hola")]                   // letters only: valid Base32, so it really does work
+        public void IsValidSecret_AcceptsRealSecrets(string secret)
+        {
+            Assert.True(_totp.IsValidSecret(secret));
+        }
+
+        [Fact]
+        public void GenerateCode_SecretTooShortToFormAByte_ThrowsRatherThanReturningANumber()
+        {
+            // "A" is a legal character but decodes to nothing, leaving no key. Signing with an
+            // empty key would return a confident six digits that could never match.
+            var ex = Assert.Throws<LocalizedArgumentException>(() => _totp.GenerateCode("A"));
+            Assert.Equal(AppErrorCode.InvalidTotpSecret, ex.Code);
         }
 
         [Fact]

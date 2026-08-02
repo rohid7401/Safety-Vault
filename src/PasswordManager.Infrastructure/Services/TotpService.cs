@@ -1,10 +1,29 @@
 using System.Security.Cryptography;
+using PasswordManager.Core.Exceptions;
 using PasswordManager.Core.Interfaces;
 
 namespace PasswordManager.Infrastructure.Services
 {
     public class TotpService : ITotpService
     {
+        /// <summary>
+        /// RFC 4648 Base32: letters and the digits 2–7 only. Notably 0, 1, 8 and 9 are absent,
+        /// which is why a secret someone typed as plain numbers is rejected.
+        /// </summary>
+        private const string Base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+        /// <summary>True if the text can be used as a 2FA secret. Lets a form reject a bad secret
+        /// while the user is still looking at the field, instead of failing later on first use.</summary>
+        public bool IsValidSecret(string? base32Secret)
+        {
+            if (string.IsNullOrWhiteSpace(base32Secret)) return false;
+            var cleaned = Normalize(base32Secret);
+            return cleaned.Length > 0 && cleaned.All(c => Base32Alphabet.Contains(c));
+        }
+
+        private static string Normalize(string base32) =>
+            base32.Trim().ToUpperInvariant().Replace(" ", "").Replace("-", "").TrimEnd('=');
+
         private const int TimeStepSeconds = 30;
         private const int CodeDigits = 6;
 
@@ -65,8 +84,7 @@ namespace PasswordManager.Infrastructure.Services
 
         private static byte[] Base32Decode(string base32)
         {
-            base32 = base32.Trim().ToUpperInvariant().Replace(" ", "").TrimEnd('=');
-            const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+            base32 = Normalize(base32);
 
             var bits = 0;
             var value = 0;
@@ -74,9 +92,12 @@ namespace PasswordManager.Infrastructure.Services
 
             foreach (var c in base32)
             {
-                var idx = alphabet.IndexOf(c);
+                var idx = Base32Alphabet.IndexOf(c);
                 if (idx < 0)
-                    throw new FormatException($"Invalid Base32 character: '{c}'");
+                    // Was a FormatException carrying English prose naming the offending
+                    // character, which surfaced to the user as the generic "something went
+                    // wrong". A code crosses into the UI and comes back translated.
+                    throw new LocalizedArgumentException(AppErrorCode.InvalidTotpSecret);
 
                 value = (value << 5) | idx;
                 bits += 5;
@@ -88,6 +109,12 @@ namespace PasswordManager.Infrastructure.Services
                     value &= (1 << bits) - 1;
                 }
             }
+
+            // Every character was legal but there were too few to make a single byte, so there is
+            // no key to sign with — treated the same as a malformed secret rather than hashing
+            // with an empty key and returning a confident, meaningless code.
+            if (output.Count == 0)
+                throw new LocalizedArgumentException(AppErrorCode.InvalidTotpSecret);
 
             return output.ToArray();
         }
