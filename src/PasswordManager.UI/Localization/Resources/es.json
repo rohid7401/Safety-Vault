@@ -589,5 +589,10 @@
   "data.trash.restoreFailed": "No se pudo recuperar",
   "data.trash.empty": "Vaciar la papelera",
   "data.trash.deletedAgo": "eliminada {0}",
-  "data.trash.unknown": "Entrada"
+  "data.trash.unknown": "Entrada",
+  "vault.split.title": "¿Son cuentas distintas?",
+  "vault.split.body": "Esta carta tiene más de una contraseña. Parece que son {0} cuentas escritas en una sola.",
+  "vault.split.hint": "Si las separamos, cada una queda con su propio identificador y su contraseña, dentro de la misma carta.",
+  "vault.split.confirm": "Separarlas",
+  "vault.split.keep": "Dejar como está"
 }

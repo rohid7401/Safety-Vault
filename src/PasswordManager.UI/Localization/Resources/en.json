@@ -589,5 +589,10 @@
   "data.trash.restoreFailed": "Could not restore",
   "data.trash.empty": "Empty the trash",
   "data.trash.deletedAgo": "deleted {0}",
-  "data.trash.unknown": "Entry"
+  "data.trash.unknown": "Entry",
+  "vault.split.title": "Are these separate accounts?",
+  "vault.split.body": "This card holds more than one password. It looks like {0} accounts typed into one.",
+  "vault.split.hint": "If they are separated, each keeps its own identifier and password, inside the same card.",
+  "vault.split.confirm": "Separate them",
+  "vault.split.keep": "Leave as is"
 }

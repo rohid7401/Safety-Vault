@@ -118,6 +118,36 @@
             };
         })();
 
+        // ── Open the field-type menu upward when it would fall off the screen ──
+        // The menu hangs below its button, which is fine for the first field and useless for the
+        // last one in a long form: the options ended up past the bottom edge with no way to reach
+        // them. Measured after it is inserted, because only then is its height known.
+        (function () {
+            function place(menu) {
+                menu.classList.remove('up');
+                var rect = menu.getBoundingClientRect();
+                // visualViewport is the box actually visible — it shrinks when the keyboard is up.
+                var visible = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+                if (rect.bottom > visible - 8) menu.classList.add('up');
+            }
+
+            new MutationObserver(function (records) {
+                for (var i = 0; i < records.length; i++) {
+                    var added = records[i].addedNodes;
+                    for (var j = 0; j < added.length; j++) {
+                        var node = added[j];
+                        if (node.nodeType !== 1) continue;
+                        if (node.classList && node.classList.contains('type-menu')) {
+                            place(node);
+                        } else if (node.querySelector) {
+                            var inner = node.querySelector('.type-menu');
+                            if (inner) place(inner);
+                        }
+                    }
+                }
+            }).observe(document.body, { childList: true, subtree: true });
+        })();
+
         // ── Swipe-down on the sheet grip to dismiss (drag handle gesture) ──
         (function () {
             var sheet = null, startY = 0, moved = 0;
