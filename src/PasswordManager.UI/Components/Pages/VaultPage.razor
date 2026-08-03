@@ -25,25 +25,83 @@
     <input type="text" placeholder="@L["vault.searchPlaceholder"]" @bind="_search" @bind:event="oninput" />
 </div>
 
-@* Quick filters. "Por rotar" carries its own count so the user can see there is something to
-   do without opening it. *@
+@* Filters stack rather than replace each other, so "shared logins that need rotating" is one
+   question instead of two. Counts sit on the chips so there is no need to try one to find out
+   whether it holds anything. *@
 <div class="filter-chips">
-    <button class="filter-chip @(_filter == Filter.All ? "active" : "")" type="button"
-            @onclick="() => _filter = Filter.All">@L["vault.filter.all"]</button>
-    <button class="filter-chip @(_filter == Filter.Due ? "active" : "")" type="button"
-            @onclick="() => _filter = Filter.Due">@L["vault.filter.due"] · @DueCount</button>
-    <button class="filter-chip @(_filter == Filter.Multi ? "active" : "")" type="button"
-            @onclick="() => _filter = Filter.Multi">@L["vault.filter.multi"]</button>
+    <button class="filter-chip @(AnyFilter ? "" : "active")" type="button"
+            @onclick="ClearFilters">@L["vault.filter.all"]</button>
+    <button class="filter-chip @(_fltDue ? "active" : "")" type="button"
+            @onclick="() => _fltDue = !_fltDue">@L["vault.filter.due"] · @DueCount</button>
+    <button class="filter-chip @(_fltMulti ? "active" : "")" type="button"
+            @onclick="() => _fltMulti = !_fltMulti">@L["vault.filter.multi"]</button>
+    <button class="filter-chip @(_fltTwoFactor ? "active" : "")" type="button"
+            @onclick="() => _fltTwoFactor = !_fltTwoFactor">@L["vault.filter.twofa"] · @TwoFactorCount</button>
+
+    @if (KnownTags.Count > 0)
+    {
+        <button class="filter-chip @(_fltTags.Count > 0 ? "active" : "")" type="button"
+                @onclick="() => _showTagFilter = true">
+            <Icon Name="plus" Size="13" StrokeWidth="2.2" />
+            @(_fltTags.Count > 0 ? L.Format("vault.filter.tagsN", _fltTags.Count) : L["vault.filter.tags"])
+        </button>
+    }
 </div>
+
+@if (_fltTags.Count > 0)
+{
+    <div class="filter-chips" style="margin-top:-6px;">
+        @foreach (var tag in _fltTags.OrderBy(t => t, StringComparer.CurrentCultureIgnoreCase))
+        {
+            <button class="filter-chip active" type="button" style="min-width:0;"
+                    @onclick="() => ToggleTagFilter(tag)">
+                @tag <Icon Name="x" Size="12" StrokeWidth="2.2" />
+            </button>
+        }
+    </div>
+}
+
+@* ───── Tag picker ───── *@
+<SheetModal Visible="_showTagFilter" Title="@L["vault.filter.tags"]" OnClose="() => _showTagFilter = false">
+    <ChildContent>
+        <div class="filter-chips">
+            @foreach (var tag in KnownTags)
+            {
+                <button class="filter-chip @(_fltTags.Contains(tag) ? "active" : "")" type="button"
+                        style="min-width:0;" @onclick="() => ToggleTagFilter(tag)">@tag</button>
+            }
+        </div>
+        <p style="margin:12px 0 0; font-size:12px; color:var(--n-500); line-height:1.5;">
+            @L["vault.filter.tagsHint"]
+        </p>
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="() => _fltTags.Clear()">@L["vault.filter.clearTags"]</button>
+        <button class="btn btn-primary" @onclick="() => _showTagFilter = false">@L["common.done"]</button>
+    </FooterContent>
+</SheetModal>
 
 @{ var matches = Filtered(); }
 
 @if (matches.Count == 0)
 {
+    @* An empty result with filters on is not an empty vault: telling someone to add their first
+       password when they have fifty, hidden behind a chip they forgot was pressed, sends them
+       looking for a bug that is not there. *@
     <div class="empty-state">
-        <div class="icon-circle"><Icon Name="lock" Size="30" StrokeWidth="1.8" /></div>
-        <h3>@L["vault.emptyTitle"]</h3>
-        <p>@L["vault.emptyBody"]</p>
+        <div class="icon-circle"><Icon Name="@(AnyFilter ? "search" : "lock")" Size="30" StrokeWidth="1.8" /></div>
+        @if (AnyFilter)
+        {
+            <h3>@L["vault.filter.none"]</h3>
+            <button class="btn btn-secondary" style="margin-top:12px;" @onclick="ClearFilters">
+                @L["vault.filter.all"]
+            </button>
+        }
+        else
+        {
+            <h3>@L["vault.emptyTitle"]</h3>
+            <p>@L["vault.emptyBody"]</p>
+        }
     </div>
 }
 else
@@ -656,14 +714,33 @@ else
 
     // ─── Index: view mode, filters, presentation ─────────────────────────
 
-    private enum Filter { All, Due, Multi }
+    // Filters combine instead of replacing one another: "due" and "multi-account" used to be
+    // mutually exclusive, so the obvious question — which of my shared logins need rotating —
+    // could not be asked. Nothing selected means everything.
+    private bool _fltDue;
+    private bool _fltMulti;
+    private bool _fltTwoFactor;
+    private readonly HashSet<string> _fltTags = new(StringComparer.OrdinalIgnoreCase);
+    private bool _showTagFilter;
 
-    private Filter _filter = Filter.All;
+    private bool AnyFilter => _fltDue || _fltMulti || _fltTwoFactor || _fltTags.Count > 0;
+
+    private void ClearFilters()
+    {
+        _fltDue = _fltMulti = _fltTwoFactor = false;
+        _fltTags.Clear();
+    }
+
+    private void ToggleTagFilter(string tag)
+    {
+        if (!_fltTags.Remove(tag)) _fltTags.Add(tag);
+    }
 
     private ViewMode Mode => ViewPrefs.Get(ViewScope.Passwords);
     private void SetMode(ViewMode mode) => ViewPrefs.Set(ViewScope.Passwords, mode);
 
     private int DueCount => _entries.Count(e => WorstStatus(e.Credentials) != ExpiryStatus.None);
+    private int TwoFactorCount => _entries.Count(HasTwoFactor);
 
     /// <summary>
     /// One row per service. The old list split an ungrouped multi-account entry into a row per
@@ -672,12 +749,13 @@ else
     /// </summary>
     private List<ServiceEntry> Filtered() => _entries
         .Where(Match)
-        .Where(e => _filter switch
-        {
-            Filter.Due => WorstStatus(e.Credentials) != ExpiryStatus.None,
-            Filter.Multi => e.Credentials.Count > 1,
-            _ => true,
-        })
+        // Each active filter narrows the result further. Tags are the exception: several selected
+        // tags widen rather than narrow, because "work or personal" is what people mean when they
+        // pick two — nothing carries both at once, so intersecting them would return nothing.
+        .Where(e => !_fltDue || WorstStatus(e.Credentials) != ExpiryStatus.None)
+        .Where(e => !_fltMulti || e.Credentials.Count > 1)
+        .Where(e => !_fltTwoFactor || HasTwoFactor(e))
+        .Where(e => _fltTags.Count == 0 || e.Tags.Any(_fltTags.Contains))
         .ToList();
 
     private static string Initial(string site)

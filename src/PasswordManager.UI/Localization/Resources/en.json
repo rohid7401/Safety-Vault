@@ -594,5 +594,11 @@
   "vault.split.body": "This card holds more than one password. It looks like {0} accounts typed into one.",
   "vault.split.hint": "If they are separated, each keeps its own identifier and password, inside the same card.",
   "vault.split.confirm": "Separate them",
-  "vault.split.keep": "Leave as is"
+  "vault.split.keep": "Leave as is",
+  "vault.filter.twofa": "With 2FA",
+  "vault.filter.tags": "Tags",
+  "vault.filter.tagsN": "Tags · {0}",
+  "vault.filter.tagsHint": "Choosing several shows cards carrying any of them.",
+  "vault.filter.clearTags": "Clear tags",
+  "vault.filter.none": "No cards match these filters."
 }

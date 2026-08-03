@@ -594,5 +594,11 @@
   "vault.split.body": "Esta carta tiene más de una contraseña. Parece que son {0} cuentas escritas en una sola.",
   "vault.split.hint": "Si las separamos, cada una queda con su propio identificador y su contraseña, dentro de la misma carta.",
   "vault.split.confirm": "Separarlas",
-  "vault.split.keep": "Dejar como está"
+  "vault.split.keep": "Dejar como está",
+  "vault.filter.twofa": "Con 2FA",
+  "vault.filter.tags": "Etiquetas",
+  "vault.filter.tagsN": "Etiquetas · {0}",
+  "vault.filter.tagsHint": "Al elegir varias se muestran las cartas que tengan cualquiera de ellas.",
+  "vault.filter.clearTags": "Quitar etiquetas",
+  "vault.filter.none": "Ninguna carta coincide con estos filtros."
 }

@@ -72,15 +72,17 @@ else
     }
     else
     {
+        @* Combinable, like the vault's: "weak or reused" is one list worth seeing, and each chip
+           carries its own count so an empty category is obvious before it is opened. *@
         <div class="filter-chips">
-            <button class="filter-chip @(_filter is null ? "active" : "")" type="button"
-                    @onclick="() => _filter = null">@L["audit.filter.all"]</button>
-            <button class="filter-chip @(_filter == AuditIssueType.WeakPassword ? "active" : "")" type="button"
-                    @onclick="() => _filter = AuditIssueType.WeakPassword">@L["audit.filter.weak"]</button>
-            <button class="filter-chip @(_filter == AuditIssueType.ReusedPassword ? "active" : "")" type="button"
-                    @onclick="() => _filter = AuditIssueType.ReusedPassword">@L["audit.filter.reused"]</button>
-            <button class="filter-chip @(_filter == AuditIssueType.ExpiredEntry ? "active" : "")" type="button"
-                    @onclick="() => _filter = AuditIssueType.ExpiredEntry">@L["audit.filter.expired"]</button>
+            <button class="filter-chip @(_types.Count == 0 ? "active" : "")" type="button"
+                    @onclick="() => _types.Clear()">@L["audit.filter.all"]</button>
+            @foreach (var (type, key) in FilterTypes)
+            {
+                var count = _report.Issues.Count(i => i.Type == type);
+                <button class="filter-chip @(_types.Contains(type) ? "active" : "")" type="button"
+                        @onclick="() => ToggleType(type)">@L[key] · @count</button>
+            }
         </div>
 
         var shown = Shown();
@@ -118,11 +120,28 @@ else
     private AuditReport? _report;
     private bool _loading;
     private DateTime _ranAt;
-    private AuditIssueType? _filter;
 
-    /// <summary>Severity first, so the worst findings stay at the top of whichever filter is on.</summary>
+    private readonly HashSet<AuditIssueType> _types = new();
+
+    private static readonly (AuditIssueType Type, string LabelKey)[] FilterTypes =
+    [
+        (AuditIssueType.WeakPassword, "audit.filter.weak"),
+        (AuditIssueType.ReusedPassword, "audit.filter.reused"),
+        (AuditIssueType.ExpiredEntry, "audit.filter.expired"),
+    ];
+
+    private void ToggleType(AuditIssueType type)
+    {
+        if (!_types.Remove(type)) _types.Add(type);
+    }
+
+    /// <summary>
+    /// Severity first, so the worst findings stay on top whichever chips are pressed. Selecting
+    /// several types widens the list — they are alternatives, and a finding is only ever of one
+    /// type, so intersecting them would always come back empty.
+    /// </summary>
     private List<AuditIssue> Shown() => _report!.Issues
-        .Where(i => _filter is null || i.Type == _filter)
+        .Where(i => _types.Count == 0 || _types.Contains(i.Type))
         .OrderByDescending(i => i.Severity)
         .ToList();
 
@@ -169,7 +188,7 @@ else
         _report = await AppState.Service!.AuditVaultAsync(Auditor);
         _ranAt = DateTime.UtcNow;
         // A filter left over from the previous run could hide everything the new one found.
-        _filter = null;
+        _types.Clear();
 
         _loading = false;
     }
