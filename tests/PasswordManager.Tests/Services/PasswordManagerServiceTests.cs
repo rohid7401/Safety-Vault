@@ -242,6 +242,166 @@ namespace PasswordManager.Tests.Services
             Assert.False(note!.IsCritical);
         }
 
+        // ─── What the audit actually looks at ────────────────────────────────
+        //
+        // The auditor itself was covered; the projection that feeds it was not, and that is where
+        // the gap lived — a tester reported the audit ignoring passwords they had typed by hand.
+
+        private static PasswordManager.Core.Interfaces.IVaultAuditor NewAuditor() =>
+            new PasswordManager.Infrastructure.Services.VaultAuditor(
+                new PasswordManager.Infrastructure.Services.PasswordGenerator());
+
+        private static async Task AddWithFieldAsync(
+            PasswordManagerService svc, string site, CredentialFieldType type, string value)
+        {
+            var cred = new Credential();
+            var secret = CredentialField.IsSecretByDefault(type);
+            cred.Fields.Add(new CredentialField
+            {
+                Type = type,
+                IsSecret = secret,
+                PlainValue = secret ? string.Empty : value,
+                SecretValue = secret ? svc.EncryptValue(value) : null,
+            });
+            await svc.AddServiceEntryAsync(new ServiceEntry { Site = site, Credentials = { cred } });
+        }
+
+        [Fact]
+        public async Task AuditVaultAsync_ExaminesPinsAndNotOnlyPasswords()
+        {
+            // A PIN is a secret, carries a rotation policy, and being short is the likeliest thing
+            // in the vault to be weak — yet it used to be skipped entirely.
+            await using var svc = await CreateServiceAsync();
+            await AddWithFieldAsync(svc, "bank.com", CredentialFieldType.Pin, "1234");
+
+            var report = await svc.AuditVaultAsync(NewAuditor());
+
+            Assert.Equal(1, report.TotalPasswords);
+            Assert.Contains(report.Issues, i => i.Type == AuditIssueType.WeakPassword);
+        }
+
+        [Fact]
+        public async Task AuditVaultAsync_CountsPasswordsAndPinsTogether()
+        {
+            await using var svc = await CreateServiceAsync();
+            await AddWithFieldAsync(svc, "a.com", CredentialFieldType.Password, "Tr0ub4dor&3xample!");
+            await AddWithFieldAsync(svc, "b.com", CredentialFieldType.Pin, "0000");
+
+            var report = await svc.AuditVaultAsync(NewAuditor());
+
+            Assert.Equal(2, report.TotalPasswords);
+            Assert.Equal(2, report.EntriesScanned);
+        }
+
+        [Fact]
+        public async Task AuditVaultAsync_LeavesTotpSecretsAlone()
+        {
+            // Machine-generated Base32: "weak" and "reused" are meaningless for it, and scoring it
+            // would report every 2FA setup in the vault as a problem.
+            await using var svc = await CreateServiceAsync();
+            await AddWithFieldAsync(svc, "a.com", CredentialFieldType.TwoFactor, "JBSWY3DPEHPK3PXP");
+
+            var report = await svc.AuditVaultAsync(NewAuditor());
+
+            Assert.Equal(0, report.TotalPasswords);
+            Assert.Empty(report.Issues);
+        }
+
+        [Fact]
+        public async Task AuditVaultAsync_ReportsEntriesItCouldNotJudge()
+        {
+            // An entry holding only a plain text or e-mail field is neither healthy nor unhealthy.
+            // Counting it silently as fine is how a vault reads "all good" while part of it was
+            // never checked — so the count is surfaced instead.
+            await using var svc = await CreateServiceAsync();
+            await AddWithFieldAsync(svc, "has-pw.com", CredentialFieldType.Password, "Tr0ub4dor&3xample!");
+            await AddWithFieldAsync(svc, "notes-only.com", CredentialFieldType.Text, "some note");
+            await AddWithFieldAsync(svc, "email-only.com", CredentialFieldType.Email, "a@example.com");
+
+            var report = await svc.AuditVaultAsync(NewAuditor());
+
+            Assert.Equal(3, report.EntriesScanned);
+            Assert.Equal(1, report.TotalPasswords);
+            Assert.Equal(2, report.EntriesWithoutSecrets);
+        }
+
+        [Fact]
+        public async Task AuditVaultAsync_SpotsTheSameSecretReusedAcrossEntries()
+        {
+            await using var svc = await CreateServiceAsync();
+            await AddWithFieldAsync(svc, "a.com", CredentialFieldType.Password, "Tr0ub4dor&3xample!");
+            await AddWithFieldAsync(svc, "b.com", CredentialFieldType.Password, "Tr0ub4dor&3xample!");
+
+            var report = await svc.AuditVaultAsync(NewAuditor());
+
+            Assert.Equal(2, report.ReusedCount);
+        }
+
+        // ─── Trash: delete, restore, purge ───────────────────────────────────
+        //
+        // Deleting was always a soft delete, but until now nothing in the app listed the trash or
+        // restored from it — so this round trip had never been exercised end to end.
+
+        [Fact]
+        public async Task DeletedEntry_LeavesTheListButStaysInTheTrash()
+        {
+            await using var svc = await CreateServiceAsync();
+            var entry = await AddPwAsync(svc, "example.com");
+
+            await svc.DeleteEntryAsync(entry.Id);
+
+            Assert.Empty(await svc.GetEntriesAsync<ServiceEntry>());
+            var trashed = Assert.Single(await svc.GetDeletedEntriesAsync());
+            Assert.Equal(entry.Id, trashed.Id);
+            Assert.NotNull(trashed.DeletedAt);
+        }
+
+        [Fact]
+        public async Task RestoreEntryAsync_BringsItBackWithItsSecretIntact()
+        {
+            // Restoring has to return a usable entry, not just an visible one: the password must
+            // still decrypt afterwards.
+            await using var svc = await CreateServiceAsync();
+            var entry = await AddPwAsync(svc, "example.com", "s3cret-value");
+            await svc.DeleteEntryAsync(entry.Id);
+
+            await svc.RestoreEntryAsync(entry.Id);
+
+            var restored = Assert.Single(await svc.GetEntriesAsync<ServiceEntry>());
+            Assert.Equal(entry.Id, restored.Id);
+            Assert.False(restored.IsDeleted);
+            Assert.Null(restored.DeletedAt);
+            Assert.Equal("s3cret-value", svc.DecryptSecret(PwField(restored)));
+            Assert.Empty(await svc.GetDeletedEntriesAsync());
+        }
+
+        [Fact]
+        public async Task PurgeDeletedAsync_RemovesOnlyWhatWasInTheTrash()
+        {
+            await using var svc = await CreateServiceAsync();
+            var kept = await AddPwAsync(svc, "keep.com");
+            var thrown = await AddPwAsync(svc, "throw.com");
+            await svc.DeleteEntryAsync(thrown.Id);
+
+            await svc.PurgeDeletedAsync();
+
+            Assert.Empty(await svc.GetDeletedEntriesAsync());
+            var remaining = Assert.Single(await svc.GetEntriesAsync<ServiceEntry>());
+            Assert.Equal(kept.Id, remaining.Id);
+        }
+
+        [Fact]
+        public async Task RestoreEntryAsync_OnSomethingNotInTheTrash_DoesNothing()
+        {
+            await using var svc = await CreateServiceAsync();
+            var entry = await AddPwAsync(svc, "example.com");
+
+            await svc.RestoreEntryAsync(entry.Id);          // never deleted
+            await svc.RestoreEntryAsync(Guid.NewGuid());    // never existed
+
+            Assert.Single(await svc.GetEntriesAsync<ServiceEntry>());
+        }
+
         // ─── Empty vault ─────────────────────────────────────────────────────
 
         [Fact]

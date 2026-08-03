@@ -30,9 +30,22 @@ else
         <div class="dash-status-icon sm"><Icon Name="shield" Size="16" /></div>
         <div style="flex:1; min-width:0;">
             <div class="dash-status-title">@L.Format("audit.summary", _report.Issues.Count, _report.TotalPasswords)</div>
-            <div class="dash-status-sub">@L.Format("audit.ranAt", RelativeTime.Ago(L, _ranAt))</div>
+            @* Coverage, not just findings: "0 problemas" means nothing without knowing how much
+               was read, and an entry with no password is invisible to every check below. *@
+            <div class="dash-status-sub">
+                @L.Format("audit.scope", _report.TotalPasswords, _report.EntriesScanned) ·
+                @L.Format("audit.ranAt", RelativeTime.Ago(L, _ranAt))
+            </div>
         </div>
     </div>
+
+    @if (_report.EntriesWithoutSecrets > 0)
+    {
+        <div class="hint-row" style="margin-top:0; margin-bottom:14px;">
+            <Icon Name="info" Size="15" />
+            <span>@L.Format("audit.noSecrets", _report.EntriesWithoutSecrets)</span>
+        </div>
+    }
 
     <div class="grid-4" style="margin-bottom:16px;">
         <div class="stat-card compact">

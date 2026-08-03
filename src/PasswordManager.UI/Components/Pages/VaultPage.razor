@@ -879,7 +879,16 @@ else
         _fSnapshot = CurrentSnapshot();
     }
 
-    private void AddField(CredDraft c) => c.Fields.Add(new FieldDraft { Type = CredentialFieldType.Text });
+    /// <summary>
+    /// New fields start as a password, not as free text.
+    ///
+    /// <para>"Text" is not a secret: its value is stored in the clear inside the vault, shown
+    /// without masking, and skipped by the audit. Someone who added a field, typed their password
+    /// and never opened the type menu ended up with exactly that — which is why a tester found the
+    /// audit ignoring every password they had typed by hand while auditing the imported ones.
+    /// Defaulting to the secret type means forgetting to choose fails safe.</para>
+    /// </summary>
+    private void AddField(CredDraft c) => c.Fields.Add(new FieldDraft { Type = CredentialFieldType.Password });
     private void RemoveField(CredDraft c, FieldDraft f) => c.Fields.Remove(f);
     // Same single-field start as a new entry, so an added account looks like the first one.
     private void AddCredential() => _draft.Add(new CredDraft

@@ -595,10 +595,21 @@ namespace PasswordManager.Core.Services
 
         // ─── Audit ───────────────────────────────────────────────────────────
 
+        /// <summary>Secret types the audit can meaningfully judge.</summary>
+        /// <remarks>
+        /// PINs belong here: they are secrets, they carry rotation policies, and being short they
+        /// are the likeliest thing in the vault to be weak or reused — yet they were skipped.
+        /// TOTP secrets deliberately do not: they are machine-generated Base32, so "weak" and
+        /// "reused" mean nothing for them and every one would be reported as a false alarm.
+        /// </remarks>
+        private static bool IsAuditable(CredentialField f) =>
+            f.Type is CredentialFieldType.Password or CredentialFieldType.Pin;
+
         /// <summary>
-        /// Audits every password field across all service entries. Each password field becomes an
+        /// Audits every password and PIN across all service entries. Each becomes an
         /// <see cref="AuditItem"/> (decrypted here), with its expiry resolved from the field's
-        /// rotation policy or, failing that, the entry-level expiry.
+        /// rotation policy or, failing that, the entry-level expiry. The report also carries how
+        /// much was read, so the UI can show coverage rather than only findings.
         /// </summary>
         public async Task<AuditReport> AuditVaultAsync(IVaultAuditor auditor)
         {
@@ -606,11 +617,14 @@ namespace PasswordManager.Core.Services
             var services = await GetEntriesAsync<ServiceEntry>();
 
             var items = new List<AuditItem>();
+            var withoutSecrets = 0;
+
             foreach (var svc in services)
             {
+                var before = items.Count;
                 foreach (var cred in svc.Credentials)
                 {
-                    foreach (var field in cred.Fields.Where(f => f.Type == CredentialFieldType.Password))
+                    foreach (var field in cred.Fields.Where(IsAuditable))
                     {
                         items.Add(new AuditItem
                         {
@@ -621,9 +635,13 @@ namespace PasswordManager.Core.Services
                         });
                     }
                 }
+                if (items.Count == before) withoutSecrets++;
             }
 
-            return auditor.Audit(items);
+            var report = auditor.Audit(items);
+            report.EntriesScanned = services.Count;
+            report.EntriesWithoutSecrets = withoutSecrets;
+            return report;
         }
 
         private static string AuditLabel(ServiceEntry svc, Credential cred) =>

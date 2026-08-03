@@ -3,7 +3,24 @@ namespace PasswordManager.Core.Models
     public class AuditReport
     {
         public List<AuditIssue> Issues { get; set; } = new();
+
+        /// <summary>Secrets actually examined — passwords and PINs across every entry.</summary>
         public int TotalPasswords { get; set; }
+
+        /// <summary>
+        /// Entries the audit looked at. Reported alongside <see cref="TotalPasswords"/> so the
+        /// coverage is visible: a tester could not tell that entries were being skipped, because
+        /// the report only ever said how many findings it had, never how much it had read.
+        /// </summary>
+        public int EntriesScanned { get; set; }
+
+        /// <summary>
+        /// Entries holding nothing the audit can judge — no password and no PIN. They are neither
+        /// healthy nor unhealthy, and counting them silently as "fine" is how a vault looks clean
+        /// while half of it was never checked.
+        /// </summary>
+        public int EntriesWithoutSecrets { get; set; }
+
         public int WeakCount { get; set; }
         public int ReusedCount { get; set; }
         public int ExpiredCount { get; set; }

@@ -20,6 +20,49 @@
     </p>
 </div>
 
+@* ── The trash itself ──
+   Deleting an entry has always been a soft delete, but nothing ever showed what was in there or
+   offered a way back: the recycle bin existed in the data and not in the app. *@
+<div class="dash-group-title ruled" style="margin:20px 2px 8px;">@L["data.trash"]</div>
+
+@if (_loading)
+{
+    <p style="color:var(--n-500); font-size:13px;">@L["common.loading"]</p>
+}
+else if (_trash.Count == 0)
+{
+    <div class="card" style="gap:4px;">
+        <div style="font-size:14px; font-weight:600;">@L["data.trash.emptyTitle"]</div>
+        <div style="font-size:12.5px; color:var(--n-400);">@L["data.trash.emptyBody"]</div>
+    </div>
+}
+else
+{
+    <div class="pw-list">
+        @foreach (var item in _trash)
+        {
+            <div class="pw-row" style="cursor:default;">
+                <span class="pw-avatar c1"><Icon Name="@TrashIcon(item)" Size="15" StrokeWidth="1.8" /></span>
+                <span class="pw-row-text">
+                    <span class="pw-title">@TrashLabel(item)</span>
+                    <span class="pw-sub">@TrashSubtitle(item)</span>
+                </span>
+                <button class="btn btn-secondary btn-sm" type="button" style="flex:none;"
+                        disabled="@_restoring" @onclick="() => Restore(item)">
+                    @L["data.trash.restore"]
+                </button>
+            </div>
+        }
+    </div>
+
+    <button class="btn btn-secondary btn-block" type="button"
+            style="color:var(--danger); margin-top:10px;" @onclick="AskEmptyTrash">
+        <Icon Name="trash" Size="15" StrokeWidth="1.8" />@L["data.trash.empty"]
+    </button>
+}
+
+<div class="dash-group-title ruled" style="margin:22px 2px 8px;">@L["data.sections"]</div>
+
 @foreach (var s in _sections)
 {
     <div class="card" style="flex-direction:row; align-items:center; gap:12px; margin-top:12px;">
@@ -122,16 +165,82 @@
 
     private sealed record Section(SectionKind Kind, string LabelKey, string Icon);
 
+    // The trash is no longer one row among these: it has its own listing above, with a way back
+    // out of it. Its entry stays defined only so emptying it reuses the typed confirmation below.
     private static readonly Section[] _sections =
     [
         new(SectionKind.Passwords, "nav.passwords", "lock"),
         new(SectionKind.Notes, "nav.notes", "note"),
         new(SectionKind.Cards, "nav.cards", "card"),
-        new(SectionKind.Trash, "data.trash", "trash"),
     ];
+
+    private static readonly Section TrashSection = new(SectionKind.Trash, "data.trash", "trash");
 
     private readonly Dictionary<SectionKind, int> _counts = new();
     private bool _loading = true;
+
+    // ─── Trash ───────────────────────────────────────────────────────────
+
+    private List<VaultEntry> _trash = new();
+    private bool _restoring;
+
+    private static string TrashIcon(VaultEntry e) => e switch
+    {
+        ServiceEntry => "lock",
+        SecureNote => "note",
+        CardEntry => "card",
+        _ => "file",
+    };
+
+    /// <summary>
+    /// Names a trashed entry without revealing anything it protects: the site, the note's title
+    /// or the cardholder — never a secret, since the whole page is reachable while merely
+    /// unlocked and a deleted password is still a password.
+    /// </summary>
+    private string TrashLabel(VaultEntry e) => e switch
+    {
+        ServiceEntry s => s.Site,
+        SecureNote n => n.Title,
+        CardEntry c => string.IsNullOrWhiteSpace(c.CardholderName) ? L["nav.cards"] : c.CardholderName,
+        _ => L["data.trash.unknown"],
+    };
+
+    private string TrashSubtitle(VaultEntry e)
+    {
+        var kind = e switch
+        {
+            ServiceEntry => L["nav.passwords"],
+            SecureNote => L["nav.notes"],
+            CardEntry => L["nav.cards"],
+            _ => L["data.trash.unknown"],
+        };
+        return e.DeletedAt is DateTime when
+            ? $"{kind} · {L.Format("data.trash.deletedAgo", RelativeTime.Ago(L, when))}"
+            : kind;
+    }
+
+    private async Task Restore(VaultEntry entry)
+    {
+        _restoring = true;
+        try
+        {
+            await AppState.Service!.RestoreEntryAsync(entry.Id);
+            Toast.Success(L.Format("data.trash.restored", TrashLabel(entry)));
+            await RefreshCountsAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"{L["data.trash.restoreFailed"]}: {UserError.Describe(L, ex)}");
+        }
+        finally
+        {
+            _restoring = false;
+        }
+    }
+
+    /// <summary>Emptying the trash is permanent, so it goes through the same typed guard as
+    /// wiping a section rather than a bare tap.</summary>
+    private void AskEmptyTrash() => Ask(TrashSection);
 
     private Section? _pending;
     private string _typed = string.Empty;
@@ -220,7 +329,11 @@
         _counts[SectionKind.Passwords] = await svc.CountAsync<ServiceEntry>();
         _counts[SectionKind.Notes] = await svc.CountAsync<SecureNote>();
         _counts[SectionKind.Cards] = await svc.CountAsync<CardEntry>();
-        _counts[SectionKind.Trash] = (await svc.GetDeletedEntriesAsync()).Count;
+        // Newest first: what was just deleted by mistake is what someone comes here to undo.
+        _trash = (await svc.GetDeletedEntriesAsync())
+            .OrderByDescending(e => e.DeletedAt ?? DateTime.MinValue)
+            .ToList();
+        _counts[SectionKind.Trash] = _trash.Count;
 
         _loading = false;
     }

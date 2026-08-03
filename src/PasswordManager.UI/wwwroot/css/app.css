@@ -886,9 +886,13 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
 .empty-state p { font-size: 13px; max-width: 280px; margin: 0 auto 20px; line-height: 1.5; }
 
 /* ═══ Unlock page ══════════════════════════════════════════════════ */
+/* Centring is done with `margin: auto` on the card rather than `align-items: center` here.
+   With align-items the overflow of a too-tall form is split above and below the container, but a
+   scroll container only ever scrolls downward — so the top was unreachable and the logo sat cut
+   off on shorter screens. Auto margins collapse to zero once the content stops fitting, which
+   centres when there is room and clips nothing when there is not. */
 .unlock-container {
     display: flex;
-    align-items: center;
     justify-content: center;
     height: var(--app-vh, 100vh);
     background: var(--color-bg);
@@ -896,6 +900,7 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
 }
 
 .unlock-card {
+    margin: auto;
     background: transparent;
     border: none;
     border-radius: 0;
