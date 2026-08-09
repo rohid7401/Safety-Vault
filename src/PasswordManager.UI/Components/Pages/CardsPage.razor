@@ -399,7 +399,7 @@ else
     private readonly Dictionary<Guid, string> _brand = new();
 
     private ViewMode Mode => ViewPrefs.Get(ViewScope.Cards);
-    private void SetMode(ViewMode mode) => ViewPrefs.Set(ViewScope.Cards, mode);
+    private Task SetMode(ViewMode mode) => ViewPrefs.SetAsync(ViewScope.Cards, mode);
 
     /// <summary>
     /// The model stores no brand, so it is read off the number's opening digits (the issuer

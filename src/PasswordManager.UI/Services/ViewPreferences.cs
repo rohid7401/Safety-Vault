@@ -14,40 +14,49 @@ namespace PasswordManager.UI.Services
     /// <para>Defaults differ for the same reason. The dashboard is a fixed set of destinations
     /// where tiles read faster, so it starts as a grid; the vault screens start as lists, which
     /// carry more per row and is what existing users already know.</para>
+    ///
+    /// <para>Now stored per account through <see cref="AppSettings"/> rather than per device, so
+    /// the choice follows the vault to a second device. The old device store is still read once,
+    /// to carry over what someone had already set — see <see cref="MigrateFromDeviceStoreAsync"/>.</para>
     /// </summary>
     public sealed class ViewPreferences
     {
-        private readonly IViewPreferenceStore _store;
-        private readonly Dictionary<ViewScope, ViewMode> _cache = new();
+        private readonly AppSettings _settings;
+        private readonly IViewPreferenceStore _legacyStore;
 
         public event Action? OnChanged;
 
-        public ViewPreferences(IViewPreferenceStore store) => _store = store;
+        public ViewPreferences(AppSettings settings, IViewPreferenceStore legacyStore)
+        {
+            _settings = settings;
+            _legacyStore = legacyStore;
+            _settings.OnChanged += () => OnChanged?.Invoke();
+        }
 
         private static ViewMode DefaultFor(ViewScope scope) =>
             scope == ViewScope.Dashboard ? ViewMode.Grid : ViewMode.List;
 
-        public ViewMode Get(ViewScope scope)
+        private static Setting<ViewMode> SettingFor(ViewScope scope) =>
+            Setting<ViewMode>.ForEnum($"view.{scope}", DefaultFor(scope));
+
+        public ViewMode Get(ViewScope scope) => _settings.Get(SettingFor(scope));
+
+        public Task SetAsync(ViewScope scope, ViewMode mode) =>
+            _settings.SetAsync(SettingFor(scope), mode);
+
+        /// <summary>
+        /// Moves a choice made before these lived in the vault. Runs once per unlock and only
+        /// fills scopes the account has never set, so it can never overwrite a newer choice made
+        /// on this device — and an upgrade does not silently reset everyone's screens.
+        /// </summary>
+        public async Task MigrateFromDeviceStoreAsync()
         {
-            if (_cache.TryGetValue(scope, out var cached)) return cached;
-
-            // An unreadable or unrecognised stored value falls back to the default rather than
-            // throwing — a bad preference must never keep a screen from rendering.
-            var mode = Enum.TryParse<ViewMode>(_store.Get(scope.ToString()), out var stored)
-                ? stored
-                : DefaultFor(scope);
-
-            _cache[scope] = mode;
-            return mode;
-        }
-
-        public void Set(ViewScope scope, ViewMode mode)
-        {
-            if (Get(scope) == mode) return;
-
-            _cache[scope] = mode;
-            _store.Set(scope.ToString(), mode.ToString());
-            OnChanged?.Invoke();
+            foreach (var scope in Enum.GetValues<ViewScope>())
+            {
+                var stored = _legacyStore.Get(scope.ToString());
+                if (Enum.TryParse<ViewMode>(stored, out var mode))
+                    await _settings.SeedAsync(SettingFor(scope), mode);
+            }
         }
     }
 }

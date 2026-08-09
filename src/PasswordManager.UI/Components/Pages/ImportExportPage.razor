@@ -4,6 +4,7 @@
 @inject IImportExportService ImportExport
 @inject IFileEncryptionService FileEnc
 @inject IPortableBackupCrypto BackupCrypto
+@inject AppSettings Settings
 @inject IFilePickerService Picker
 @inject Loc L
 @implements IDisposable
@@ -110,15 +111,17 @@
         @((MarkupString)L["io.exportBody"])
     </p>
 
+    @* A native <select> shows four bare labels and hides what separates them — which of these
+       keeps your multi-account entries, which one Excel opens — behind a hint that only appears
+       once you have already chosen. The sheet shows every option with its consequence, so the
+       choice is made with the reasons in view. *@
     <div class="field" style="margin-bottom:0;">
         <label>@L["io.exportTarget"]</label>
-        <select class="input" value="@_target" @onchange="OnTargetChanged">
-            <option value="@ExportTarget.NativeBackup">@L["io.target.native"]</option>
-            <option value="@ExportTarget.GenericCsv">@L["io.target.generic"]</option>
-            <option value="@ExportTarget.BitwardenCsv">@L["io.target.bitwarden"]</option>
-            <option value="@ExportTarget.ChromeCsv">@L["io.target.chrome"]</option>
-        </select>
-        <small style="color:var(--n-500); font-size:12px;">@L[TargetHintKey]</small>
+        <button class="picker" type="button" @onclick="() => _picker = OptionSheet.Target">
+            <span class="picker-value">@L[TargetLabelKey]</span>
+            <span class="picker-chevron"><Icon Name="chevron-down" Size="16" StrokeWidth="1.9" /></span>
+        </button>
+        <div class="field-hint">@L[TargetHintKey]</div>
     </div>
 
     @if (_target != ExportTarget.NativeBackup)
@@ -153,19 +156,11 @@
        restored on a computer. *@
     <div class="field" style="margin-bottom:0;">
         <label>@L["io.protection"]</label>
-        <select class="input" @bind="_exportMode">
-            <option value="passphrase">@L["io.protect.passphrase"]</option>
-            <option value="encrypted">@L["io.protect.pgp"]</option>
-            <option value="plaintext">@L["io.protect.none"]</option>
-        </select>
-        <div class="field-hint">
-            @(_exportMode switch
-            {
-                "passphrase" => L["io.protect.passphrase.hint"],
-                "encrypted" => L["io.protect.pgp.hint"],
-                _ => L["io.protect.none.hint"],
-            })
-        </div>
+        <button class="picker" type="button" @onclick="() => _picker = OptionSheet.Protection">
+            <span class="picker-value">@L[ProtectionLabelKey]</span>
+            <span class="picker-chevron"><Icon Name="chevron-down" Size="16" StrokeWidth="1.9" /></span>
+        </button>
+        <div class="field-hint">@L[ProtectionHintKey]</div>
     </div>
 
     @if (_exportMode == "passphrase")
@@ -222,7 +217,122 @@
     }
 </style>
 
+@* ─── Option pickers ───
+   Each row carries the choice *and* what it costs, which a <select> cannot show. *@
+<SheetModal Visible="@(_picker != OptionSheet.None)" Title="@PickerTitle" OnClose="() => _picker = OptionSheet.None">
+    <ChildContent>
+        @foreach (var opt in PickerOptions)
+        {
+            var chosen = opt.Selected;
+            <button class="opt-row @(chosen ? "active" : "")" type="button" @onclick="opt.Choose">
+                <span class="opt-mark @(chosen ? "on" : "")">
+                    @if (chosen) { <Icon Name="check" Size="12" StrokeWidth="3" /> }
+                </span>
+                <span class="opt-text">
+                    <span class="opt-label">@L[opt.LabelKey]</span>
+                    <span class="opt-desc">@L[opt.HintKey]</span>
+                </span>
+            </button>
+        }
+    </ChildContent>
+</SheetModal>
+
 @code {
+    private enum OptionSheet { None, Target, Protection }
+
+    private OptionSheet _picker = OptionSheet.None;
+
+    private sealed record SheetOption(string LabelKey, string HintKey, bool Selected, Action Choose);
+
+    private string PickerTitle => _picker == OptionSheet.Target ? L["io.exportTarget"] : L["io.protection"];
+
+    private string TargetLabelKey => _target switch
+    {
+        ExportTarget.NativeBackup => "io.target.native",
+        ExportTarget.GenericCsv => "io.target.generic",
+        ExportTarget.BitwardenCsv => "io.target.bitwarden",
+        _ => "io.target.chrome",
+    };
+
+    private string ProtectionLabelKey => _exportMode switch
+    {
+        "passphrase" => "io.protect.passphrase",
+        "encrypted" => "io.protect.pgp",
+        _ => "io.protect.none",
+    };
+
+    private string ProtectionHintKey => _exportMode switch
+    {
+        "passphrase" => "io.protect.passphrase.hint",
+        "encrypted" => "io.protect.pgp.hint",
+        _ => "io.protect.none.hint",
+    };
+
+    private IEnumerable<SheetOption> PickerOptions
+    {
+        get
+        {
+            if (_picker == OptionSheet.Target)
+            {
+                foreach (var target in new[]
+                {
+                    ExportTarget.NativeBackup, ExportTarget.GenericCsv,
+                    ExportTarget.BitwardenCsv, ExportTarget.ChromeCsv,
+                })
+                {
+                    var t = target;
+                    yield return new SheetOption(
+                        LabelKeyFor(t), HintKeyFor(t), _target == t, () => ChooseTarget(t));
+                }
+            }
+            else if (_picker == OptionSheet.Protection)
+            {
+                foreach (var (mode, label, hint) in new[]
+                {
+                    ("passphrase", "io.protect.passphrase", "io.protect.passphrase.hint"),
+                    ("encrypted", "io.protect.pgp", "io.protect.pgp.hint"),
+                    ("plaintext", "io.protect.none", "io.protect.none.hint"),
+                })
+                {
+                    var m = mode;
+                    yield return new SheetOption(label, hint, _exportMode == m, () => ChooseProtection(m));
+                }
+            }
+        }
+    }
+
+    private static string LabelKeyFor(ExportTarget t) => t switch
+    {
+        ExportTarget.NativeBackup => "io.target.native",
+        ExportTarget.GenericCsv => "io.target.generic",
+        ExportTarget.BitwardenCsv => "io.target.bitwarden",
+        _ => "io.target.chrome",
+    };
+
+    private static string HintKeyFor(ExportTarget t) => t switch
+    {
+        ExportTarget.NativeBackup => "io.target.nativeHint",
+        ExportTarget.GenericCsv => "io.target.genericHint",
+        ExportTarget.BitwardenCsv => "io.target.bitwardenHint",
+        _ => "io.target.chromeHint",
+    };
+
+    private void ChooseTarget(ExportTarget target)
+    {
+        _target = target;
+        // Each target offers a different column set, so the previous selection may name fields
+        // this one has no column for.
+        SelectAllFields();
+        _exportResult = string.Empty;
+        _picker = OptionSheet.None;
+    }
+
+    private void ChooseProtection(string mode)
+    {
+        _exportMode = mode;
+        _picker = OptionSheet.None;
+    }
+
     // ── Export ──
     private bool _exporting;
     private ExportTarget _target = ExportTarget.NativeBackup;
@@ -249,26 +359,24 @@
     private string OwnPublicKeyPath => Path.Combine(AppState.Account!.VaultPath, "public_key.asc");
     private string OwnPrivateKeyPath => Path.Combine(AppState.Account!.VaultPath, "private_key.asc");
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         L.OnChanged += StateHasChanged;
+        await Settings.EnsureLoadedAsync();
+
+        // Where the pickers start, not what they are locked to. "Not encrypted" is deliberately
+        // not among the stored defaults — it stays a choice made per export, with its warning.
+        _target = Settings.Get(AppSettingsCatalog.ExportDefaultTarget);
+        _exportMode = Settings.Get(AppSettingsCatalog.ExportDefaultProtection) == ExportProtection.Pgp
+            ? "encrypted"
+            : "passphrase";
+
         SelectAllFields();
     }
 
     public void Dispose() => L.OnChanged -= StateHasChanged;
 
     // ─── Export ──────────────────────────────────────────────────────────
-
-    private void OnTargetChanged(ChangeEventArgs e)
-    {
-        if (Enum.TryParse<ExportTarget>(e.Value?.ToString(), out var target))
-            _target = target;
-
-        // Each target offers a different column set, so the previous selection may name
-        // fields this one has no column for.
-        SelectAllFields();
-        _exportResult = string.Empty;
-    }
 
     private void SelectAllFields() =>
         _selected = ExportPresets.SelectableFields(_target).ToHashSet();

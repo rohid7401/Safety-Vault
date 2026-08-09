@@ -1,0 +1,114 @@
+@* Blocking "the app is working" overlay.
+
+   Used where an operation stops the screen and the user cannot do anything else — unlocking,
+   creating an account, generating a key pair, writing an import into the vault. Everything else
+   (a button that briefly disables itself, a list filling in) wants a different treatment; this
+   one takes the whole screen away, so it is only right when the whole screen really is blocked.
+
+   Two rules are built in rather than left to each caller, because a caller that forgets them
+   produces a worse experience than showing nothing at all:
+
+   • Nothing appears for the first quarter second. Most of these finish faster than that on a
+     modern phone, and a spinner that flashes and vanishes reads as a glitch rather than as
+     progress. The wait is only worth naming once it is long enough to notice.
+
+   • It always carries a label. A silent spinner is indistinguishable from a hang, and the
+     operations behind this are exactly the ones people would otherwise force-quit: an RSA key
+     pair can take twenty seconds on a low-end phone, and someone with no idea what is happening
+     will kill the app halfway through and be left with a half-made identity.
+*@
+@implements IDisposable
+
+@if (_shown)
+{
+    <div class="busy" role="status" aria-live="polite" aria-busy="true">
+        <div class="busy-box">
+            @if (Progress is { } value)
+            {
+                @* Determinate only where the fraction is genuinely known — bytes encrypted,
+                   rows imported. A bar invented for an unknown wait stalls near the end and
+                   teaches people not to believe the next one. *@
+                <div class="busy-bar" aria-hidden="true">
+                    <div class="busy-bar-fill" style="width:@((int)(Math.Clamp(value, 0, 1) * 100))%"></div>
+                </div>
+            }
+            else
+            {
+                <div class="busy-spinner" aria-hidden="true"></div>
+            }
+
+            <div class="busy-label">@Label</div>
+
+            @if (!string.IsNullOrEmpty(Note))
+            {
+                @* For the waits long enough that silence starts to look like a crash. *@
+                <div class="busy-note">@Note</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Whether the operation is running. The overlay still waits <see cref="DelaySeconds"/>
+    /// before it appears, and disappears the instant this goes false.</summary>
+    [Parameter] public bool Visible { get; set; }
+
+    /// <summary>What is happening, in the user's words. Required — see the note above.</summary>
+    [Parameter] public string Label { get; set; } = string.Empty;
+
+    /// <summary>An extra line for waits long enough to look like a freeze.</summary>
+    [Parameter] public string Note { get; set; } = string.Empty;
+
+    /// <summary>0–1 when the share done is really known; null for an indeterminate spinner.</summary>
+    [Parameter] public double? Progress { get; set; }
+
+    /// <summary>How long an operation has to run before it is worth interrupting the screen for.</summary>
+    [Parameter] public double DelaySeconds { get; set; } = 0.25;
+
+    private bool _shown;
+    private CancellationTokenSource? _pending;
+
+    protected override void OnParametersSet()
+    {
+        if (Visible == _shown && (Visible || _pending is null)) return;
+
+        _pending?.Cancel();
+        _pending = null;
+
+        if (!Visible)
+        {
+            // Hidden immediately: a lingering overlay blocks a screen that is already usable.
+            _shown = false;
+            return;
+        }
+
+        if (_shown) return;
+
+        var cts = new CancellationTokenSource();
+        _pending = cts;
+        _ = ShowAfterDelayAsync(cts);
+    }
+
+    private async Task ShowAfterDelayAsync(CancellationTokenSource cts)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(DelaySeconds), cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;   // finished inside the grace period; nothing was ever shown
+        }
+
+        if (cts.IsCancellationRequested) return;
+
+        _shown = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _pending?.Cancel();
+        _pending?.Dispose();
+    }
+}

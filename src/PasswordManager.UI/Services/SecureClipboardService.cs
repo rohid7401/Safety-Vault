@@ -26,14 +26,24 @@ namespace PasswordManager.UI.Services
         public static readonly TimeSpan DefaultClearAfter = TimeSpan.FromMinutes(2);
 
         private readonly IClipboardService _clipboard;
-        private readonly TimeSpan _clearAfter;
+        private readonly Func<TimeSpan> _clearAfter;
         private CancellationTokenSource? _pendingClear;
 
-        public SecureClipboardService(IClipboardService clipboard, TimeSpan? clearAfter = null)
+        /// <summary>
+        /// <paramref name="clearAfter"/> is read at each copy rather than captured once: this is a
+        /// singleton built at start-up, while the preference lives in the vault and is only
+        /// readable after unlocking. Capturing it here would pin whatever the value was before any
+        /// account existed.
+        /// </summary>
+        public SecureClipboardService(IClipboardService clipboard, Func<TimeSpan>? clearAfter = null)
         {
             _clipboard = clipboard;
-            _clearAfter = clearAfter ?? DefaultClearAfter;
+            _clearAfter = clearAfter ?? (() => DefaultClearAfter);
         }
+
+        /// <summary>Test seam: a timeout that never changes.</summary>
+        public SecureClipboardService(IClipboardService clipboard, TimeSpan clearAfter)
+            : this(clipboard, () => clearAfter) { }
 
         /// <summary>Copies a secret to the clipboard and schedules it to auto-clear.</summary>
         public async Task CopySensitiveAsync(string text)
@@ -51,7 +61,7 @@ namespace PasswordManager.UI.Services
         {
             try
             {
-                await Task.Delay(_clearAfter, token);
+                await Task.Delay(_clearAfter(), token);
             }
             catch (TaskCanceledException)
             {

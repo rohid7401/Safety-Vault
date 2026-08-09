@@ -7,6 +7,7 @@
 @inject ITotpService TotpService
 @inject SecureClipboardService SecureClipboard
 @inject ViewPreferences ViewPrefs
+@inject AppSettings Settings
 @inject Loc L
 @implements IDisposable
 
@@ -812,7 +813,7 @@ else
     }
 
     private ViewMode Mode => ViewPrefs.Get(ViewScope.Passwords);
-    private void SetMode(ViewMode mode) => ViewPrefs.Set(ViewScope.Passwords, mode);
+    private Task SetMode(ViewMode mode) => ViewPrefs.SetAsync(ViewScope.Passwords, mode);
 
     private int DueCount => _entries.Count(e => WorstStatus(e.Credentials) != ExpiryStatus.None);
     private int TwoFactorCount => _entries.Count(HasTwoFactor);
@@ -1024,7 +1025,7 @@ else
         // field by field — people never found "add field" because nothing suggested it was needed.
         _draft = new List<CredDraft>
         {
-            new() { Fields = { new FieldDraft { Type = CredentialFieldType.Email } } },
+            new() { Fields = { NewField(Settings.Get(AppSettingsCatalog.NewAccountField)) } },
         };
         _splitDeclined = false;
         _showSplitPrompt = false;
@@ -1056,7 +1057,7 @@ else
             }).ToList(),
         }).ToList();
         if (_draft.Count == 0)
-            _draft.Add(new CredDraft { Fields = { new FieldDraft { Type = CredentialFieldType.Email } } });
+            _draft.Add(new CredDraft { Fields = { NewField(Settings.Get(AppSettingsCatalog.NewAccountField)) } });
         _fSnapshot = CurrentSnapshot();
     }
 
@@ -1173,14 +1174,23 @@ else
         await SaveEntry();
     }
 
-    private void AddField(CredDraft c) => c.Fields.Add(new FieldDraft
-    {
+    private void AddField(CredDraft c) => c.Fields.Add(NewField(
         // Password until the account has one, then plain text: the first thing missing from a
         // login is its password, and anything after that is usually a note.
-        Type = c.Fields.Any(f => f.Type == CredentialFieldType.Password)
+        c.Fields.Any(f => f.Type == CredentialFieldType.Password)
             ? CredentialFieldType.Text
-            : CredentialFieldType.Password,
-    });
+            : CredentialFieldType.Password));
+
+    /// <summary>
+    /// A blank field carrying the account's preferred rotation interval. Only new fields get it —
+    /// one loaded from a saved entry keeps whatever interval it was given, so changing the
+    /// preference never quietly reschedules passwords the user already set up.
+    /// </summary>
+    private FieldDraft NewField(CredentialFieldType type) => new()
+    {
+        Type = type,
+        Every = Settings.Get(AppSettingsCatalog.RotationDefaultDays),
+    };
 
     /// <summary>Never removes the last field: an entry has to keep something, and an empty form
     /// leaves nothing to type into.</summary>
@@ -1192,7 +1202,7 @@ else
     // Same single-field start as a new entry, so an added account looks like the first one.
     private void AddCredential() => _draft.Add(new CredDraft
     {
-        Fields = { new FieldDraft { Type = CredentialFieldType.Email } },
+        Fields = { NewField(Settings.Get(AppSettingsCatalog.NewAccountField)) },
     });
     private void RemoveCredential(CredDraft c) { if (_draft.Count > 1) _draft.Remove(c); }
 

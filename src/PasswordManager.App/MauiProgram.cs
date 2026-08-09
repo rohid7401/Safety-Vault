@@ -34,10 +34,20 @@ public static class MauiProgram
 
         // Shared UI services (from PasswordManager.UI)
         builder.Services.AddSingleton<AppState>();
-        builder.Services.AddSingleton<VaultAutoLock>();
+        // Both of these read their timing from the account's settings, and read it at the moment
+        // they act: they are built before any vault is open, so capturing a value here would pin
+        // whatever it was before the user had signed in.
+        builder.Services.AddSingleton(sp => new VaultAutoLock(
+            () => TimeSpan.FromSeconds(
+                sp.GetRequiredService<AppSettings>().Get(AppSettingsCatalog.AutoLockGraceSeconds)),
+            VaultAutoLock.DefaultExcursionGracePeriod,
+            AutoLockClock.Now));
         builder.Services.AddSingleton<ShellBackNavigation>();
         builder.Services.AddSingleton<ToastService>();
         builder.Services.AddSingleton<GeneratorPreferences>();
+        builder.Services.AddSingleton<AppSettings>();
+        // Still registered because ViewPreferences reads it once, to carry over a choice made
+        // before these moved into the vault. Nothing writes to it any more.
         builder.Services.AddSingleton<IViewPreferenceStore, MauiViewPreferenceStore>();
         builder.Services.AddSingleton<ViewPreferences>();
         builder.Services.AddHttpClient<KeyServerService>();
@@ -51,7 +61,10 @@ public static class MauiProgram
         builder.Services.AddSingleton<IClipboardService, MauiClipboardService>();
         builder.Services.AddSingleton<IFilePickerService, MauiFilePickerService>();
         builder.Services.AddSingleton<IPlatformInfo, MauiPlatformInfo>();
-        builder.Services.AddSingleton<SecureClipboardService>();
+        builder.Services.AddSingleton(sp => new SecureClipboardService(
+            sp.GetRequiredService<IClipboardService>(),
+            () => TimeSpan.FromSeconds(
+                sp.GetRequiredService<AppSettings>().Get(AppSettingsCatalog.ClipboardClearSeconds))));
 
 #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();

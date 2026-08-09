@@ -1,0 +1,187 @@
+@page "/settings"
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject AppSettings Settings
+@inject Loc L
+@implements IDisposable
+
+@if (AppState.Service is null) { Nav.NavigateTo("/"); return; }
+
+<div class="card" style="gap:6px;">
+    <div class="card-title">@L["settings.title"]</div>
+    <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.5;">
+        @L["settings.body"]
+    </p>
+</div>
+
+<div class="dash-group-title ruled" style="margin:20px 2px 8px;">@L["settings.group.security"]</div>
+
+<div class="card" style="gap:14px;">
+    @* Seconds rather than a free number: a text box invites a zero here, and the clipboard has
+       to be cleared eventually or the feature means nothing. *@
+    <div class="field" style="margin-bottom:0;">
+        <label>@L["settings.clipboard"]</label>
+        <select class="input" value="@Settings.Get(AppSettingsCatalog.ClipboardClearSeconds)"
+                @onchange="OnClipboardChanged">
+            @foreach (var seconds in AppSettingsCatalog.ClipboardChoices)
+            {
+                <option value="@seconds">@Duration(seconds)</option>
+            }
+        </select>
+        <div class="field-hint">@L["settings.clipboard.hint"]</div>
+    </div>
+
+    <div class="field" style="margin-bottom:0;">
+        <label>@L["settings.autoLock"]</label>
+        <select class="input" value="@Settings.Get(AppSettingsCatalog.AutoLockGraceSeconds)"
+                @onchange="OnAutoLockChanged">
+            @foreach (var seconds in AppSettingsCatalog.AutoLockChoices)
+            {
+                <option value="@seconds">@(seconds == 0 ? L["settings.autoLock.immediate"] : Duration(seconds))</option>
+            }
+        </select>
+        <div class="field-hint">@L["settings.autoLock.hint"]</div>
+    </div>
+
+    @* Irreversible on a timer, so it says so plainly and stays off unless chosen. *@
+    <div class="field" style="margin-bottom:0;">
+        <label>@L["settings.trash"]</label>
+        <select class="input" value="@Settings.Get(AppSettingsCatalog.TrashRetentionDays)"
+                @onchange="OnTrashChanged">
+            @foreach (var days in AppSettingsCatalog.TrashRetentionChoices)
+            {
+                <option value="@days">
+                    @(days == 0 ? L["settings.trash.never"] : L.Format("settings.rotation.days", days))
+                </option>
+            }
+        </select>
+        <div class="field-hint">@L["settings.trash.hint"]</div>
+    </div>
+
+    @if (Settings.Get(AppSettingsCatalog.TrashRetentionDays) > 0)
+    {
+        <div class="alert alert-warning" style="margin-bottom:0;">@L["settings.trash.warning"]</div>
+    }
+</div>
+
+<div class="dash-group-title ruled" style="margin:22px 2px 8px;">@L["settings.group.defaults"]</div>
+
+<div class="card" style="gap:14px;">
+    <div class="field" style="margin-bottom:0;">
+        <label>@L["settings.rotation"]</label>
+        <select class="input" value="@Settings.Get(AppSettingsCatalog.RotationDefaultDays)"
+                @onchange="OnRotationChanged">
+            @foreach (var days in AppSettingsCatalog.RotationChoices)
+            {
+                <option value="@days">@L.Format("settings.rotation.days", days)</option>
+            }
+        </select>
+        <div class="field-hint">@L["settings.rotation.hint"]</div>
+    </div>
+
+    <div class="field" style="margin-bottom:0;">
+        <label>@L["settings.newAccountField"]</label>
+        <select class="input" value="@Settings.Get(AppSettingsCatalog.NewAccountField)"
+                @onchange="OnNewAccountFieldChanged">
+            @foreach (var type in AppSettingsCatalog.NewAccountFieldChoices)
+            {
+                <option value="@type">@L[type == CredentialFieldType.Email ? "fieldType.email" : "fieldType.username"]</option>
+            }
+        </select>
+        <div class="field-hint">@L["settings.newAccountField.hint"]</div>
+    </div>
+
+    <div class="field" style="margin-bottom:0;">
+        <label>@L["settings.exportTarget"]</label>
+        <select class="input" value="@Settings.Get(AppSettingsCatalog.ExportDefaultTarget)"
+                @onchange="OnExportTargetChanged">
+            <option value="@ExportTarget.NativeBackup">@L["io.target.native"]</option>
+            <option value="@ExportTarget.GenericCsv">@L["io.target.generic"]</option>
+            <option value="@ExportTarget.BitwardenCsv">@L["io.target.bitwarden"]</option>
+            <option value="@ExportTarget.ChromeCsv">@L["io.target.chrome"]</option>
+        </select>
+    </div>
+
+    @* Only the protected modes. "Not encrypted" stays a decision made per export. *@
+    <div class="field" style="margin-bottom:0;">
+        <label>@L["settings.exportProtection"]</label>
+        <select class="input" value="@Settings.Get(AppSettingsCatalog.ExportDefaultProtection)"
+                @onchange="OnExportProtectionChanged">
+            <option value="@ExportProtection.Passphrase">@L["io.protect.passphrase"]</option>
+            <option value="@ExportProtection.Pgp">@L["io.protect.pgp"]</option>
+        </select>
+        <div class="field-hint">@L["settings.exportProtection.hint"]</div>
+    </div>
+</div>
+
+<div class="hint-row" style="margin-top:16px;">
+    <Icon Name="info" Size="15" />
+    <span>@L["settings.scopeNote"]</span>
+</div>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        L.OnChanged += StateHasChanged;
+        Settings.OnChanged += StateHasChanged;
+        // Normally already loaded at unlock; harmless and correct if this page is reached first.
+        await Settings.EnsureLoadedAsync();
+    }
+
+    public void Dispose()
+    {
+        L.OnChanged -= StateHasChanged;
+        Settings.OnChanged -= StateHasChanged;
+    }
+
+    /// <summary>Reads a select's value as a number, ignoring anything unparseable rather than
+    /// throwing — a browser can only send what we rendered, but this runs on the render path.</summary>
+    private static bool TryRead(ChangeEventArgs e, out int value) =>
+        int.TryParse(e.Value?.ToString(), out value);
+
+    private async Task OnClipboardChanged(ChangeEventArgs e)
+    {
+        if (TryRead(e, out var seconds))
+            await Settings.SetAsync(AppSettingsCatalog.ClipboardClearSeconds, seconds);
+    }
+
+    private async Task OnAutoLockChanged(ChangeEventArgs e)
+    {
+        if (TryRead(e, out var seconds))
+            await Settings.SetAsync(AppSettingsCatalog.AutoLockGraceSeconds, seconds);
+    }
+
+    private async Task OnRotationChanged(ChangeEventArgs e)
+    {
+        if (TryRead(e, out var days))
+            await Settings.SetAsync(AppSettingsCatalog.RotationDefaultDays, days);
+    }
+
+    private async Task OnTrashChanged(ChangeEventArgs e)
+    {
+        if (TryRead(e, out var days))
+            await Settings.SetAsync(AppSettingsCatalog.TrashRetentionDays, days);
+    }
+
+    private async Task OnNewAccountFieldChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<CredentialFieldType>(e.Value?.ToString(), out var type))
+            await Settings.SetAsync(AppSettingsCatalog.NewAccountField, type);
+    }
+
+    private async Task OnExportTargetChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<ExportTarget>(e.Value?.ToString(), out var target))
+            await Settings.SetAsync(AppSettingsCatalog.ExportDefaultTarget, target);
+    }
+
+    private async Task OnExportProtectionChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<ExportProtection>(e.Value?.ToString(), out var protection))
+            await Settings.SetAsync(AppSettingsCatalog.ExportDefaultProtection, protection);
+    }
+
+    private string Duration(int seconds) => seconds < 60
+        ? L.Format("settings.seconds", seconds)
+        : L.Format("settings.minutes", seconds / 60);
+}

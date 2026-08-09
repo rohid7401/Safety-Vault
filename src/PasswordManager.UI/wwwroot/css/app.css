@@ -421,6 +421,91 @@ select.input, select.form-control {
 .form-check input[type="checkbox"] { accent-color: var(--color-accent); width: 18px; height: 18px; flex: none; }
 .form-check label { font-size: 14px; color: var(--color-text); margin-bottom: 0; }
 .input-group { display: flex; gap: 8px; }
+
+/* ── Field with its actions inside ──
+   A reveal button sitting *beside* an input is a second control competing with it, and it
+   costs 44px of width on exactly the field whose value is longest and hardest to read back.
+   Inside, the input keeps its full width and the button is a 38px target centred in padding
+   reserved for it — so nothing overlaps the text and the tap area stays honest. */
+.input-field { position: relative; display: block; }
+.input-field .input { height: 48px; min-height: 48px; }
+.input-field .input.has-icon { padding-left: 40px; }
+.input-field .input.has-action { padding-right: 48px; }
+
+.input-field-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    color: var(--n-500);
+    pointer-events: none;
+}
+
+.input-field-action {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    border-radius: var(--radius-md);
+    color: var(--color-accent);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+}
+.input-field-action:hover { background: var(--a-900); }
+
+/* ── The (i) ──
+   Outlined rather than filled: it sits next to a field label, and a solid accent dot there
+   reads as a status light or a validation error. An outline says "optional, tap for more". */
+.info-dot {
+    width: 19px;
+    height: 19px;
+    flex: none;
+    padding: 0;
+    border: 1.4px solid var(--color-accent);
+    background: transparent;
+    color: var(--color-accent);
+    border-radius: 50%;
+    font: 700 11px/1 var(--font-heading);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    -webkit-tap-highlight-color: transparent;
+}
+.info-dot:hover { background: var(--a-900); }
+.info-dot.sm { width: 18px; height: 18px; border-width: 1.3px; font-size: 10px; }
+
+.info-sheet-body { font-size: 13.5px; line-height: 1.65; color: var(--n-400); }
+.info-sheet-body strong { display: block; color: var(--color-text); font-size: 15px; margin-bottom: 8px; }
+.info-sheet-body p { margin: 0 0 8px; }
+.info-sheet-body p:last-child { margin-bottom: 0; }
+.info-sheet-body ul { margin: 6px 0 0; padding-left: 18px; }
+.info-sheet-body li { margin-bottom: 4px; }
+.info-sheet-body code {
+    background: var(--color-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+}
+
+/* ── A label with its (i) beside it ── */
+.label-row { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+.label-row > span:first-child {
+    font-size: 12px;
+    font-weight: 500;
+    color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
 .input-group .form-control, .input-group .input { flex: 1; }
 
 input[type="range"] { width: 100%; accent-color: var(--color-accent); }
@@ -455,7 +540,19 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
    rather than wraps, so they would simply be cut off. */
 .seg-4 .seg-opt { padding: 8px 4px; font-size: 12px; }
 .seg-opt + .seg-opt { border-left: 1px solid var(--color-divider); }
-.seg-opt.active { color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); }
+
+/* One tab spec for the whole app: 44px tall, and the active one carries a fill rather than
+   an inset outline. The outline read as a focus ring — people looked for what they had
+   selected and found something that looked merely focused. A fill is unambiguous at a
+   glance, which is all a tab row has to do. */
+.seg-opt { min-height: 44px; font-size: 13.5px; }
+.seg-opt.active {
+    color: var(--a-400);
+    background: var(--a-900);
+    font-weight: 600;
+    box-shadow: none;
+}
+.seg-opt:not(.active) { color: var(--n-500); }
 .seg-opt:not(.active):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 
 /* ── List / grid switch ── */
@@ -1505,3 +1602,168 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
 }
 .acct-add:hover { border-color: var(--color-accent); }
 
+
+/* ── Choice tiles ──
+   For a small either/or where each option deserves an icon: bigger than a segment, and the
+   selected one is filled and outlined rather than merely tinted, because this choice changes
+   what the rest of the form asks for. */
+.src-tiles { display: flex; gap: 8px; }
+.src-tile {
+    flex: 1;
+    padding: 14px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    font: 500 13px var(--font-body);
+    background: var(--color-bg);
+    color: var(--n-500);
+    border: 1px solid var(--color-divider);
+    -webkit-tap-highlight-color: transparent;
+    transition: background .15s, color .15s, border-color .15s;
+}
+.src-tile.active {
+    background: var(--a-900);
+    color: var(--a-400);
+    border-color: var(--color-accent);
+}
+.src-tile:not(.active):hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
+
+/* ── Picker button + option rows ──
+   Replaces a native <select> where the options differ in consequence, not just in name. The
+   button shows the current choice; the sheet shows every option beside what it means, which
+   is the part a dropdown has nowhere to put. */
+.picker {
+    width: 100%;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-divider);
+    border-radius: 9px;
+    cursor: pointer;
+    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+}
+.picker:hover { border-color: var(--color-accent); }
+.picker-value {
+    flex: 1;
+    min-width: 0;
+    font: 400 13.5px var(--font-body);
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.picker-chevron { flex: none; display: flex; color: var(--n-500); }
+
+.opt-row {
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 13px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+}
+.opt-row.active { background: var(--a-900); }
+.opt-row:not(.active):hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
+
+.opt-mark {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    margin-top: 1px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 0 1.5px var(--n-700);
+}
+.opt-mark.on {
+    background: var(--color-accent);
+    color: var(--color-bg);
+    box-shadow: none;
+}
+
+.opt-text { flex: 1; min-width: 0; }
+.opt-label {
+    display: block;
+    font: 500 14px/1.3 var(--font-body);
+    color: var(--color-text);
+    margin-bottom: 3px;
+}
+.opt-desc { display: block; font: 400 12px/1.5 var(--font-body); color: var(--n-500); }
+
+/* ── Blocking "working" overlay ── */
+.busy {
+    position: absolute;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: color-mix(in srgb, var(--color-bg) 82%, transparent);
+    backdrop-filter: blur(2px);
+    animation: svFade .15s ease;
+}
+
+.busy-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    max-width: 280px;
+    text-align: center;
+}
+
+.busy-spinner {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    /* A ring with one lit quarter reads as motion even at a glance; a pulsing dot does not. */
+    border: 2.5px solid var(--a-900);
+    border-top-color: var(--color-accent);
+    animation: busySpin .7s linear infinite;
+}
+
+@keyframes busySpin { to { transform: rotate(360deg); } }
+
+.busy-bar {
+    width: 200px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--a-900);
+    overflow: hidden;
+}
+.busy-bar-fill {
+    height: 100%;
+    background: var(--color-accent);
+    border-radius: 2px;
+    transition: width .2s ease;
+}
+
+.busy-label {
+    font: 500 14.5px/1.4 var(--font-heading);
+    color: var(--color-text);
+}
+.busy-note {
+    font: 400 12.5px/1.55 var(--font-body);
+    color: var(--n-500);
+}
+
+/* Someone who has asked the system for less motion still needs to know work is happening,
+   so the ring stays and only the spinning stops. */
+@media (prefers-reduced-motion: reduce) {
+    .busy-spinner { animation: none; border-top-color: var(--color-accent); opacity: .8; }
+    .busy { animation: none; }
+}

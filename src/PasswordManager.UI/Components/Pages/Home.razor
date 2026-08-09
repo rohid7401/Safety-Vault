@@ -5,20 +5,34 @@
 @inject IAuthService AuthService
 @inject ToastService Toast
 @inject Loc L
+@inject AppSettings Settings
+@inject ViewPreferences ViewPrefs
 @implements IDisposable
+
+@* Argon2id runs off the UI thread, so the screen stays live and looks idle while it works.
+   On a low-end phone that gap is long enough to tap the button again. *@
+<BusyOverlay Visible="_loading"
+             Label="@(_tab == Tab.Login ? L["home.signingIn"] : L["home.creating"])"
+             Note="@(_tab == Tab.Register ? L["busy.firstUnlock"] : string.Empty)" />
 
 <div class="unlock-container">
     <div class="unlock-card">
+        @* The language switch moves out of the tab row. It was competing with the two things
+           that actually decide what this screen does, and it is not one of them. *@
+        <div class="unlock-lang"><LanguageSelector /></div>
+
         <div class="unlock-hero">
             <div class="unlock-hero-icon">
-                <Icon Name="lock-keyhole" Size="30" StrokeWidth="1.8" />
+                <Icon Name="lock-keyhole" Size="29" StrokeWidth="1.7" />
             </div>
-            <h1>SafetyVault</h1>
+            <h1>Safety<span>Vault</span></h1>
             <p class="subtitle">@L["home.subtitle"]</p>
         </div>
 
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:22px;">
-            <div class="seg" style="flex:1; margin-bottom:0;">
+        @* Tabs sit on the card they govern rather than floating above it, so it reads as one
+           surface with two states instead of two unrelated blocks. *@
+        <div class="unlock-panel">
+            <div class="seg unlock-tabs">
                 <button class="seg-opt @(_tab == Tab.Login ? "active" : "")" type="button"
                         @onclick="() => SwitchTab(Tab.Login)">
                     @L["home.signIn"]
@@ -28,8 +42,7 @@
                     @L["home.createAccount"]
                 </button>
             </div>
-            <LanguageSelector />
-        </div>
+            <div class="unlock-panel-body">
 
         @if (!string.IsNullOrEmpty(_error))
         {
@@ -44,38 +57,31 @@
         {
             <div class="field">
                 <label>@L["home.usernameOrEmail"]</label>
-                <input type="text" class="input" @bind="_loginIdentity" maxlength="@FieldLimits.Email"
-                       placeholder="@L["home.placeholder.identity"]" />
+                <div class="input-field">
+                    <span class="input-field-icon"><Icon Name="mail" Size="17" StrokeWidth="1.7" /></span>
+                    <input type="text" class="input has-icon" @bind="_loginIdentity" maxlength="@FieldLimits.Email"
+                           placeholder="@L["home.placeholder.identity"]" />
+                </div>
             </div>
 
-            <div class="field" style="margin-bottom:8px;">
-                <label style="display:flex; align-items:center; gap:8px;">
-                    @L["home.masterPassphrase"]
-                    <button class="info-dot" type="button" aria-label="What is this"
-                            @onclick="() => _showWhatIs = !_showWhatIs">i</button>
-                </label>
+            @* The explanation moves behind the (i) instead of unfolding a box that pushes the
+               button off the screen on a short phone. *@
+            <div class="field" style="margin-bottom:0;">
+                <div class="label-row">
+                    <span>@L["home.masterPassphrase"]</span>
+                    <InfoTooltip Label="@L["home.masterPassphrase"]">@L["home.whatIsShort"]</InfoTooltip>
+                </div>
                 <PasswordField @bind-Value="_loginPassphrase"
+                               Icon="lock"
                                Placeholder="@L["home.placeholder.passphrase"]"
+                               ShowLabel="@L["common.show"]" HideLabel="@L["common.hide"]"
                                OnEnter="HandleLogin" />
             </div>
-            @if (_showWhatIs)
-            {
-                <div class="explainer-box" style="margin-bottom:8px;">
-                    @L["home.whatIsShort"]
-                </div>
-            }
 
-            <button class="btn btn-primary btn-block btn-lg" style="margin-top:14px;"
+            <button class="btn btn-primary btn-block btn-lg" style="margin-top:18px;"
                     @onclick="HandleLogin" disabled="@_loading">
                 @(_loading ? L["home.signingIn"] : L["home.signIn"])
             </button>
-
-            @if (_knownUsers.Count > 0)
-            {
-                <div class="known-users">
-                    @L.Format("home.knownUsers", string.Join(", ", _knownUsers))
-                </div>
-            }
         }
         else
         {
@@ -87,34 +93,34 @@
 
             <div class="field">
                 <label>@L["home.email"]</label>
-                <input type="email" class="input" @bind="_regEmail" inputmode="email" autocomplete="email" maxlength="@FieldLimits.Email"
-                       placeholder="jane@example.com" />
+                <div class="input-field">
+                    <span class="input-field-icon"><Icon Name="mail" Size="17" StrokeWidth="1.7" /></span>
+                    <input type="email" class="input has-icon" @bind="_regEmail" inputmode="email" autocomplete="email"
+                           maxlength="@FieldLimits.Email" placeholder="jane@example.com" />
+                </div>
             </div>
 
             <div class="field" style="margin-bottom:8px;">
-                <label style="display:flex; align-items:center; gap:8px;">
-                    @L["home.masterPassphrase"]
-                    <button class="info-dot" type="button" aria-label="What is this"
-                            @onclick="() => _showWhatIs = !_showWhatIs">i</button>
-                </label>
+                <div class="label-row">
+                    <span>@L["home.masterPassphrase"]</span>
+                    <InfoTooltip Label="@L["home.masterPassphrase"]">@L["home.whatIsCreate"]</InfoTooltip>
+                </div>
                 <PasswordField @bind-Value="_regPassphrase"
-                               Placeholder="@L["home.placeholder.passphrase"]" />
+                               Icon="lock"
+                               Placeholder="@L["home.placeholder.passphrase"]"
+                               ShowLabel="@L["common.show"]" HideLabel="@L["common.hide"]" />
                 <small class="hint">@L["home.minChars"]</small>
             </div>
-            @if (_showWhatIs)
-            {
-                <div class="explainer-box" style="margin-bottom:8px;">
-                    @L["home.whatIsCreate"]
-                </div>
-            }
 
             <div class="field">
                 <label>@L["home.confirmPassphrase"]</label>
                 <PasswordField @bind-Value="_regPassphraseConfirm"
-                               Placeholder="@L["home.placeholder.confirm"]" />
+                               Icon="lock"
+                               Placeholder="@L["home.placeholder.confirm"]"
+                               ShowLabel="@L["common.show"]" HideLabel="@L["common.hide"]" />
             </div>
 
-            <button class="btn btn-primary btn-block btn-lg" style="margin-top:14px;"
+            <button class="btn btn-primary btn-block btn-lg" style="margin-top:18px;"
                     @onclick="HandleRegister" disabled="@_loading">
                 @(_loading ? L["home.creating"] : L["home.createAccount"])
             </button>
@@ -124,8 +130,29 @@
             </small>
         }
 
+            </div>
+        </div>
+
+        @* Was a comma-separated line of names — information, but nothing you could act on.
+           As chips they fill the field, which is the only thing anyone wanted from them. *@
+        @if (_tab == Tab.Login && _knownUsers.Count > 0)
+        {
+            <div class="known-users">
+                <div class="known-users-label">@L["home.knownUsersLabel"]</div>
+                <div class="known-users-chips">
+                    @foreach (var user in _knownUsers)
+                    {
+                        var name = user;
+                        <button class="known-chip" type="button" @onclick="() => _loginIdentity = name">
+                            <span class="known-chip-avatar">@Initial(name)</span>@name
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+
         <div class="unlock-footer">
-            <Icon Name="lock" Size="13" />
+            <Icon Name="shield-check" Size="14" />
             <span>@L["home.offline"]</span>
         </div>
     </div>
@@ -153,12 +180,76 @@
 <style>
     .hint { color: var(--n-500); font-size: 12px; display: block; margin-top: 4px; }
 
-    .known-users {
-        margin-top: 16px;
-        font-size: 12px;
-        color: var(--n-500);
-        text-align: center;
+    .unlock-lang { display: flex; justify-content: flex-end; }
+
+    /* Hero — the lock reads as the app's mark, so it gets a real tile rather than a bare
+       glyph, and "Vault" takes the accent so the name has a shape you recognise at a glance. */
+    .unlock-hero-icon {
+        width: 62px;
+        height: 62px;
+        border-radius: 18px;
+        background: var(--a-900);
+        color: var(--a-300);
+        box-shadow: 0 0 0 1px var(--a-800), 0 10px 30px rgba(145,132,217,.18);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
     }
+    .unlock-card h1 span { color: var(--color-accent); }
+
+    /* One surface with two states. The tabs used to float above an unbounded form, which made
+       the choice look like navigation to somewhere else rather than a switch on this card. */
+    .unlock-panel {
+        background: var(--color-surface);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm), 0 10px 30px rgba(0,0,0,.35);
+        overflow: hidden;
+    }
+    .unlock-tabs {
+        border: 0;
+        border-bottom: 1px solid var(--color-divider);
+        border-radius: 0;
+    }
+    .unlock-tabs .seg-opt { min-height: 48px; }
+    .unlock-panel-body { padding: 18px 16px 20px; }
+
+    .known-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 8px 14px 8px 8px;
+        background: var(--color-surface);
+        border: 1px solid var(--color-divider);
+        border-radius: 100px;
+        cursor: pointer;
+        font: 500 13px var(--font-body);
+        color: var(--color-text);
+        -webkit-tap-highlight-color: transparent;
+    }
+    .known-chip:hover { border-color: var(--color-accent); }
+    .known-chip-avatar {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: var(--a-900);
+        color: var(--a-300);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font: 600 11px var(--font-heading);
+    }
+    .known-users-label {
+        font: 500 10.5px/1 var(--font-heading);
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: var(--n-500);
+        margin: 0 2px 9px;
+    }
+    .known-users-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    /* No longer centred text: the chips are a left-aligned list of things to tap. */
+    .known-users { margin-top: 18px; }
 </style>
 
 @code {
@@ -180,6 +271,9 @@
     private bool _showWhatIs;
 
     private List<string> _knownUsers = new();
+
+    private static string Initial(string name) =>
+        string.IsNullOrWhiteSpace(name) ? "?" : name.Trim()[..1].ToUpperInvariant();
 
     // Vault integrity / restore flow
     private bool _showRestore;
@@ -368,6 +462,26 @@
         await service.EnsurePgpKeyFilesAsync(account.VaultPath);
 
         AppState.Unlock(account, service);
+
+        // Settings live in the vault, so they can only be read once it is open. The migration runs
+        // here too: it only fills scopes the account never set, so it is a no-op after the first
+        // sign-in and can never overwrite a newer choice.
+        await Settings.EnsureLoadedAsync();
+        await ViewPrefs.MigrateFromDeviceStoreAsync();
+
+        // Trash housekeeping, if the account asked for it. Done here because it is the one moment
+        // the vault is open and nobody is looking at a list that would change underneath them.
+        // Failure is swallowed on purpose: tidying the bin must never be what stops a sign-in.
+        try
+        {
+            var days = Settings.Get(AppSettingsCatalog.TrashRetentionDays);
+            if (days > 0) await service.PurgeDeletedOlderThanAsync(TimeSpan.FromDays(days));
+        }
+        catch
+        {
+            // Nothing to tell the user: the entries simply stay in the trash until next time.
+        }
+
         return true;
     }
 

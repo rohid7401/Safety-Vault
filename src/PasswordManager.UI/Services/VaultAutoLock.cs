@@ -53,7 +53,7 @@ namespace PasswordManager.UI.Services
         /// </summary>
         public static readonly TimeSpan DefaultExcursionGracePeriod = TimeSpan.FromMinutes(5);
 
-        private readonly TimeSpan _gracePeriod;
+        private readonly Func<TimeSpan> _gracePeriod;
         private readonly TimeSpan _excursionGracePeriod;
         private readonly Func<AutoLockClock> _clock;
 
@@ -69,15 +69,24 @@ namespace PasswordManager.UI.Services
         public event Action? LockRequested;
 
         public VaultAutoLock()
-            : this(DefaultGracePeriod, DefaultExcursionGracePeriod, AutoLockClock.Now) { }
+            : this(() => DefaultGracePeriod, DefaultExcursionGracePeriod, AutoLockClock.Now) { }
 
-        /// <summary>Test seam: lets a test drive the clock and shorten the grace periods.</summary>
-        public VaultAutoLock(TimeSpan gracePeriod, TimeSpan excursionGracePeriod, Func<AutoLockClock> clock)
+        /// <summary>
+        /// The grace period is read at each check rather than captured once: this is a singleton
+        /// built at start-up, while the preference lives in the vault and is only readable after
+        /// unlocking. The excursion allowance is not configurable — it exists to stop a file
+        /// picker from throwing away a half-filled form, which is a mechanism, not a taste.
+        /// </summary>
+        public VaultAutoLock(Func<TimeSpan> gracePeriod, TimeSpan excursionGracePeriod, Func<AutoLockClock> clock)
         {
             _gracePeriod = gracePeriod;
             _excursionGracePeriod = excursionGracePeriod;
             _clock = clock;
         }
+
+        /// <summary>Test seam: lets a test drive the clock and shorten the grace periods.</summary>
+        public VaultAutoLock(TimeSpan gracePeriod, TimeSpan excursionGracePeriod, Func<AutoLockClock> clock)
+            : this(() => gracePeriod, excursionGracePeriod, clock) { }
 
         /// <summary>
         /// Marks that the app is about to hand off to a system picker and expects to be resumed.
@@ -108,7 +117,7 @@ namespace PasswordManager.UI.Services
         private TimeSpan GracePeriodAt(AutoLockClock now) =>
             _excursionArmedAt is { } armed && now.Since(armed) <= _excursionGracePeriod
                 ? _excursionGracePeriod
-                : _gracePeriod;
+                : _gracePeriod();
 
         private sealed class ExcursionScope : IDisposable
         {

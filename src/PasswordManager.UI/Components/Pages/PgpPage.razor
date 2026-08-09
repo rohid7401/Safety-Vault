@@ -19,36 +19,73 @@
 }
 else
 {
-    <div class="seg seg-4" style="margin-bottom:16px;">
+    @* One line and an (i) instead of a fourth tab. "Guía" was a whole tab spent on prose the
+       user reads once, and it pushed the other three into 12px labels that no longer looked
+       like the rest of the app. *@
+    <div class="label-row" style="margin-bottom:13px;">
+        <span style="flex:1; font-size:13px; color:var(--n-500); font-weight:400;">@L["pgp.lede"]</span>
+        <InfoTooltip Label="@L["pgp.what.title"]">
+            <PgpHowItWorks />
+        </InfoTooltip>
+    </div>
+
+    <div class="seg" style="margin-bottom:16px;">
         @foreach (var tab in Tabs)
         {
             <button class="seg-opt @(_active == tab.Id ? "active" : "")" type="button"
                     @onclick="() => _active = tab.Id">
-                @L[tab.LabelKey]
+                <Icon Name="@tab.Icon" Size="16" StrokeWidth="1.8" />@L[tab.LabelKey]
             </button>
         }
     </div>
 
-    @if (_active == Tab.Keys)         { <PgpKeysPanel /> }
-    else if (_active == Tab.Files)    { <PgpFilesPanel /> }
-    else if (_active == Tab.Folders)  { <PgpFoldersPanel /> }
-    else                              { <PgpHowItWorks /> }
+    @if (_active == Tab.Keys)
+    {
+        <PgpKeysPanel />
+    }
+    else
+    {
+        @* What used to be the fourth tab. Encrypting a file and encrypting a folder are the same
+           errand with a different thing selected, so it is asked as one question here instead of
+           two destinations the user has to choose between before seeing either. *@
+        <div class="field" style="margin-bottom:16px;">
+            <label>@L["pgp.source"]</label>
+            <div class="src-tiles">
+                <button class="src-tile @(_source == Source.File ? "active" : "")" type="button"
+                        @onclick="() => _source = Source.File">
+                    <Icon Name="file" Size="21" StrokeWidth="1.7" />@L["pgp.source.file"]
+                </button>
+                <button class="src-tile @(_source == Source.Folder ? "active" : "")" type="button"
+                        @onclick="() => _source = Source.Folder">
+                    <Icon Name="folder" Size="21" StrokeWidth="1.7" />@L["pgp.source.folder"]
+                </button>
+            </div>
+        </div>
+
+        @if (_source == Source.File) { <PgpFilesPanel /> }
+        else                         { <PgpFoldersPanel /> }
+    }
 }
 
 @code {
-    private enum Tab { Keys, Files, Folders, How }
+    private enum Tab { Keys, Files }
 
-    private sealed record TabDef(Tab Id, string LabelKey);
+    private sealed record TabDef(Tab Id, string LabelKey, string Icon);
 
+    /// <summary>
+    /// Two tabs, not four. Folders folded into Files — they are the same task with a different
+    /// thing selected, which is how the panel now asks it — and the guide moved behind the (i).
+    /// </summary>
     private static readonly TabDef[] Tabs =
     [
-        new(Tab.Keys, "pgp.tab.keys"),
-        new(Tab.Files, "pgp.tab.files"),
-        new(Tab.Folders, "pgp.tab.folders"),
-        new(Tab.How, "pgp.tab.how"),
+        new(Tab.Keys, "pgp.tab.keys", "key"),
+        new(Tab.Files, "pgp.tab.files", "file"),
     ];
 
+    private enum Source { File, Folder }
+
     private Tab _active = Tab.Keys;
+    private Source _source = Source.File;
 
     private bool HasIdentity =>
         AppState.Account is not null &&

@@ -1,90 +1,36 @@
-﻿@* Hover-over (i) icon that reveals contextual help. *@
+@* A tappable (i) that opens its help in a bottom sheet.
 
-<span class="info-tooltip-wrap" tabindex="0">
-    <span class="info-tooltip-trigger">i</span>
-    <span class="info-tooltip-bubble">
-        @ChildContent
-    </span>
-</span>
+   It used to be a hover bubble, which on a phone meant the help was effectively
+   unreachable: there is no hover, and the 280px bubble was clipped by whatever card it
+   sat in. Same call shape as before — every existing (i) in the app gets the sheet for
+   free — but the content now has room to be read. *@
+@inject Loc L
 
-<style>
-    .info-tooltip-wrap {
-        position: relative;
-        display: inline-flex;
-        margin-left: 6px;
-        cursor: help;
-        vertical-align: middle;
-        outline: none;
-    }
+<button type="button" class="info-dot @(Small ? "sm" : "")" @onclick="Open" @onclick:stopPropagation="true"
+        aria-label="@(string.IsNullOrEmpty(Label) ? L["common.whatIsThis"] : Label)"
+        title="@Label">i</button>
 
-    .info-tooltip-trigger {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: var(--color-accent);
-        color: white;
-        font-size: 0.7rem;
-        font-weight: 700;
-        font-style: italic;
-        font-family: Georgia, serif;
-        user-select: none;
-    }
-
-    .info-tooltip-bubble {
-        position: absolute;
-        bottom: calc(100% + 8px);
-        left: 50%;
-        transform: translateX(-50%);
-        background: var(--color-surface);
-        border: 1px solid var(--color-divider);
-        border-radius: var(--radius-md);
-        padding: 10px 12px;
-        font-size: 0.8rem;
-        line-height: 1.5;
-        color: var(--n-300);
-        width: 280px;
-        max-width: 90vw;
-        box-shadow: 0 6px 20px rgba(0,0,0,0.35);
-        opacity: 0;
-        visibility: hidden;
-        transition: opacity 0.15s, visibility 0.15s;
-        z-index: 50;
-        white-space: normal;
-        text-align: left;
-        pointer-events: none;
-    }
-
-    .info-tooltip-bubble::after {
-        content: "";
-        position: absolute;
-        top: 100%;
-        left: 50%;
-        margin-left: -6px;
-        border: 6px solid transparent;
-        border-top-color: var(--color-divider);
-    }
-
-    .info-tooltip-wrap:hover .info-tooltip-bubble,
-    .info-tooltip-wrap:focus .info-tooltip-bubble {
-        opacity: 1;
-        visibility: visible;
-    }
-
-    .info-tooltip-bubble strong { color: var(--color-text); }
-    .info-tooltip-bubble ul { margin: 4px 0 0 0; padding-left: 16px; }
-    .info-tooltip-bubble li { margin-bottom: 3px; }
-    .info-tooltip-bubble code {
-        background: var(--color-bg);
-        padding: 1px 5px;
-        border-radius: 3px;
-        font-size: 0.78rem;
-    }
-</style>
+<SheetModal Visible="_open" Title="@Label" OnClose="Close">
+    <ChildContent>
+        <div class="info-sheet-body">@ChildContent</div>
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary btn-block" type="button" @onclick="Close">@L["common.understood"]</button>
+    </FooterContent>
+</SheetModal>
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
-}
 
+    /// <summary>Sheet heading. Left empty, the sheet shows only the body — which is what the
+    /// older call sites expect, since most already open with their own bold line.</summary>
+    [Parameter] public string Label { get; set; } = string.Empty;
+
+    /// <summary>The 18px variant, for sitting beside a small uppercase section label.</summary>
+    [Parameter] public bool Small { get; set; }
+
+    private bool _open;
+
+    private void Open() => _open = true;
+    private void Close() => _open = false;
+}

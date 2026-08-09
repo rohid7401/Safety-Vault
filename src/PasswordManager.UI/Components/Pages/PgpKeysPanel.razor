@@ -13,6 +13,14 @@
 
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
+@* The longest wait in the app: an RSA-2048 prime search runs for seconds and varies wildly by
+   handset, so the note explains why nothing is moving. Without it people force-quit partway
+   through and are left with a half-written identity. *@
+<BusyOverlay Visible="_generatingIdentity"
+             Label="@L["keys.noIdentity.generating"]"
+             Note="@L["busy.keygen"]" />
+<BusyOverlay Visible="_movingIdentity" Label="@L["busy.identity"]" />
+
 
 @if (HasOwnPgpIdentity)
 {
@@ -86,8 +94,27 @@
 
         @if (_searchResultArmor is not null)
         {
-            <div class="alert @(_searchEmailMismatch ? "alert-warning" : "alert-success")" style="margin-bottom:0;">
+            <div class="alert @(_searchEmailMismatch || _searchConflict || _searchOnlyUnverified ? "alert-warning" : "alert-success")" style="margin-bottom:0;">
                 @L.Format("keys.foundFor", _searchEmail)
+
+                @* Which directories had it. A key on several is the ordinary case; the exceptions
+                   below are what deserve a second look. *@
+                <div style="margin-top:6px; font-size:12px; color:var(--n-300);">
+                    @L.Format("keys.foundOn", string.Join(", ", _searchFoundOn))
+                </div>
+
+                @if (_searchConflict)
+                {
+                    <div style="margin-top:8px; font-weight:600;">
+                        ⚠ @L["keys.conflict"]
+                    </div>
+                }
+                else if (_searchOnlyUnverified)
+                {
+                    <div style="margin-top:8px;">
+                        @L["keys.unverifiedSourceOnly"]
+                    </div>
+                }
 
                 @if (_searchKeyDetails is not null)
                 {
@@ -136,6 +163,14 @@
         {
             <div class="alert alert-info" style="margin-bottom:0;">
                 @L["keys.noneFound"]
+                @* "Nothing found" means less when some directories never answered — the key could
+                   be sitting on one of them. Saying so stops the result reading as final. *@
+                @if (_searchUnreachable.Count > 0)
+                {
+                    <div style="margin-top:6px; font-size:12px;">
+                        @L.Format("keys.someUnreachable", string.Join(", ", _searchUnreachable))
+                    </div>
+                }
             </div>
         }
     </div>
@@ -700,6 +735,37 @@ else
 
     // ─── Keyserver search ────────────────────────────────────────────
 
+    private IReadOnlyList<string> _searchFoundOn = Array.Empty<string>();
+    private IReadOnlyList<string> _searchUnreachable = Array.Empty<string>();
+    private bool _searchOnlyUnverified;
+    private bool _searchConflict;
+
+    /// <summary>
+    /// Whether the directories handed back genuinely different keys for one address.
+    ///
+    /// <para>Worth stopping for. It can be innocent — an old key still sitting on a server that
+    /// never checks anything, next to the current one — but it is also exactly what impersonation
+    /// looks like from here. Either way the fingerprint is the only thing that settles it, so the
+    /// user is told to go and compare rather than being handed a winner.</para>
+    /// </summary>
+    private bool HasConflict(KeySearchOutcome outcome)
+    {
+        var fingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var hit in outcome.Hits)
+        {
+            try
+            {
+                fingerprints.Add(Pgp.InspectPublicKey(hit.Armored).FingerprintDisplay);
+            }
+            catch
+            {
+                // Something unreadable came back. Not a disagreement about which key is right,
+                // and the parse failure on the chosen key is already handled above.
+            }
+        }
+        return fingerprints.Count > 1;
+    }
+
     private async Task SearchKeyserver()
     {
         _searchAttempted = true;
@@ -707,6 +773,10 @@ else
         _searchKeyDetails = null;
         _searchEmailMismatch = false;
         _searchImportLabel = string.Empty;
+        _searchFoundOn = Array.Empty<string>();
+        _searchUnreachable = Array.Empty<string>();
+        _searchOnlyUnverified = false;
+        _searchConflict = false;
 
         _searchEmail = _searchEmail.Trim();
         if (!EmailAddress.IsValid(_searchEmail))
@@ -716,7 +786,12 @@ else
         StateHasChanged();
         try
         {
-            _searchResultArmor = await KeyServer.SearchByEmailAsync(_searchEmail);
+            var outcome = await KeyServer.SearchAllAsync(_searchEmail);
+            _searchFoundOn = outcome.FoundOn;
+            _searchUnreachable = outcome.Unreachable;
+            _searchOnlyUnverified = outcome.OnlyFromUnverifiedSources;
+            _searchResultArmor = outcome.Best?.Armored;
+
             if (_searchResultArmor is not null)
             {
                 _searchImportLabel = _searchEmail;
@@ -734,6 +809,8 @@ else
                     _searchKeyDetails = null;
                     _searchEmailMismatch = true; // unparseable → treat as untrusted
                 }
+
+                _searchConflict = HasConflict(outcome);
             }
         }
         catch (Exception ex)

@@ -378,6 +378,207 @@ namespace PasswordManager.Tests.Services
             Assert.Equal(1, result.CardCount);
         }
 
+        // ─── Automatic trash emptying ────────────────────────────────────────
+
+        /// <summary>
+        /// Trashes an entry and backdates when that happened.
+        ///
+        /// <para>Goes through the repository rather than <c>UpdateEntryAsync</c>, which ignores
+        /// deleted entries on purpose — editing something already in the bin is exactly what it is
+        /// there to prevent. Only a test needs to make time pass.</para>
+        /// </summary>
+        private async Task AgeInTrashAsync(PasswordManagerService svc, Guid id, DateTime deletedAt)
+        {
+            await svc.DeleteEntryAsync(id);
+
+            using var repo = new KekVaultRepository((byte[])_blobKey.Clone(), _dataDir);
+            var vault = await repo.LoadAsync();
+            var entry = vault.Entries.First(e => e.Id == id);
+            entry.DeletedAt = deletedAt;
+            await repo.SaveAsync(vault);
+        }
+
+        private async Task<ServiceEntry> AddThenTrashAsync(
+            PasswordManagerService svc, string site, DateTime deletedAt)
+        {
+            var entry = await AddPwAsync(svc, site);
+            await AgeInTrashAsync(svc, entry.Id, deletedAt);
+            return entry;
+        }
+
+        [Fact]
+        public async Task PurgeOlderThan_RemovesOnlyWhatIsPastTheWindow()
+        {
+            await using var svc = await CreateServiceAsync();
+            var old = await AddThenTrashAsync(svc, "old.com", DateTime.UtcNow.AddDays(-40));
+            var recent = await AddThenTrashAsync(svc, "recent.com", DateTime.UtcNow.AddDays(-5));
+
+            var removed = await svc.PurgeDeletedOlderThanAsync(TimeSpan.FromDays(30));
+
+            Assert.Equal(1, removed);
+            var left = Assert.Single(await svc.GetDeletedEntriesAsync());
+            Assert.Equal(recent.Id, left.Id);
+            Assert.DoesNotContain(await svc.GetDeletedEntriesAsync(), e => e.Id == old.Id);
+        }
+
+        [Fact]
+        public async Task PurgeOlderThan_NeverTouchesWhatIsNotInTheTrash()
+        {
+            // The window is about how long something has been deleted, not how old the entry is.
+            await using var svc = await CreateServiceAsync();
+            var live = await AddPwAsync(svc, "live.com");
+            await svc.UpdateEntryAsync(live.Id, e => e.CreationTime = DateTime.UtcNow.AddYears(-5));
+
+            await svc.PurgeDeletedOlderThanAsync(TimeSpan.FromDays(30));
+
+            Assert.Single(await svc.GetEntriesAsync<ServiceEntry>());
+        }
+
+        [Fact]
+        public async Task PurgeOlderThan_LeavesEntriesWithNoDeletionDateAlone()
+        {
+            // DeletedAt arrived after the trash did, so a missing one means "unknown", not
+            // "ancient". Guessing would destroy the oldest things in there — the very ones
+            // somebody would be coming back for.
+            await using var svc = await CreateServiceAsync();
+            var entry = await AddPwAsync(svc, "undated.com");
+            await svc.DeleteEntryAsync(entry.Id);
+
+            // Stand in for an entry trashed before DeletedAt was ever recorded.
+            using (var repo = new KekVaultRepository((byte[])_blobKey.Clone(), _dataDir))
+            {
+                var vault = await repo.LoadAsync();
+                vault.Entries.First(e => e.Id == entry.Id).DeletedAt = null;
+                await repo.SaveAsync(vault);
+            }
+
+            var removed = await svc.PurgeDeletedOlderThanAsync(TimeSpan.FromDays(1));
+
+            Assert.Equal(0, removed);
+            Assert.Single(await svc.GetDeletedEntriesAsync());
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(-1)]
+        public async Task PurgeOlderThan_WithNoWindow_DeletesNothing(int days)
+        {
+            // Zero is how the preference says "never". Reading it as "everything older than now"
+            // would empty the whole trash of every account that never opted in.
+            await using var svc = await CreateServiceAsync();
+            await AddThenTrashAsync(svc, "old.com", DateTime.UtcNow.AddYears(-10));
+
+            var removed = await svc.PurgeDeletedOlderThanAsync(TimeSpan.FromDays(days));
+
+            Assert.Equal(0, removed);
+            Assert.Single(await svc.GetDeletedEntriesAsync());
+        }
+
+        [Fact]
+        public async Task PurgeOlderThan_AlsoCoversNotesAndCards()
+        {
+            await using var svc = await CreateServiceAsync();
+            var note = new SecureNote { Title = "n" };
+            await svc.AddSecureNoteAsync(note, "body");
+            await AgeInTrashAsync(svc, note.Id, DateTime.UtcNow.AddDays(-40));
+
+            var removed = await svc.PurgeDeletedOlderThanAsync(TimeSpan.FromDays(30));
+
+            Assert.Equal(1, removed);
+            Assert.Empty(await svc.GetDeletedEntriesAsync());
+        }
+
+        // ─── Account settings ────────────────────────────────────────────────
+
+        [Fact]
+        public async Task Settings_StartEmptySoAbsenceMeansDefault()
+        {
+            // The vault holds only what was actually chosen; the UI owns what "unset" looks like.
+            await using var svc = await CreateServiceAsync();
+            Assert.Empty(await svc.GetSettingsAsync());
+        }
+
+        [Fact]
+        public async Task Settings_RoundTripThroughTheVault()
+        {
+            await using var svc = await CreateServiceAsync();
+
+            await svc.SetSettingsAsync(new Dictionary<string, string?> { ["view.Passwords"] = "Grid" });
+
+            Assert.Equal("Grid", (await svc.GetSettingsAsync())["view.Passwords"]);
+        }
+
+        [Fact]
+        public async Task SavingOneSetting_LeavesTheOthersAlone()
+        {
+            // A build that does not know a key must not erase it just by saving the ones it does.
+            await using var svc = await CreateServiceAsync();
+            await svc.SetSettingsAsync(new Dictionary<string, string?>
+            {
+                ["view.Cards"] = "Grid",
+                ["some.future.key"] = "written by a newer build",
+            });
+
+            await svc.SetSettingsAsync(new Dictionary<string, string?> { ["view.Cards"] = "List" });
+
+            var stored = await svc.GetSettingsAsync();
+            Assert.Equal("List", stored["view.Cards"]);
+            Assert.Equal("written by a newer build", stored["some.future.key"]);
+        }
+
+        [Fact]
+        public async Task ANullValue_RemovesTheSettingRatherThanStoringNothing()
+        {
+            // How a preference goes back to following the app's default instead of freezing the
+            // value it happened to have when the user last looked.
+            await using var svc = await CreateServiceAsync();
+            await svc.SetSettingsAsync(new Dictionary<string, string?> { ["view.Notes"] = "Grid" });
+
+            await svc.SetSettingsAsync(new Dictionary<string, string?> { ["view.Notes"] = null });
+
+            Assert.DoesNotContain("view.Notes", (await svc.GetSettingsAsync()).Keys);
+        }
+
+        [Fact]
+        public async Task Settings_TravelInTheBackupToAnotherDevice()
+        {
+            await using var source = await CreateServiceAsync();
+            await source.SetSettingsAsync(new Dictionary<string, string?> { ["view.Passwords"] = "Grid" });
+
+            await using var target = await CreateOtherDeviceAsync();
+            await target.ImportBackupAsync(await source.ExportBackupAsync());
+
+            Assert.Equal("Grid", (await target.GetSettingsAsync())["view.Passwords"]);
+        }
+
+        [Fact]
+        public async Task ImportingABackup_DoesNotWipeSettingsItSaysNothingAbout()
+        {
+            await using var source = await CreateServiceAsync();
+            await source.SetSettingsAsync(new Dictionary<string, string?> { ["view.Cards"] = "Grid" });
+
+            await using var target = await CreateOtherDeviceAsync();
+            await target.SetSettingsAsync(new Dictionary<string, string?> { ["view.Notes"] = "Grid" });
+            await target.ImportBackupAsync(await source.ExportBackupAsync());
+
+            var stored = await target.GetSettingsAsync();
+            Assert.Equal("Grid", stored["view.Cards"]);   // arrived
+            Assert.Equal("Grid", stored["view.Notes"]);   // survived
+        }
+
+        [Fact]
+        public async Task AVersionOneBackup_LeavesSettingsUntouched()
+        {
+            // Files written before settings existed carry none; that must read as "says nothing",
+            // not as "set them all back to default".
+            await using var svc = await CreateServiceAsync();
+            await svc.SetSettingsAsync(new Dictionary<string, string?> { ["view.Cards"] = "Grid" });
+
+            await svc.ImportBackupAsync(new VaultBackup { Version = 1 });
+
+            Assert.Equal("Grid", (await svc.GetSettingsAsync())["view.Cards"]);
+        }
+
         // ─── The Key field type ──────────────────────────────────────────────
 
         [Fact]

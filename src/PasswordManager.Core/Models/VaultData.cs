@@ -16,6 +16,20 @@ namespace PasswordManager.Core.Models
         public string? PgpPublicKeyArmored { get; set; }
         public string? PgpPrivateKeyArmored { get; set; }
 
+        /// <summary>
+        /// The account's preferences, as name/value pairs.
+        ///
+        /// <para>Kept here rather than in the device's own preference store so they belong to the
+        /// account: two accounts on one phone do not overwrite each other, and the settings travel
+        /// in the backup like everything else. Language is the deliberate exception and stays with
+        /// the device — it has to work on the sign-in screen, before there is a vault to read.</para>
+        ///
+        /// <para>Untyped for the same reason the backup's copy is: a build that meets a key it
+        /// does not know should ignore it, not fail. Meaning lives in the UI layer, which owns the
+        /// defaults.</para>
+        /// </summary>
+        public Dictionary<string, string> Settings { get; set; } = new();
+
         // v5 replaces the fixed PasswordEntry with ServiceEntry (flexible multi-credential
         // entries). The old "password" discriminator is no longer registered, so pre-v5 vaults
         // holding PasswordEntry rows must be migrated via plaintext CSV export → import.

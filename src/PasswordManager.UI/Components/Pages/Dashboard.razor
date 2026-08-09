@@ -116,7 +116,7 @@
 
     private ViewMode Mode => ViewPrefs.Get(ViewScope.Dashboard);
 
-    private void SetMode(ViewMode mode) => ViewPrefs.Set(ViewScope.Dashboard, mode);
+    private Task SetMode(ViewMode mode) => ViewPrefs.SetAsync(ViewScope.Dashboard, mode);
 
     protected override async Task OnInitializedAsync()
     {

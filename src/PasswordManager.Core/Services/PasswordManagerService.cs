@@ -56,6 +56,34 @@ namespace PasswordManager.Core.Services
                 await File.WriteAllTextAsync(privatePath, vault.PgpPrivateKeyArmored);
         }
 
+        /// <summary>Every stored preference for this account. Absent keys are the caller's to
+        /// default — the vault holds only what was actually chosen.</summary>
+        public async Task<Dictionary<string, string>> GetSettingsAsync()
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+            return new Dictionary<string, string>(vault.Settings, StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// Writes preferences, merging rather than replacing: a build that does not know about a
+        /// key must not erase it just by saving the ones it does know. A null value removes a key,
+        /// which is how a preference returns to its default.
+        /// </summary>
+        public async Task SetSettingsAsync(IReadOnlyDictionary<string, string?> values)
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+
+            foreach (var (key, value) in values)
+            {
+                if (value is null) vault.Settings.Remove(key);
+                else vault.Settings[key] = value;
+            }
+
+            await _repository.SaveAsync(vault);
+        }
+
         /// <summary>
         /// The account's PGP identity, ready to be carried to another device.
         ///
@@ -317,6 +345,30 @@ namespace PasswordManager.Core.Services
         }
 
         /// <summary>
+        /// Permanently removes trashed entries deleted longer ago than <paramref name="age"/>,
+        /// returning how many went. Runs only when the user has asked for it — the trash keeps
+        /// everything forever by default, because this deletes with no further confirmation.
+        ///
+        /// <para>An entry with no deletion date is left alone rather than treated as infinitely
+        /// old: that field was added after the trash existed, so a missing one means "unknown",
+        /// and guessing would quietly destroy the oldest things in there — exactly what someone
+        /// would come looking for.</para>
+        /// </summary>
+        public async Task<int> PurgeDeletedOlderThanAsync(TimeSpan age)
+        {
+            ThrowIfDisposed();
+            if (age <= TimeSpan.Zero) return 0;
+
+            var cutoff = DateTime.UtcNow - age;
+            var vault = await _repository.LoadAsync();
+            var removed = vault.Entries.RemoveAll(
+                e => e.IsDeleted && e.DeletedAt is DateTime when && when < cutoff);
+
+            if (removed > 0) await _repository.SaveAsync(vault);
+            return removed;
+        }
+
+        /// <summary>
         /// Permanently removes every entry of type <typeparamref name="T"/>, trashed ones
         /// included, and returns how many were removed. Deliberately a hard delete: this is
         /// the recovery path for a section that has become unusable (a bad import, thousands
@@ -507,6 +559,7 @@ namespace PasswordManager.Core.Services
         {
             ThrowIfDisposed();
             var services = await GetEntriesAsync<ServiceEntry>();
+            var vaultForSettings = await _repository.LoadAsync();
 
             var backup = new VaultBackup { ExportedAt = DateTime.UtcNow };
 
@@ -594,6 +647,10 @@ namespace PasswordManager.Core.Services
                     LastUpdateTime = card.LastUpdateTime,
                 });
             }
+
+            // Preferences travel too: restoring on a new device should hand back the app the user
+            // had, not a default one they have to configure again.
+            backup.Settings = new Dictionary<string, string>(vaultForSettings.Settings, StringComparer.Ordinal);
 
             return backup;
         }
@@ -695,6 +752,11 @@ namespace PasswordManager.Core.Services
                     LastUpdateTime = DateTime.UtcNow,
                 });
             }
+
+            // Merged, not replaced: a preference this build does not recognise stays, and one the
+            // user has already set on this device is not overwritten by an older file.
+            foreach (var (key, value) in backup.Settings)
+                vault.Settings[key] = value;
 
             await _repository.SaveAsync(vault);
             return backup.Services.Count + backup.Notes.Count + backup.Cards.Count;

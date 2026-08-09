@@ -242,7 +242,7 @@ else
     private readonly Dictionary<Guid, int> _lines = new();
 
     private ViewMode Mode => ViewPrefs.Get(ViewScope.Notes);
-    private void SetMode(ViewMode mode) => ViewPrefs.Set(ViewScope.Notes, mode);
+    private Task SetMode(ViewMode mode) => ViewPrefs.SetAsync(ViewScope.Notes, mode);
 
     private static string Initial(string title)
     {
