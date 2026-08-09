@@ -3,6 +3,7 @@
 @inject NavigationManager Nav
 @inject IImportExportService ImportExport
 @inject IFileEncryptionService FileEnc
+@inject IPortableBackupCrypto BackupCrypto
 @inject IFilePickerService Picker
 @inject Loc L
 @implements IDisposable
@@ -24,13 +25,13 @@
         </div>
     </div>
 
-    @if (_importIsEncrypted)
+    @if (_importIsEncrypted || _importIsSealed)
     {
         <div class="field" style="margin-bottom:0;">
-            <label>@L["home.masterPassphrase"]</label>
+            <label>@(_importIsSealed ? L["io.backupPassphrase"] : L["home.masterPassphrase"])</label>
             <input type="password" class="input" @bind="_importPassphrase"
                    placeholder="@L["io.passphraseNeeded"]" />
-            <small style="color:var(--n-500); font-size:12px;">@L["io.encryptedNote"]</small>
+            <small style="color:var(--n-500); font-size:12px;">@(_importIsSealed ? L["io.sealedNote"] : L["io.encryptedNote"])</small>
         </div>
     }
 
@@ -136,14 +137,41 @@
         </div>
     }
 
+    @* Three modes, because they are genuinely different promises about where the file can be
+       opened — not one yes/no. A passphrase travels with the user; a PGP key does not leave the
+       device that holds it, which is the whole reason a backup made on a phone could never be
+       restored on a computer. *@
     <div class="field" style="margin-bottom:0;">
         <label>@L["io.protection"]</label>
-        @* A two-option dropdown for what is really one yes/no decision. As a switch the
-           dangerous state is the visibly-off one, and the warning below reads as its consequence. *@
-        <Toggle Label="@L["io.encryptToggle"]" Hint="@L["io.encryptToggle.hint"]"
-                Value="@(_exportMode == "encrypted")"
-                ValueChanged="@(v => _exportMode = v ? "encrypted" : "plaintext")" />
+        <select class="input" @bind="_exportMode">
+            <option value="passphrase">@L["io.protect.passphrase"]</option>
+            <option value="encrypted">@L["io.protect.pgp"]</option>
+            <option value="plaintext">@L["io.protect.none"]</option>
+        </select>
+        <div class="field-hint">
+            @(_exportMode switch
+            {
+                "passphrase" => L["io.protect.passphrase.hint"],
+                "encrypted" => L["io.protect.pgp.hint"],
+                _ => L["io.protect.none.hint"],
+            })
+        </div>
     </div>
+
+    @if (_exportMode == "passphrase")
+    {
+        <div class="field" style="margin-bottom:0;">
+            <label>@L["io.backupPassphrase"]</label>
+            <input type="password" class="input" @bind="_exportPassphrase"
+                   placeholder="@L["io.backupPassphrase.placeholder"]" />
+            <div class="field-hint">@L["io.backupPassphrase.hint"]</div>
+        </div>
+    }
+
+    @if (_exportMode == "encrypted")
+    {
+        <div class="alert alert-warning" style="margin-bottom:0;">@L["io.pgpDeviceWarning"]</div>
+    }
 
     @if (_exportMode == "plaintext")
     {
@@ -189,7 +217,7 @@
     private bool _exporting;
     private ExportTarget _target = ExportTarget.NativeBackup;
     private HashSet<ExportField> _selected = new();
-    private string _exportMode = "encrypted";
+    private string _exportMode = "passphrase";
     private string _exportResult = string.Empty;
     private bool _exportError;
 
@@ -198,6 +226,8 @@
     private byte[]? _importData;
     private string _importName = string.Empty;
     private bool _importIsEncrypted;
+    private bool _importIsSealed;
+    private string _exportPassphrase = string.Empty;
     private string _importPassphrase = string.Empty;
     private string _importResult = string.Empty;
     private bool _importError;
@@ -290,7 +320,13 @@
             var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             string? saved;
 
-            if (_exportMode == "encrypted")
+            if (_exportMode == "passphrase")
+            {
+                var sealedBytes = BackupCrypto.Seal(plaintext, _exportPassphrase);
+                using var input = new MemoryStream(sealedBytes);
+                saved = await Picker.SaveStreamAsync($"safetyvault_{stamp}{extension}.svb", input);
+            }
+            else if (_exportMode == "encrypted")
             {
                 using var input = new MemoryStream(plaintext);
                 using var encrypted = new MemoryStream();
@@ -362,7 +398,10 @@
 
             _importData = ms.ToArray();
             _importName = picked.FileName;
-            _importIsEncrypted = LooksEncrypted(_importName, _importData);
+            // Which kind of protection is decided from the file itself, not from what the user
+            // last exported: the whole point is opening a backup made somewhere else.
+            _importIsSealed = BackupCrypto.IsSealed(_importData);
+            _importIsEncrypted = !_importIsSealed && LooksEncrypted(_importName, _importData);
             _importPassphrase = string.Empty;
             _importResult = string.Empty;
             _importError = false;
@@ -400,7 +439,18 @@
             }
 
             string content;
-            if (_importIsEncrypted)
+            if (_importIsSealed)
+            {
+                if (string.IsNullOrWhiteSpace(_importPassphrase))
+                {
+                    _importResult = L["io.passphraseRequired"];
+                    _importError = true;
+                    return;
+                }
+
+                content = DecodeTextOrThrow(BackupCrypto.Open(_importData, _importPassphrase));
+            }
+            else if (_importIsEncrypted)
             {
                 if (string.IsNullOrWhiteSpace(_importPassphrase))
                 {
@@ -431,7 +481,7 @@
         }
         catch (Exception ex)
         {
-            _importResult = _importIsEncrypted
+            _importResult = (_importIsEncrypted || _importIsSealed)
                 ? $"{L["io.importFailedEncrypted"]}: {UserError.Describe(L, ex)}"
                 : $"{L["io.importFailed"]}: {UserError.Describe(L, ex)}";
             _importError = true;

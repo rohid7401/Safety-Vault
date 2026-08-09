@@ -272,6 +272,43 @@ else
                 <Icon Name="plus" Size="15" StrokeWidth="2" />@L["vault.addAccount"]
             </button>
 
+            @* Cards that hang off this account. The PIN lives on the card and nowhere else — this
+               reads and writes that one copy, so the two views can never disagree. *@
+            var linkedCards = _cards.Where(c => c.LinkedEntryId == det.Id).ToList();
+            @if (linkedCards.Count > 0)
+            {
+                <div class="dash-group-title ruled" style="margin:18px 2px 8px;">@L["vault.linkedCards"]</div>
+                @foreach (var card in linkedCards)
+                {
+                    var revealed = _revealedPins.Contains(card.Id);
+                    <div class="secret-bar">
+                        <span class="secret-label">
+                            <Icon Name="card" Size="13" /><span>@CardLabel(card)</span>
+                        </span>
+                        <span class="secret-value" style="font-family:var(--font-mono);">
+                            @(card.Pin is null
+                                ? L["vault.linkedCards.noPin"]
+                                : revealed ? AppState.Service!.DecryptField(card.Pin) : "••••")
+                        </span>
+                        @if (card.Pin is not null)
+                        {
+                            <button class="btn-icon" type="button" aria-label="@L["cards.reveal"]"
+                                    @onclick="() => TogglePinReveal(card.Id)">
+                                <Icon Name="@(revealed ? "eye-off" : "eye")" Size="16" StrokeWidth="1.8" />
+                            </button>
+                            <button class="btn-icon" type="button" aria-label="@L["common.copy"]"
+                                    @onclick="() => CopyPlain(AppState.Service!.DecryptField(card.Pin))">
+                                <Icon Name="copy" Size="16" StrokeWidth="1.8" />
+                            </button>
+                        }
+                        <button class="btn-icon" type="button" aria-label="@L["common.edit"]"
+                                @onclick="() => OpenPinEdit(card)">
+                            <Icon Name="edit" Size="16" StrokeWidth="1.8" />
+                        </button>
+                    </div>
+                }
+            }
+
             @if (det.Tags.Count > 0)
             {
                 <div class="tag-group" style="margin-top:12px;">
@@ -415,6 +452,32 @@ else
     <FooterContent>
         <button class="btn btn-secondary" @onclick="CloseModal">@L["common.cancel"]</button>
         <button class="btn btn-primary" @onclick="SaveEntry">@(_editEntry is not null ? L["common.update"] : L["common.add"])</button>
+    </FooterContent>
+</SheetModal>
+
+@* ───── Change a linked card's PIN ───── *@
+<SheetModal Visible="@(_pinCard is not null)" Centered="true" Title="@L["vault.pin.title"]"
+            OnClose="() => _pinCard = null">
+    <ChildContent>
+        @if (_pinCard is not null)
+        {
+            @* Says out loud which card is being rewritten. The PIN is stored on the card, so this
+               is not a copy being edited — it is the card itself, seen from here. *@
+            <div class="alert alert-warning" style="margin-bottom:12px;">
+                @L.Format("vault.pin.warning", CardLabel(_pinCard))
+            </div>
+            <div class="field" style="margin-bottom:0;">
+                <label>@L["cards.field.pin"]</label>
+                <input type="password" class="input" style="font-family:var(--font-mono);"
+                       @bind="_pinValue" inputmode="numeric" maxlength="@FieldLimits.Pin"
+                       placeholder="••••" />
+                <div class="field-hint">@L["vault.pin.clearHint"]</div>
+            </div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="() => _pinCard = null">@L["common.cancel"]</button>
+        <button class="btn btn-primary" @onclick="SavePin">@L["common.save"]</button>
     </FooterContent>
 </SheetModal>
 
@@ -609,6 +672,7 @@ else
         CredentialFieldType.Phone => FieldLimits.Phone,
         CredentialFieldType.TwoFactor => FieldLimits.TwoFactorSecret,
         CredentialFieldType.Web => FieldLimits.Site,
+        CredentialFieldType.Key => FieldLimits.ApiKey,
         _ => FieldLimits.Text,
     };
 
@@ -624,7 +688,7 @@ else
     {
         CredentialFieldType.Email, CredentialFieldType.Username, CredentialFieldType.Password,
         CredentialFieldType.Pin, CredentialFieldType.Web, CredentialFieldType.Phone,
-        CredentialFieldType.TwoFactor, CredentialFieldType.Text,
+        CredentialFieldType.TwoFactor, CredentialFieldType.Key, CredentialFieldType.Text,
     };
 
     private string TypeName(CredentialFieldType t) => t switch
@@ -636,6 +700,7 @@ else
         CredentialFieldType.Phone => L["fieldType.phone"],
         CredentialFieldType.TwoFactor => L["fieldType.twofa"],
         CredentialFieldType.Web => L["fieldType.web"],
+        CredentialFieldType.Key => L["fieldType.key"],
         _ => L["fieldType.text"],
     };
 
@@ -659,6 +724,14 @@ else
         public Guid? SourceId;
         public string Label = string.Empty;
         public List<FieldDraft> Fields = new();
+
+        /// <summary>
+        /// How many passwords this account already had when the form opened. Zero for a brand-new
+        /// account. The "several accounts?" question is asked about what an edit *adds*: an entry
+        /// saved long ago with two passwords was already accepted once, and asking again every
+        /// time its site name is corrected is nagging, not helping.
+        /// </summary>
+        public int BaselinePasswords;
     }
 
     private string CurrentSnapshot()
@@ -708,6 +781,8 @@ else
     {
         if (AppState.Service is null) return;
         _entries = await AppState.Service.GetEntriesAsync<ServiceEntry>();
+        // Only their metadata is read here; a card's PIN is decrypted on demand, when revealed.
+        _cards = await AppState.Service.GetEntriesAsync<CardEntry>();
     }
 
     // ─── Display projection ──────────────────────────────────────────────
@@ -913,6 +988,7 @@ else
         CredentialFieldType.TwoFactor => "shield-check",
         CredentialFieldType.Text => "file",
         CredentialFieldType.Web => "globe",
+        CredentialFieldType.Key => "lock-keyhole",
         _ => "user",
     };
 
@@ -967,6 +1043,7 @@ else
         {
             SourceId = c.Id,
             Label = c.Label,
+            BaselinePasswords = c.Fields.Count(f => f.Type == CredentialFieldType.Password),
             Fields = c.Fields.Select(f => new FieldDraft
             {
                 SourceId = f.Id,
@@ -983,24 +1060,75 @@ else
         _fSnapshot = CurrentSnapshot();
     }
 
-    /// <summary>
-    /// New fields start as a password, not as free text.
-    ///
-    /// <para>"Text" is not a secret: its value is stored in the clear inside the vault, shown
-    /// without masking, and skipped by the audit. Someone who added a field, typed their password
-    /// and never opened the type menu ended up with exactly that — which is why a tester found the
-    /// audit ignoring every password they had typed by hand while auditing the imported ones.
-    /// Defaulting to the secret type means forgetting to choose fails safe.</para>
-    /// </summary>
+    // ─── Cards attached to an account ────────────────────────────────────
+
+    private List<CardEntry> _cards = new();
+    private readonly HashSet<Guid> _revealedPins = new();
+    private CardEntry? _pinCard;
+    private string _pinValue = string.Empty;
+
+    private void TogglePinReveal(Guid id)
+    {
+        if (!_revealedPins.Remove(id)) _revealedPins.Add(id);
+    }
+
+    /// <summary>Names a card the way its own list does, without showing the full number.</summary>
+    private string CardLabel(CardEntry card)
+    {
+        var name = string.IsNullOrWhiteSpace(card.CardholderName) ? L["nav.cards"] : card.CardholderName;
+        try
+        {
+            var digits = new string(AppState.Service!.DecryptField(card.CardNumber).Where(char.IsDigit).ToArray());
+            return digits.Length >= 4 ? $"{name} ···· {digits[^4..]}" : name;
+        }
+        catch
+        {
+            return name;
+        }
+    }
+
+    private void OpenPinEdit(CardEntry card)
+    {
+        _pinCard = card;
+        _pinValue = card.Pin is null ? string.Empty : AppState.Service!.DecryptField(card.Pin);
+    }
+
+    private async Task SavePin()
+    {
+        if (_pinCard is null) return;
+        var card = _pinCard;
+        try
+        {
+            await AppState.Service!.UpdateCardPinAsync(card.Id, _pinValue);
+            _pinCard = null;
+            _pinValue = string.Empty;
+            _revealedPins.Remove(card.Id);
+            await LoadEntries();
+            Toast.Success(L.Format("vault.pin.saved", CardLabel(card)));
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(UserError.Describe(L, ex));
+        }
+    }
+
     // ─── "Did you mean several accounts?" ────────────────────────────────
 
     private bool _showSplitPrompt;
     private bool _splitDeclined;
 
-    /// <summary>An account holds one password. Two means two logins were typed into one.</summary>
-    private static bool LooksLikeSeveralAccounts(CredDraft c) =>
-        c.Fields.Count(f => f.Type == CredentialFieldType.Password
-                            && !string.IsNullOrWhiteSpace(f.Value)) > 1;
+    /// <summary>
+    /// An account holds one password, so two means two logins were typed into one — but only ask
+    /// about passwords this edit introduced. An entry that already had two was either deliberate
+    /// or already declined once, and re-asking on every unrelated edit turns a helpful catch into
+    /// a dialog to dismiss.
+    /// </summary>
+    private static bool LooksLikeSeveralAccounts(CredDraft c)
+    {
+        var passwords = c.Fields.Count(f => f.Type == CredentialFieldType.Password
+                                            && !string.IsNullOrWhiteSpace(f.Value));
+        return passwords > 1 && passwords > c.BaselinePasswords;
+    }
 
     private int SplitPreviewCount => _draft.Sum(c => LooksLikeSeveralAccounts(c) ? SplitOne(c).Count : 1);
 

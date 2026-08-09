@@ -27,6 +27,8 @@ namespace PasswordManager.Infrastructure.Services
         {
             foreach (var item in items)
             {
+                if (!item.StrengthChecked) continue;
+
                 var strength = _passwordGenerator.CalculateStrength(item.Password);
                 if (strength >= 5) continue;
 

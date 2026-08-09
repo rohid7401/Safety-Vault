@@ -20,6 +20,10 @@ namespace PasswordManager.Core.Models
         public const int Phone = 20;
         public const int TwoFactorSecret = 128;
 
+        /// <summary>API keys and access tokens run far longer than a password — a signed JWT is
+        /// routinely several hundred characters — so the cap sits well above anything real.</summary>
+        public const int ApiKey = 1_000;
+
         /// <summary>Generic free-text credential field.</summary>
         public const int Text = 200;
 

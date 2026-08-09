@@ -20,5 +20,14 @@ namespace PasswordManager.Core.Models
 
         /// <summary>When this secret is considered expired (rotation policy or entry expiry), if any.</summary>
         public DateTime? ExpiresAt { get; init; }
+
+        /// <summary>
+        /// Whether this secret should be scored for strength. False for a cash-machine PIN: four
+        /// digits can never score well, so reporting every card as weak would be a wall of
+        /// findings nobody can act on — the bank chooses the length, not the user. Such items are
+        /// still compared against the others, because sharing one PIN across two cards *is*
+        /// something the user can fix.
+        /// </summary>
+        public bool StrengthChecked { get; init; } = true;
     }
 }

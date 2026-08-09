@@ -24,5 +24,16 @@ namespace PasswordManager.Core.Interfaces
         /// verification before it is trusted. Throws if the input is not a valid public key.
         /// </summary>
         PgpKeyDetails InspectPublicKey(string armoredPublicKey);
+
+        /// <summary>
+        /// Re-armors a private key under a different passphrase, leaving the key itself — and so
+        /// its fingerprint, and everything ever encrypted to it — unchanged.
+        ///
+        /// <para>Needed to carry an identity to a second device: the armor is sealed with the
+        /// passphrase of the account that created it, and the account on the new device has its
+        /// own. Without this the imported key would keep asking for a passphrase belonging to a
+        /// device the user may no longer have.</para>
+        /// </summary>
+        string ChangePrivateKeyPassphrase(string armoredPrivateKey, string oldPassphrase, string newPassphrase);
     }
 }

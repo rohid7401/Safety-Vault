@@ -139,6 +139,11 @@ namespace PasswordManager.Infrastructure.Services
             CredentialFieldType.Pin => FieldLimits.Pin,
             CredentialFieldType.Phone => FieldLimits.Phone,
             CredentialFieldType.TwoFactor => FieldLimits.TwoFactorSecret,
+            // These two must match what the form accepts. Falling through to the generic Text cap
+            // silently cut an imported value short — a signed token or a long URL typed into the
+            // app fits, but the same value coming back from a CSV lost its tail.
+            CredentialFieldType.Key => FieldLimits.ApiKey,
+            CredentialFieldType.Web => FieldLimits.Site,
             _ => FieldLimits.Text,
         };
 

@@ -5,6 +5,7 @@ using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Security;
+using PasswordManager.Core.Exceptions;
 using PasswordManager.Core.Interfaces;
 using PasswordManager.Core.Models;
 
@@ -48,6 +49,44 @@ namespace PasswordManager.Infrastructure.Encryption
 
             File.WriteAllBytes(privateKeyPath, ExportArmoredBytes(
                 ms => keyRingGenerator.GenerateSecretKeyRing().Encode(ms)));
+        }
+
+        public string ChangePrivateKeyPassphrase(
+            string armoredPrivateKey, string oldPassphrase, string newPassphrase)
+        {
+            using var input = new MemoryStream(Encoding.UTF8.GetBytes(armoredPrivateKey));
+            var bundle = new PgpSecretKeyRingBundle(PgpUtilities.GetDecoderStream(input));
+
+            var rings = bundle.GetKeyRings().Cast<PgpSecretKeyRing>().ToList();
+            if (rings.Count == 0)
+                throw new LocalizedArgumentException(AppErrorCode.NoPrivateKeyOrBadPassphrase);
+
+            var rekeyed = new List<PgpSecretKeyRing>(rings.Count);
+            foreach (var ring in rings)
+            {
+                try
+                {
+                    // Rewraps the secret material only. The key pair, its creation date and its
+                    // fingerprint are untouched, so anything already encrypted to it still opens.
+                    rekeyed.Add(PgpSecretKeyRing.CopyWithNewPassword(
+                        ring,
+                        oldPassphrase.ToCharArray(),
+                        newPassphrase.ToCharArray(),
+                        SymmetricKeyAlgorithmTag.Aes256,
+                        new SecureRandom()));
+                }
+                catch (PgpException)
+                {
+                    // BouncyCastle reports a wrong passphrase this way; say what the user can act on.
+                    throw new LocalizedArgumentException(AppErrorCode.NoPrivateKeyOrBadPassphrase);
+                }
+            }
+
+            var bytes = ExportArmoredBytes(ms =>
+            {
+                foreach (var ring in rekeyed) ring.Encode(ms);
+            });
+            return Encoding.UTF8.GetString(bytes);
         }
 
         private static byte[] ExportArmoredBytes(Action<ArmoredOutputStream> encode)

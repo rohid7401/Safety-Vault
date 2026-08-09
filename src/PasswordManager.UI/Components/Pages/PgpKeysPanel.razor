@@ -5,6 +5,7 @@
 @inject IKeyDirectoryService KeyDir
 @inject IFilePickerService Picker
 @inject IPgpService Pgp
+@inject IPortableBackupCrypto BackupCrypto
 @inject ToastService Toast
 @inject KeyServerService KeyServer
 @inject Loc L
@@ -47,6 +48,18 @@
                 @L["keys.publishServer"]
             </button>
         </div>
+    </div>
+
+    @* ─── Carrying the identity to another device ─── *@
+    <div class="dash-group-title ruled" style="margin:22px 2px 8px;">@L["keys.move.title"]</div>
+    <div class="card" style="gap:10px;">
+        <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.55;">
+            @L["keys.move.body"]
+        </p>
+        <div class="alert alert-warning" style="margin-bottom:0;">@L["keys.move.warning"]</div>
+        <button class="btn btn-secondary btn-block" @onclick="ExportIdentity" disabled="@_movingIdentity">
+            <Icon Name="download" Size="15" StrokeWidth="1.8" />@L["keys.move.export"]
+        </button>
     </div>
 
     @* ─── Public keyserver ─── *@
@@ -283,8 +296,76 @@ else
                 @(_generatingIdentity ? L["keys.noIdentity.generating"] : L["keys.noIdentity.button"])
             </button>
         </div>
+
+        @* Offered next to creating one, because the choice matters and is irreversible in one
+           direction: generating a fresh pair here makes anything already encrypted to the old
+           identity unreadable on this device. *@
+        <div class="card" style="gap:10px; margin-top:12px;">
+            <div class="card-title">@L["keys.move.importTitle"]</div>
+            <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.55;">
+                @L["keys.move.importBody"]
+            </p>
+            <button class="btn btn-secondary btn-block" @onclick="PickIdentityFile" disabled="@_movingIdentity">
+                <Icon Name="upload" Size="15" StrokeWidth="1.8" />@L["keys.move.import"]
+            </button>
+        </div>
     }
 }
+
+@* ─── Export: choose a transfer passphrase ─── *@
+<SheetModal Visible="_showIdentityExport" Centered="true" Title="@L["keys.move.export"]"
+            OnClose="() => _showIdentityExport = false">
+    <ChildContent>
+        <p style="margin:0 0 12px; font-size:13px; color:var(--n-400); line-height:1.55;">
+            @L["keys.move.exportBody"]
+        </p>
+        <div class="field" style="margin-bottom:0;">
+            <label>@L["home.masterPassphrase"]</label>
+            <PasswordField @bind-Value="_identityPassphrase" Placeholder="@L["home.placeholder.passphrase"]" />
+            <div class="field-hint">@L["keys.move.exportHint"]</div>
+        </div>
+        @if (!string.IsNullOrEmpty(_identityError))
+        {
+            <div class="alert alert-danger" style="margin:12px 0 0;">@_identityError</div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="() => _showIdentityExport = false">@L["common.cancel"]</button>
+        <button class="btn btn-primary" @onclick="ConfirmExportIdentity" disabled="@_movingIdentity">
+            @L["keys.move.export"]
+        </button>
+    </FooterContent>
+</SheetModal>
+
+@* ─── Import: the origin passphrase, plus this device's ─── *@
+<SheetModal Visible="_showIdentityImport" Centered="true" Title="@L["keys.move.import"]"
+            OnClose="() => _showIdentityImport = false">
+    <ChildContent>
+        <p style="margin:0 0 12px; font-size:13px; color:var(--n-400); line-height:1.55;">
+            @L["keys.move.importSheet"]
+        </p>
+        <div class="field">
+            <label>@L["keys.move.originPassphrase"]</label>
+            <PasswordField @bind-Value="_identitySourcePassphrase" Placeholder="@L["keys.move.originPlaceholder"]" />
+            <div class="field-hint">@L["keys.move.originHint"]</div>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+            <label>@L["keys.move.localPassphrase"]</label>
+            <PasswordField @bind-Value="_identityPassphrase" Placeholder="@L["home.placeholder.passphrase"]" />
+            <div class="field-hint">@L["keys.move.localHint"]</div>
+        </div>
+        @if (!string.IsNullOrEmpty(_identityError))
+        {
+            <div class="alert alert-danger" style="margin:12px 0 0;">@_identityError</div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="() => _showIdentityImport = false">@L["common.cancel"]</button>
+        <button class="btn btn-primary" @onclick="ConfirmImportIdentity" disabled="@_movingIdentity">
+            @L["keys.move.adopt"]
+        </button>
+    </FooterContent>
+</SheetModal>
 
 <style>
     /* Long file paths / fingerprints must wrap inside the card in portrait,
@@ -334,6 +415,131 @@ else
     [Parameter] public EventCallback OnIdentityCreated { get; set; }
 
     private void DismissTutorial() => _showPgpTutorial = false;
+
+    // ─── Carrying the identity between the user's own devices ────────────
+
+    private bool _showIdentityExport;
+    private bool _showIdentityImport;
+    private bool _movingIdentity;
+    private string _identitySourcePassphrase = string.Empty;
+    private byte[]? _identityFileData;
+
+    private const string IdentityExtension = ".svid";
+
+    private void ExportIdentity()
+    {
+        _identityError = string.Empty;
+        _identityPassphrase = string.Empty;
+        _showIdentityExport = true;
+    }
+
+    private async Task ConfirmExportIdentity()
+    {
+        if (AppState.Account is null || AppState.Service is null) return;
+        if (string.IsNullOrWhiteSpace(_identityPassphrase))
+        { _identityError = L["home.err.passphraseRequired"]; return; }
+
+        _identityError = string.Empty;
+        _movingIdentity = true;
+        StateHasChanged();
+        try
+        {
+            // Same check the generate path does: a typo would otherwise produce a file whose
+            // private key nobody can open, discovered only on the other device.
+            var vaultPath = AppState.Account.VaultPath;
+            var matches = await Task.Run(() =>
+                PasswordManager.Infrastructure.Encryption.VaultKeyRing.CanUnlock(vaultPath, _identityPassphrase));
+            if (!matches)
+            { _identityError = L["keys.noIdentity.wrongPassphrase"]; return; }
+
+            var identity = await AppState.Service.ExportPgpIdentityAsync();
+
+            // Sealed with the same envelope the portable backup uses. The private key inside is
+            // already passphrase-protected, but PGP's own S2K is far weaker than Argon2id, and
+            // this file is meant to travel.
+            var payload = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(identity);
+            var sealedBytes = BackupCrypto.Seal(payload, _identityPassphrase);
+
+            var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            using var stream = new MemoryStream(sealedBytes);
+            var saved = await Picker.SaveStreamAsync($"safetyvault_identity_{stamp}{IdentityExtension}", stream);
+
+            if (saved is null) { _identityError = L["io.exportCancelled"]; return; }
+
+            _showIdentityExport = false;
+            _identityPassphrase = string.Empty;
+            Toast.Success(L["keys.move.exported"]);
+        }
+        catch (Exception ex)
+        {
+            _identityError = UserError.Describe(L, ex);
+        }
+        finally
+        {
+            _movingIdentity = false;
+        }
+    }
+
+    private async Task PickIdentityFile()
+    {
+        var path = await Picker.PickFileAsync(L["keys.move.import"], new[] { IdentityExtension });
+        if (path is null) return;
+
+        try
+        {
+            _identityFileData = await File.ReadAllBytesAsync(path);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(UserError.Describe(L, ex));
+            return;
+        }
+
+        _identityError = string.Empty;
+        _identitySourcePassphrase = string.Empty;
+        _identityPassphrase = string.Empty;
+        _showIdentityImport = true;
+    }
+
+    private async Task ConfirmImportIdentity()
+    {
+        if (AppState.Account is null || AppState.Service is null || _identityFileData is null) return;
+        if (string.IsNullOrWhiteSpace(_identitySourcePassphrase) || string.IsNullOrWhiteSpace(_identityPassphrase))
+        { _identityError = L["home.err.passphraseRequired"]; return; }
+
+        _identityError = string.Empty;
+        _movingIdentity = true;
+        StateHasChanged();
+        try
+        {
+            var vaultPath = AppState.Account.VaultPath;
+            var matches = await Task.Run(() =>
+                PasswordManager.Infrastructure.Encryption.VaultKeyRing.CanUnlock(vaultPath, _identityPassphrase));
+            if (!matches)
+            { _identityError = L["keys.noIdentity.wrongPassphrase"]; return; }
+
+            var payload = BackupCrypto.Open(_identityFileData, _identitySourcePassphrase);
+            var identity = System.Text.Json.JsonSerializer.Deserialize<PgpIdentity>(payload)
+                ?? throw new LocalizedArgumentException(AppErrorCode.NoPgpIdentity);
+
+            await AppState.Service.ImportPgpIdentityAsync(
+                Pgp, vaultPath, identity, _identitySourcePassphrase, _identityPassphrase);
+
+            _showIdentityImport = false;
+            _identityFileData = null;
+            _identitySourcePassphrase = _identityPassphrase = string.Empty;
+            await Reload();
+            Toast.Success(L["keys.move.imported"]);
+        }
+        catch (Exception ex)
+        {
+            _identityError = UserError.Describe(L, ex);
+        }
+        finally
+        {
+            _movingIdentity = false;
+        }
+    }
 
     private async Task GenerateIdentity()
     {

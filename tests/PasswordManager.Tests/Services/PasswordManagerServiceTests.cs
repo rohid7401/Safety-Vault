@@ -175,6 +175,283 @@ namespace PasswordManager.Tests.Services
             Assert.True(details.HasUserIdFor("alice@example.com"));
         }
 
+        // ─── The Key field type ──────────────────────────────────────────────
+
+        [Fact]
+        public void KeyFieldsAreSecretByDefault()
+        {
+            // The whole point of the type: stored as Text, an API key sat unmasked and searchable.
+            Assert.True(CredentialField.IsSecretByDefault(CredentialFieldType.Key));
+            Assert.False(CredentialField.IsSecretByDefault(CredentialFieldType.Text));
+        }
+
+        [Fact]
+        public void KeyKeepsItsStoredNumber()
+        {
+            // The enum persists as integers and has no string converter, so appending is the only
+            // safe change. If this ever fails, vaults already on devices have been retyped.
+            Assert.Equal(6, (int)CredentialFieldType.Text);
+            Assert.Equal(7, (int)CredentialFieldType.Web);
+            Assert.Equal(8, (int)CredentialFieldType.Key);
+        }
+
+        [Fact]
+        public async Task KeyFieldIsEncryptedAndSurvivesARoundTrip()
+        {
+            await using var svc = await CreateServiceAsync();
+            const string token = "sk-live-3f9a2b7c1d4e5f6a8b9c0d1e2f3a4b5c";
+            await AddWithFieldAsync(svc, "api.example.com", CredentialFieldType.Key, token);
+
+            var stored = (await svc.GetEntriesAsync<ServiceEntry>()).Single();
+            var field = stored.Credentials[0].Fields[0];
+            Assert.True(field.IsSecret);
+            Assert.Empty(field.PlainValue);              // never in the clear
+            Assert.Equal(token, svc.DecryptSecret(field));
+        }
+
+        [Fact]
+        public async Task AuditVaultAsync_LeavesKeysAlone()
+        {
+            // The service issues them, so their strength is not the user's to fix, and each is
+            // unique to whoever issued it — scoring them would only manufacture false alarms.
+            await using var svc = await CreateServiceAsync();
+            await AddWithFieldAsync(svc, "api.example.com", CredentialFieldType.Key, "abc123");
+
+            var report = await svc.AuditVaultAsync(NewAuditor());
+
+            Assert.Equal(0, report.TotalPasswords);
+            Assert.Empty(report.Issues);
+        }
+
+        // ─── Card PINs in the audit ──────────────────────────────────────────
+
+        [Fact]
+        public async Task AuditVaultAsync_NeverCallsACardPinWeak()
+        {
+            // Four digits can never score well. Reporting every card as weak would bury the
+            // findings the user can actually do something about, so PINs are compared but not
+            // scored — the bank picks the length, not the user.
+            await using var svc = await CreateServiceAsync();
+            await svc.AddCardEntryAsync(new CardEntry { CardholderName = "JANE" }, "4111111111111111", "123", "1234");
+
+            var report = await svc.AuditVaultAsync(NewAuditor());
+
+            Assert.Equal(0, report.WeakCount);
+            Assert.DoesNotContain(report.Issues, i => i.Type == AuditIssueType.WeakPassword);
+        }
+
+        [Fact]
+        public async Task AuditVaultAsync_ReportsTheSamePinOnTwoCards()
+        {
+            // The finding that *is* actionable: change one of them.
+            await using var svc = await CreateServiceAsync();
+            await svc.AddCardEntryAsync(new CardEntry { CardholderName = "DEBIT" }, "4111111111111111", "123", "4821");
+            await svc.AddCardEntryAsync(new CardEntry { CardholderName = "CREDIT" }, "5555444433332222", "456", "4821");
+
+            var report = await svc.AuditVaultAsync(NewAuditor());
+
+            Assert.Equal(2, report.ReusedCount);
+            Assert.All(report.Issues, i => Assert.Equal(AuditIssueType.ReusedPassword, i.Type));
+        }
+
+        [Fact]
+        public async Task AuditVaultAsync_LeavesDistinctPinsAlone()
+        {
+            await using var svc = await CreateServiceAsync();
+            await svc.AddCardEntryAsync(new CardEntry { CardholderName = "DEBIT" }, "4111111111111111", "123", "4821");
+            await svc.AddCardEntryAsync(new CardEntry { CardholderName = "CREDIT" }, "5555444433332222", "456", "9137");
+
+            var report = await svc.AuditVaultAsync(NewAuditor());
+
+            Assert.Empty(report.Issues);
+            Assert.Equal(2, report.TotalPasswords);   // both were examined
+        }
+
+        [Fact]
+        public async Task AuditVaultAsync_LabelsACardWithoutShowingItsNumber()
+        {
+            await using var svc = await CreateServiceAsync();
+            await svc.AddCardEntryAsync(new CardEntry { CardholderName = "JANE M DOE" }, "4111111111111111", "123", "4821");
+            await svc.AddCardEntryAsync(new CardEntry { CardholderName = "JANE M DOE" }, "5555444433332222", "456", "4821");
+
+            var report = await svc.AuditVaultAsync(NewAuditor());
+
+            var label = report.Issues[0].EntryLabel;
+            Assert.Contains("JANE M DOE", label);
+            Assert.Contains("1111", label);                 // last four only
+            Assert.DoesNotContain("4111111111111111", label);
+            Assert.DoesNotContain("4821", label);           // never the PIN itself
+        }
+
+        [Fact]
+        public async Task AuditVaultAsync_CountsCardsWithoutAPinAsNothingToCheck()
+        {
+            await using var svc = await CreateServiceAsync();
+            await svc.AddCardEntryAsync(new CardEntry { CardholderName = "NO PIN" }, "4111111111111111", "123");
+
+            var report = await svc.AuditVaultAsync(NewAuditor());
+
+            Assert.Equal(1, report.EntriesScanned);
+            Assert.Equal(0, report.TotalPasswords);
+            Assert.Equal(1, report.EntriesWithoutSecrets);
+        }
+
+        // ─── Changing a card's PIN from the account it belongs to ────────────
+
+        [Fact]
+        public async Task UpdateCardPinAsync_ChangesOnlyThePin()
+        {
+            await using var svc = await CreateServiceAsync();
+            var account = await AddPwAsync(svc, "banco.com");
+            var card = new CardEntry
+            {
+                CardholderName = "JANE M DOE", ExpiryMonth = 8, ExpiryYear = 2030,
+                LinkedEntryId = account.Id,
+            };
+            await svc.AddCardEntryAsync(card, "4111111111111111", "123", "4821");
+
+            await svc.UpdateCardPinAsync(card.Id, "9137");
+
+            var stored = (await svc.GetEntriesAsync<CardEntry>()).Single();
+            Assert.Equal("9137", svc.DecryptField(stored.Pin!));
+            // Everything else has to survive being edited from another screen.
+            Assert.Equal("4111111111111111", svc.DecryptField(stored.CardNumber));
+            Assert.Equal("123", svc.DecryptField(stored.Cvv));
+            Assert.Equal(8, stored.ExpiryMonth);
+            Assert.Equal(account.Id, stored.LinkedEntryId);
+        }
+
+        [Fact]
+        public async Task UpdateCardPinAsync_WithNothing_RemovesThePin()
+        {
+            await using var svc = await CreateServiceAsync();
+            var card = new CardEntry { CardholderName = "JANE" };
+            await svc.AddCardEntryAsync(card, "4111111111111111", "123", "4821");
+
+            await svc.UpdateCardPinAsync(card.Id, "");
+
+            Assert.Null((await svc.GetEntriesAsync<CardEntry>()).Single().Pin);
+        }
+
+        [Fact]
+        public async Task GetCardsLinkedToAsync_ReturnsOnlyThatAccountsCards()
+        {
+            await using var svc = await CreateServiceAsync();
+            var bank = await AddPwAsync(svc, "banco.com");
+            var other = await AddPwAsync(svc, "otro.com");
+            await svc.AddCardEntryAsync(
+                new CardEntry { CardholderName = "DEBIT", LinkedEntryId = bank.Id }, "4111", "123", "1111");
+            await svc.AddCardEntryAsync(
+                new CardEntry { CardholderName = "CREDIT", LinkedEntryId = bank.Id }, "5555", "456", "2222");
+            await svc.AddCardEntryAsync(
+                new CardEntry { CardholderName = "ELSEWHERE", LinkedEntryId = other.Id }, "6011", "789", "3333");
+            await svc.AddCardEntryAsync(
+                new CardEntry { CardholderName = "LOOSE" }, "3782", "012", "4444");
+
+            var linked = await svc.GetCardsLinkedToAsync(bank.Id);
+
+            Assert.Equal(2, linked.Count);
+            Assert.All(linked, c => Assert.Equal(bank.Id, c.LinkedEntryId));
+        }
+
+        // ─── Card PIN and its link to an account ─────────────────────────────
+
+        [Fact]
+        public async Task CardPin_IsEncryptedLikeEveryOtherSecret()
+        {
+            await using var svc = await CreateServiceAsync();
+            var card = new CardEntry { CardholderName = "JANE M DOE" };
+
+            await svc.AddCardEntryAsync(card, "4111111111111111", "123", "4821");
+
+            var stored = (await svc.GetEntriesAsync<CardEntry>()).Single();
+            Assert.NotNull(stored.Pin);
+            Assert.Equal("4821", svc.DecryptField(stored.Pin!));
+            // Never left lying in the clear anywhere on the entry.
+            Assert.DoesNotContain("4821", System.Text.Json.JsonSerializer.Serialize(stored.Pin));
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task CardWithoutAPin_StoresNullSoTheRowStaysHidden(string? pin)
+        {
+            // "Not set" has to stay distinguishable from "set to nothing": the detail sheet keys
+            // the whole PIN row off null, and an empty EncryptedField would render an empty row
+            // with a reveal button behind it.
+            await using var svc = await CreateServiceAsync();
+
+            await svc.AddCardEntryAsync(new CardEntry { CardholderName = "J" }, "4111", "123", pin);
+
+            Assert.Null((await svc.GetEntriesAsync<CardEntry>()).Single().Pin);
+        }
+
+        [Fact]
+        public async Task UpdateCardEntryAsync_CanSetAndThenClearThePin()
+        {
+            await using var svc = await CreateServiceAsync();
+            var card = new CardEntry { CardholderName = "JANE M DOE" };
+            await svc.AddCardEntryAsync(card, "4111111111111111", "123", "4821");
+
+            await svc.UpdateCardEntryAsync(card.Id, "JANE M DOE", 1, 2030, "4111111111111111", "123", "9999");
+            Assert.Equal("9999", svc.DecryptField((await svc.GetEntriesAsync<CardEntry>()).Single().Pin!));
+
+            // Clearing the box has to remove it, not silently keep the old PIN.
+            await svc.UpdateCardEntryAsync(card.Id, "JANE M DOE", 1, 2030, "4111111111111111", "123", "");
+            Assert.Null((await svc.GetEntriesAsync<CardEntry>()).Single().Pin);
+        }
+
+        [Fact]
+        public async Task CardCanBeLinkedToAnAccountAndUnlinked()
+        {
+            await using var svc = await CreateServiceAsync();
+            var account = await AddPwAsync(svc, "banco.com");
+            var card = new CardEntry { CardholderName = "JANE M DOE", LinkedEntryId = account.Id };
+            await svc.AddCardEntryAsync(card, "4111111111111111", "123");
+
+            Assert.Equal(account.Id, (await svc.GetEntriesAsync<CardEntry>()).Single().LinkedEntryId);
+
+            await svc.UpdateCardEntryAsync(card.Id, "JANE M DOE", 1, 2030, "4111111111111111", "123", null, null);
+            Assert.Null((await svc.GetEntriesAsync<CardEntry>()).Single().LinkedEntryId);
+        }
+
+        [Fact]
+        public async Task SeveralCardsCanShareOneAccount()
+        {
+            // The case that motivated linking: one bank login, several pieces of plastic.
+            await using var svc = await CreateServiceAsync();
+            var account = await AddPwAsync(svc, "banco.com");
+
+            await svc.AddCardEntryAsync(
+                new CardEntry { CardholderName = "DEBIT", LinkedEntryId = account.Id }, "4111", "123");
+            await svc.AddCardEntryAsync(
+                new CardEntry { CardholderName = "CREDIT", LinkedEntryId = account.Id }, "5555", "456");
+
+            var cards = await svc.GetEntriesAsync<CardEntry>();
+            Assert.Equal(2, cards.Count);
+            Assert.All(cards, c => Assert.Equal(account.Id, c.LinkedEntryId));
+        }
+
+        [Fact]
+        public async Task DeletingTheAccount_LeavesTheCardIntactWithADanglingLink()
+        {
+            // Entries are a flat list, so nothing cascades. The card must survive — losing a card
+            // because its account was tidied away would be far worse than a link pointing nowhere,
+            // and the detail sheet says so rather than hiding the row.
+            await using var svc = await CreateServiceAsync();
+            var account = await AddPwAsync(svc, "banco.com");
+            var card = new CardEntry { CardholderName = "JANE M DOE", LinkedEntryId = account.Id };
+            await svc.AddCardEntryAsync(card, "4111111111111111", "123", "4821");
+
+            await svc.DeleteEntryAsync(account.Id);
+
+            var stored = (await svc.GetEntriesAsync<CardEntry>()).Single();
+            Assert.Equal(account.Id, stored.LinkedEntryId);
+            Assert.Equal("4821", svc.DecryptField(stored.Pin!));
+            Assert.DoesNotContain(await svc.GetEntriesAsync<ServiceEntry>(), e => e.Id == account.Id);
+        }
+
         // ─── Card editing ────────────────────────────────────────────────────
 
         [Fact]

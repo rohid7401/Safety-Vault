@@ -32,6 +32,7 @@ namespace PasswordManager.Infrastructure
             services.AddSingleton<IVaultAuditor, VaultAuditor>();
             services.AddSingleton<IAuthService, AuthService>();
             services.AddSingleton<IFileEncryptionService, FileEncryptionService>();
+            services.AddSingleton<IPortableBackupCrypto, PortableBackupCrypto>();
             services.AddSingleton<IKeyDirectoryService, KeyDirectoryService>();
 
             return services;

@@ -46,6 +46,21 @@ namespace PasswordManager.Core.Exceptions
         /// <summary>The username is made only of dots, which names no usable folder.</summary>
         UsernameInvalid,
 
+        /// <summary>The account has no PGP key pair to export, or the file carried none.</summary>
+        NoPgpIdentity,
+
+        /// <summary>A portable backup was sealed or opened without a passphrase.</summary>
+        BackupPassphraseRequired,
+
+        /// <summary>The file is not a portable backup this version can read.</summary>
+        BackupNotRecognised,
+
+        /// <summary>
+        /// The backup would not open. Deliberately one code for both a wrong passphrase and an
+        /// altered file: telling them apart would confirm a guessed passphrase.
+        /// </summary>
+        BackupCannotOpen,
+
         UsernameTaken,
         EmailTaken,
         VaultFolderExists,

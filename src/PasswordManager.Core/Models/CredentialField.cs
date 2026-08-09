@@ -47,7 +47,8 @@ namespace PasswordManager.Core.Models
 
         /// <summary>Whether a field of this type should be treated as a secret by default.</summary>
         public static bool IsSecretByDefault(CredentialFieldType type) =>
-            type is CredentialFieldType.Password or CredentialFieldType.Pin or CredentialFieldType.TwoFactor;
+            type is CredentialFieldType.Password or CredentialFieldType.Pin
+                or CredentialFieldType.TwoFactor or CredentialFieldType.Key;
 
         /// <summary>
         /// Replaces the secret value. When the field has a rotation policy, the immediately-

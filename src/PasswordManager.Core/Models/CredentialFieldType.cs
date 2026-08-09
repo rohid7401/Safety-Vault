@@ -29,5 +29,16 @@ namespace PasswordManager.Core.Models
         /// credentials each point at their own address.
         /// </summary>
         Web,
+
+        /// <summary>
+        /// An API key, access token or recovery key — a secret the service issues rather than one
+        /// the user chooses.
+        ///
+        /// <para>It has its own type because the alternative was storing it as <see cref="Text"/>,
+        /// which is not a secret: the value sat unmasked and searchable. Calling it a
+        /// <see cref="Password"/> hid it correctly but misdescribed it, and the audit would then
+        /// grade something whose strength the user does not control.</para>
+        /// </summary>
+        Key,
     }
 }

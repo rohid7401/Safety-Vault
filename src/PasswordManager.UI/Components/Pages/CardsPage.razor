@@ -132,6 +132,46 @@ else
                 </button>
             </div>
 
+            @if (det.Pin is not null)
+            {
+                <div class="card-row">
+                    <span class="card-row-label">@L["cards.field.pin"]</span>
+                    <span class="card-row-value mono">
+                        @(_pinRevealed ? AppState.Service!.DecryptField(det.Pin) : "••••")
+                    </span>
+                    <button class="btn-icon" type="button" aria-label="@L["cards.reveal"]"
+                            @onclick="() => _pinRevealed = !_pinRevealed">
+                        <Icon Name="@(_pinRevealed ? "eye-off" : "eye")" Size="15" StrokeWidth="1.8" />
+                    </button>
+                    <button class="btn-icon" type="button" aria-label="@L["common.copy"]"
+                            @onclick="() => CopyField(det.Pin)">
+                        <Icon Name="copy" Size="15" StrokeWidth="1.8" />
+                    </button>
+                </div>
+            }
+
+            @* The account this card belongs to, one tap away. Shown even when the target is gone,
+               because silently dropping the row would leave no sign the link ever existed. *@
+            @if (det.LinkedEntryId is not null)
+            {
+                var linked = LinkedEntry(det);
+                <div class="card-row">
+                    <span class="card-row-label">@L["cards.field.linked"]</span>
+                    @if (linked is not null)
+                    {
+                        <span class="card-row-value">@linked.Site</span>
+                        <button class="btn-icon" type="button" aria-label="@L["cards.linked.open"]"
+                                @onclick="() => GoToLinked(linked)">
+                            <Icon Name="chevron-right" Size="16" StrokeWidth="1.8" />
+                        </button>
+                    }
+                    else
+                    {
+                        <span class="card-row-value" style="color:var(--n-500);">@L["cards.linked.missing"]</span>
+                    }
+                </div>
+            }
+
             @* Both destructive-ish actions live at the foot, away from Reveal. Delete used to sit
                beside Reveal at the top of the plastic, a thumb-width apart, which is how a card
                gets lost by mistake. *@
@@ -219,11 +259,34 @@ else
             </div>
         </div>
 
+        <div class="grid-2">
+            <div class="field">
+                <label>@L["cards.cvv"]</label>
+                <input type="text" class="input" style="font-family:var(--font-mono);"
+                       @bind="_formCvv" placeholder="•••"
+                       inputmode="numeric" maxlength="@FieldLimits.Cvv" />
+            </div>
+            <div class="field">
+                <label>@L["cards.field.pin"]</label>
+                <input type="password" class="input" style="font-family:var(--font-mono);"
+                       @bind="_formPin" placeholder="••••"
+                       inputmode="numeric" maxlength="@FieldLimits.Pin" />
+            </div>
+        </div>
+
+        @* Cards and the login that administers them are one thing to whoever holds them, and
+           several cards usually hang off a single bank account. Linking means the PIN and the
+           account are one tap apart instead of stored twice in two sections. *@
         <div class="field">
-            <label>@L["cards.cvv"]</label>
-            <input type="text" class="input" style="font-family:var(--font-mono); max-width:120px;"
-                   @bind="_formCvv" placeholder="•••"
-                   inputmode="numeric" maxlength="@FieldLimits.Cvv" />
+            <label>@L["cards.field.linked"]</label>
+            <select class="input" @bind="_formLinkedId">
+                <option value="">@L["cards.linked.none"]</option>
+                @foreach (var entry in _linkable)
+                {
+                    <option value="@entry.Id">@entry.Site</option>
+                }
+            </select>
+            <div class="field-hint">@L["cards.linked.hint"]</div>
         </div>
 
         @if (!string.IsNullOrEmpty(_formError))
@@ -246,9 +309,21 @@ else
     private string _formName = string.Empty;
     private string _formNumber = string.Empty;
     private string _formCvv = string.Empty;
+    private string _formPin = string.Empty;
+    private string _formLinkedId = string.Empty;
     private int _formMonth = DateTime.Today.Month;
     private int _formYear = DateTime.Today.Year;
     private string _formError = string.Empty;
+
+    /// <summary>
+    /// Accounts a card can be attached to. Only the site name is read — the picker never touches
+    /// their credentials, so choosing one decrypts nothing.
+    /// </summary>
+    private List<ServiceEntry> _linkable = new();
+
+    private ServiceEntry? LinkedEntry(CardEntry card) => card.LinkedEntryId is null
+        ? null
+        : _linkable.FirstOrDefault(e => e.Id == card.LinkedEntryId);
 
     /// <summary>
     /// A window around today rather than hard-coded bounds, which would have silently gone stale.
@@ -268,12 +343,12 @@ else
 
     private string _formSnapshot = string.Empty;
     private string CurrentFormSnapshot() =>
-        string.Join("", _formName, _formNumber, _formCvv, _formMonth, _formYear);
+        string.Join("|", _formName, _formNumber, _formCvv, _formPin, _formLinkedId, _formMonth, _formYear);
     private bool FormDirty => _formSnapshot != CurrentFormSnapshot();
 
     private void OpenAddModal()
     {
-        _formName = _formNumber = _formCvv = _formError = string.Empty;
+        _formName = _formNumber = _formCvv = _formPin = _formLinkedId = _formError = string.Empty;
         _formMonth = DateTime.Today.Month;
         _formYear = DateTime.Today.Year;
         _formSnapshot = CurrentFormSnapshot();
@@ -284,7 +359,7 @@ else
     {
         _showAdd = false;
         _editCard = null;
-        _formName = _formNumber = _formCvv = _formError = string.Empty;
+        _formName = _formNumber = _formCvv = _formPin = _formLinkedId = _formError = string.Empty;
         _formMonth = DateTime.Today.Month;
         _formYear = DateTime.Today.Year;
     }
@@ -300,6 +375,7 @@ else
     private async Task LoadEntries()
     {
         _entries = await AppState.Service!.GetEntriesAsync<CardEntry>();
+        _linkable = await AppState.Service!.GetEntriesAsync<ServiceEntry>();
         _last4.Clear();
         _brand.Clear();
         foreach (var c in _entries)
@@ -390,12 +466,14 @@ else
     private CardEntry? _detail;
     private bool _detailRevealed;
     private bool _cvvRevealed;
+    private bool _pinRevealed;
 
     private void OpenDetail(CardEntry c)
     {
         _detail = c;
         _detailRevealed = false;
         _cvvRevealed = false;
+        _pinRevealed = false;
     }
 
     private void CloseDetail()
@@ -404,6 +482,7 @@ else
         // Neither the number nor the CVV may survive the sheet that revealed them.
         _detailRevealed = false;
         _cvvRevealed = false;
+        _pinRevealed = false;
     }
 
     private void EditFromDetail(CardEntry c)
@@ -422,10 +501,13 @@ else
         _formName = c.CardholderName;
         _formMonth = c.ExpiryMonth;
         _formYear = c.ExpiryYear;
+        _formLinkedId = c.LinkedEntryId?.ToString() ?? string.Empty;
         try
         {
             _formNumber = AppState.Service!.DecryptField(c.CardNumber);
             _formCvv = AppState.Service!.DecryptField(c.Cvv);
+            // Older cards predate the PIN, so a missing one is normal rather than an error.
+            _formPin = c.Pin is null ? string.Empty : AppState.Service!.DecryptField(c.Pin);
         }
         catch
         {
@@ -456,6 +538,17 @@ else
         Toast.Success(L["toast.copied"]);
     }
 
+    /// <summary>
+    /// Opens the linked account in the passwords list, pre-searched by site name — the same route
+    /// the audit uses to point at an entry, since that list addresses entries by search and not
+    /// by id.
+    /// </summary>
+    private void GoToLinked(ServiceEntry entry)
+    {
+        CloseDetail();
+        Nav.NavigateTo($"vault?q={Uri.EscapeDataString(entry.Site)}");
+    }
+
     private async Task DeleteCard(Guid id)
     {
         try
@@ -479,11 +572,13 @@ else
         try
         {
             var wasEdit = _editCard is not null;
+            var linked = Guid.TryParse(_formLinkedId, out var id) ? id : (Guid?)null;
+
             if (_editCard is not null)
             {
                 await AppState.Service!.UpdateCardEntryAsync(
                     _editCard.Id, _formName, _formMonth, _formYear,
-                    _formNumber.Replace(" ", ""), _formCvv);
+                    _formNumber.Replace(" ", ""), _formCvv, _formPin, linked);
             }
             else
             {
@@ -492,8 +587,10 @@ else
                     CardholderName = _formName,
                     ExpiryMonth = _formMonth,
                     ExpiryYear = _formYear,
+                    LinkedEntryId = linked,
                 };
-                await AppState.Service!.AddCardEntryAsync(card, _formNumber.Replace(" ", ""), _formCvv);
+                await AppState.Service!.AddCardEntryAsync(
+                    card, _formNumber.Replace(" ", ""), _formCvv, _formPin);
             }
 
             CloseModal();

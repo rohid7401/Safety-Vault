@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using PasswordManager.Core.Exceptions;
 using PasswordManager.Core.Interfaces;
 using PasswordManager.Core.Models;
 
@@ -53,6 +54,55 @@ namespace PasswordManager.Core.Services
                 await File.WriteAllTextAsync(publicPath, vault.PgpPublicKeyArmored);
             if (!File.Exists(privatePath) && !string.IsNullOrEmpty(vault.PgpPrivateKeyArmored))
                 await File.WriteAllTextAsync(privatePath, vault.PgpPrivateKeyArmored);
+        }
+
+        /// <summary>
+        /// The account's PGP identity, ready to be carried to another device.
+        ///
+        /// <para>Moving the identity is not the way to move a *backup* — a backup must open with
+        /// something the user remembers, not with a file that can be lost alongside the phone.
+        /// This exists for the other half: a key pair is who you are to the people who encrypt
+        /// files for you, so replacing it on a new device makes everything already sent to the
+        /// old one unreadable. The same key has to travel.</para>
+        /// </summary>
+        public async Task<PgpIdentity> ExportPgpIdentityAsync()
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+            if (string.IsNullOrEmpty(vault.PgpPrivateKeyArmored))
+                throw new LocalizedArgumentException(AppErrorCode.NoPgpIdentity);
+
+            return new PgpIdentity(vault.PgpPublicKeyArmored ?? string.Empty, vault.PgpPrivateKeyArmored);
+        }
+
+        /// <summary>
+        /// Adopts an identity exported from another device, re-sealing the private key under this
+        /// account's passphrase so it behaves exactly like one generated here — otherwise it would
+        /// keep demanding the passphrase of a device the user may no longer have.
+        /// </summary>
+        /// <param name="sourcePassphrase">The passphrase that protects the key as it arrives.</param>
+        /// <param name="newPassphrase">This account's vault passphrase.</param>
+        public async Task ImportPgpIdentityAsync(
+            IPgpService pgpService, string vaultFolder, PgpIdentity identity,
+            string sourcePassphrase, string newPassphrase)
+        {
+            ThrowIfDisposed();
+            if (string.IsNullOrWhiteSpace(identity.PrivateKeyArmored))
+                throw new LocalizedArgumentException(AppErrorCode.NoPgpIdentity);
+
+            // Throws on a wrong source passphrase, before anything is overwritten.
+            var rekeyed = pgpService.ChangePrivateKeyPassphrase(
+                identity.PrivateKeyArmored, sourcePassphrase, newPassphrase);
+
+            var vault = await _repository.LoadAsync();
+            vault.PgpPublicKeyArmored = identity.PublicKeyArmored;
+            vault.PgpPrivateKeyArmored = rekeyed;
+            await _repository.SaveAsync(vault);
+
+            // The files are what every PGP screen reads; the vault copy is what survives a
+            // reinstall. Both have to agree.
+            await File.WriteAllTextAsync(Path.Combine(vaultFolder, "public_key.asc"), identity.PublicKeyArmored);
+            await File.WriteAllTextAsync(Path.Combine(vaultFolder, "private_key.asc"), rekeyed);
         }
 
         /// <summary>True once this account has generated the PGP identity used to encrypt
@@ -137,12 +187,44 @@ namespace PasswordManager.Core.Services
             await AddEntryAsync(note);
         }
 
-        public async Task AddCardEntryAsync(CardEntry card, string plainCardNumber, string plainCvv)
+        public async Task AddCardEntryAsync(
+            CardEntry card, string plainCardNumber, string plainCvv, string? plainPin = null)
         {
             ThrowIfDisposed();
             card.CardNumber = EncryptField(plainCardNumber);
             card.Cvv = EncryptField(plainCvv);
+            card.Pin = EncryptOptional(plainPin);
             await AddEntryAsync(card);
+        }
+
+        /// <summary>Null for a blank PIN, so "not set" stays distinguishable from "set to
+        /// nothing" — the detail sheet hides the row entirely in the first case.</summary>
+        private EncryptedField? EncryptOptional(string? plain) =>
+            string.IsNullOrWhiteSpace(plain) ? null : EncryptField(plain);
+
+        /// <summary>
+        /// Changes only a card's PIN, leaving its number, CVV and link untouched.
+        ///
+        /// <para>Exists so the PIN can be changed from the account it belongs to without that
+        /// screen having to decrypt and re-save the whole card. The card remains the single place
+        /// the PIN is stored — the account view edits it through this rather than keeping a copy,
+        /// so the two can never drift apart.</para>
+        /// </summary>
+        public async Task UpdateCardPinAsync(Guid cardId, string? plainPin)
+        {
+            ThrowIfDisposed();
+            await UpdateEntryAsync(cardId, e =>
+            {
+                if (e is CardEntry card) card.Pin = EncryptOptional(plainPin);
+            });
+        }
+
+        /// <summary>Cards attached to the given account, for showing them alongside it.</summary>
+        public async Task<List<CardEntry>> GetCardsLinkedToAsync(Guid entryId)
+        {
+            ThrowIfDisposed();
+            var cards = await GetEntriesAsync<CardEntry>();
+            return cards.Where(c => c.LinkedEntryId == entryId).ToList();
         }
 
         /// <summary>
@@ -153,7 +235,8 @@ namespace PasswordManager.Core.Services
         /// </summary>
         public async Task UpdateCardEntryAsync(
             Guid id, string cardholderName, int expiryMonth, int expiryYear,
-            string plainCardNumber, string plainCvv)
+            string plainCardNumber, string plainCvv,
+            string? plainPin = null, Guid? linkedEntryId = null)
         {
             ThrowIfDisposed();
             await UpdateEntryAsync(id, e =>
@@ -164,6 +247,8 @@ namespace PasswordManager.Core.Services
                 card.ExpiryYear = expiryYear;
                 card.CardNumber = EncryptField(plainCardNumber);
                 card.Cvv = EncryptField(plainCvv);
+                card.Pin = EncryptOptional(plainPin);
+                card.LinkedEntryId = linkedEntryId;
             });
         }
 
@@ -601,6 +686,8 @@ namespace PasswordManager.Core.Services
         /// are the likeliest thing in the vault to be weak or reused — yet they were skipped.
         /// TOTP secrets deliberately do not: they are machine-generated Base32, so "weak" and
         /// "reused" mean nothing for them and every one would be reported as a false alarm.
+        /// API keys are excluded for the same reason — the service issues them, so their strength
+        /// is not the user's to fix, and each one is unique to the service that issued it.
         /// </remarks>
         private static bool IsAuditable(CredentialField f) =>
             f.Type is CredentialFieldType.Password or CredentialFieldType.Pin;
@@ -638,10 +725,44 @@ namespace PasswordManager.Core.Services
                 if (items.Count == before) withoutSecrets++;
             }
 
+            // Card PINs join the comparison but are never scored for strength: four digits cannot
+            // be made strong, so flagging each one would bury the findings that can be acted on.
+            // Two cards sharing a PIN, on the other hand, is worth knowing and easy to fix.
+            var cards = await GetEntriesAsync<CardEntry>();
+            foreach (var card in cards)
+            {
+                if (card.Pin is null) { withoutSecrets++; continue; }
+
+                items.Add(new AuditItem
+                {
+                    EntryId = card.Id,
+                    Label = CardAuditLabel(card),
+                    Password = DecryptField(card.Pin),
+                    ExpiresAt = null,
+                    StrengthChecked = false,
+                });
+            }
+
             var report = auditor.Audit(items);
-            report.EntriesScanned = services.Count;
+            report.EntriesScanned = services.Count + cards.Count;
             report.EntriesWithoutSecrets = withoutSecrets;
             return report;
+        }
+
+        /// <summary>Names a card without exposing it: the holder plus the last four digits, the
+        /// same shorthand the cards list uses.</summary>
+        private string CardAuditLabel(CardEntry card)
+        {
+            var name = string.IsNullOrWhiteSpace(card.CardholderName) ? "•••" : card.CardholderName;
+            try
+            {
+                var digits = new string(DecryptField(card.CardNumber).Where(char.IsDigit).ToArray());
+                return digits.Length >= 4 ? $"{name} ···· {digits[^4..]}" : name;
+            }
+            catch
+            {
+                return name;
+            }
         }
 
         private static string AuditLabel(ServiceEntry svc, Credential cred) =>
