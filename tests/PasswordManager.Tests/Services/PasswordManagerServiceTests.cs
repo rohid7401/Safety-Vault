@@ -26,6 +26,20 @@ namespace PasswordManager.Tests.Services
             return PasswordManagerService.CreateAsync(repository, new AesService(), (byte[])_fieldKey.Clone());
         }
 
+        /// <summary>
+        /// A second vault with its own folder and its own keys — the other device. Sharing the
+        /// folder and keys of <see cref="CreateServiceAsync"/> would make a "transfer" test read
+        /// back the very entries it started from, and pass without proving anything.
+        /// </summary>
+        private Task<PasswordManagerService> CreateOtherDeviceAsync()
+        {
+            var dir = Path.Combine(_dataDir, "device_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            var repository = new KekVaultRepository(RandomNumberGenerator.GetBytes(32), dir);
+            return PasswordManagerService.CreateAsync(
+                repository, new AesService(), RandomNumberGenerator.GetBytes(32));
+        }
+
         // ─── Helpers: build/read a simple single-credential service entry ─────
 
         private static async Task<ServiceEntry> AddPwAsync(
@@ -173,6 +187,195 @@ namespace PasswordManager.Tests.Services
             var details = new PgpService().InspectPublicKey(armored);
 
             Assert.True(details.HasUserIdFor("alice@example.com"));
+        }
+
+        // ─── Native backup v2: everything, with links intact ─────────────────
+
+        [Fact]
+        public async Task Backup_CarriesNotesAndCardsAndNotJustPasswords()
+        {
+            await using var svc = await CreateServiceAsync();
+            await AddPwAsync(svc, "github.com", "s3cret");
+            await svc.AddSecureNoteAsync(new SecureNote { Title = "Recovery" }, "1234-5678");
+            await svc.AddCardEntryAsync(new CardEntry { CardholderName = "JANE" }, "4111111111111111", "123", "4821");
+
+            var backup = await svc.ExportBackupAsync();
+
+            Assert.Equal(VaultBackup.CurrentVersion, backup.Version);
+            Assert.Single(backup.Services);
+            Assert.Single(backup.Notes);
+            Assert.Single(backup.Cards);
+            Assert.Equal("1234-5678", backup.Notes[0].Content);
+            Assert.Equal("4821", backup.Cards[0].Pin);
+        }
+
+        [Fact]
+        public async Task ARoundTripThroughTheBackup_KeepsTheCardAttachedToItsAccount()
+        {
+            // The reason refs exist. Ids are regenerated on import, so a card carrying the old
+            // account's Guid would arrive pointing at nothing — silently.
+            await using var source = await CreateServiceAsync();
+            var bank = await AddPwAsync(source, "banco.com");
+            await source.AddCardEntryAsync(
+                new CardEntry { CardholderName = "DEBIT", LinkedEntryId = bank.Id }, "4111111111111111", "123", "4821");
+
+            var backup = await source.ExportBackupAsync();
+
+            await using var target = await CreateOtherDeviceAsync();
+            await target.ImportBackupAsync(backup);
+
+            var account = Assert.Single(await target.GetEntriesAsync<ServiceEntry>());
+            var card = Assert.Single(await target.GetEntriesAsync<CardEntry>());
+            Assert.NotEqual(bank.Id, account.Id);          // genuinely a new id
+            Assert.Equal(account.Id, card.LinkedEntryId);  // and the link followed it
+        }
+
+        [Fact]
+        public async Task SeveralCardsOnOneAccount_AllArriveAttachedToIt()
+        {
+            await using var source = await CreateServiceAsync();
+            var other = await AddPwAsync(source, "otro.com");
+            var bank = await AddPwAsync(source, "banco.com");
+            await source.AddCardEntryAsync(
+                new CardEntry { CardholderName = "DEBIT", LinkedEntryId = bank.Id }, "4111", "123");
+            await source.AddCardEntryAsync(
+                new CardEntry { CardholderName = "CREDIT", LinkedEntryId = bank.Id }, "5555", "456");
+            await source.AddCardEntryAsync(
+                new CardEntry { CardholderName = "ELSEWHERE", LinkedEntryId = other.Id }, "6011", "789");
+
+            await using var target = await CreateOtherDeviceAsync();
+            await target.ImportBackupAsync(await source.ExportBackupAsync());
+
+            var accounts = await target.GetEntriesAsync<ServiceEntry>();
+            var newBank = accounts.Single(a => a.Site == "banco.com");
+            var newOther = accounts.Single(a => a.Site == "otro.com");
+            var cards = await target.GetEntriesAsync<CardEntry>();
+
+            Assert.Equal(2, cards.Count(c => c.LinkedEntryId == newBank.Id));
+            Assert.Single(cards.Where(c => c.LinkedEntryId == newOther.Id));
+        }
+
+        [Fact]
+        public async Task ACardLinkedToNothing_StaysUnlinked()
+        {
+            await using var source = await CreateServiceAsync();
+            await source.AddCardEntryAsync(new CardEntry { CardholderName = "LOOSE" }, "4111", "123");
+
+            await using var target = await CreateOtherDeviceAsync();
+            await target.ImportBackupAsync(await source.ExportBackupAsync());
+
+            Assert.Null((await target.GetEntriesAsync<CardEntry>()).Single().LinkedEntryId);
+        }
+
+        [Fact]
+        public async Task ARefNamingNoAccountInTheFile_IsDroppedRatherThanRestored()
+        {
+            // A link to nothing is worse than none: the card would claim a bank it has lost.
+            await using var svc = await CreateServiceAsync();
+            var backup = new VaultBackup
+            {
+                Cards = { new BackupCard { CardholderName = "ORPHAN", CardNumber = "4111", LinkedRef = 99 } },
+            };
+
+            await svc.ImportBackupAsync(backup);
+
+            Assert.Null((await svc.GetEntriesAsync<CardEntry>()).Single().LinkedEntryId);
+        }
+
+        [Fact]
+        public async Task ARoundTrip_KeepsMultipleAccountsOnOneSiteTogether()
+        {
+            // What the flat CSV shapes cannot do, and the reason this format exists.
+            await using var source = await CreateServiceAsync();
+            var entry = await AddPwAsync(source, "universidad.cr", "first");
+            entry.Credentials.Add(new Credential
+            {
+                Label = "Matrícula",
+                Fields = { new CredentialField
+                {
+                    Type = CredentialFieldType.Password, IsSecret = true,
+                    SecretValue = source.EncryptValue("second"),
+                } },
+            });
+            await source.UpdateEntryAsync(entry.Id, e => ((ServiceEntry)e).Credentials = entry.Credentials);
+
+            await using var target = await CreateOtherDeviceAsync();
+            await target.ImportBackupAsync(await source.ExportBackupAsync());
+
+            var restored = Assert.Single(await target.GetEntriesAsync<ServiceEntry>());
+            Assert.Equal(2, restored.Credentials.Count);
+            Assert.Contains(restored.Credentials, c => c.Label == "Matrícula");
+        }
+
+        [Fact]
+        public async Task ANoteSurvivesWithItsCriticalFlagAndTags()
+        {
+            await using var source = await CreateServiceAsync();
+            await source.AddSecureNoteAsync(
+                new SecureNote { Title = "Códigos", IsCritical = true, Tags = { "banco" } }, "1234-5678");
+
+            await using var target = await CreateOtherDeviceAsync();
+            await target.ImportBackupAsync(await source.ExportBackupAsync());
+
+            var note = Assert.Single(await target.GetEntriesAsync<SecureNote>());
+            Assert.Equal("Códigos", note.Title);
+            Assert.True(note.IsCritical);
+            Assert.Contains("banco", note.Tags);
+            Assert.Equal("1234-5678", target.DecryptField(note.Content));
+        }
+
+        [Fact]
+        public async Task SecretsAreReEncryptedForTheReceivingVault()
+        {
+            // Each vault has its own field key, so ciphertext cannot travel — the values move as
+            // plaintext inside the file and are sealed again on arrival. The file's own
+            // protection is the passphrase envelope wrapped around it.
+            await using var source = await CreateServiceAsync();
+            await AddPwAsync(source, "github.com", "s3cret");
+            await source.AddCardEntryAsync(new CardEntry { CardholderName = "J" }, "4111", "123", "4821");
+
+            await using var target = await CreateOtherDeviceAsync();
+            await target.ImportBackupAsync(await source.ExportBackupAsync());
+
+            var card = Assert.Single(await target.GetEntriesAsync<CardEntry>());
+            Assert.Equal("4821", target.DecryptField(card.Pin!));
+            var restored = Assert.Single(await target.GetEntriesAsync<ServiceEntry>());
+            Assert.Equal("s3cret", target.DecryptSecret(PwField(restored)));
+        }
+
+        [Fact]
+        public async Task AVersionOneBackup_StillImports()
+        {
+            // Files written before notes and cards existed must keep working.
+            await using var svc = await CreateServiceAsync();
+            var old = new VaultBackup
+            {
+                Version = 1,
+                Services = { new BackupServiceEntry { Site = "old.com" } },
+            };
+
+            var added = await svc.ImportBackupAsync(old);
+
+            Assert.Equal(1, added);
+            Assert.Single(await svc.GetEntriesAsync<ServiceEntry>());
+            Assert.Empty(await svc.GetEntriesAsync<SecureNote>());
+        }
+
+        [Fact]
+        public async Task TheCountOfferedForConfirmation_IncludesNotesAndCards()
+        {
+            // This number is the whole basis of the user's consent before anything is written.
+            await using var svc = await CreateServiceAsync();
+            await AddPwAsync(svc, "a.com");
+            await svc.AddSecureNoteAsync(new SecureNote { Title = "n" }, "body");
+            await svc.AddCardEntryAsync(new CardEntry { CardholderName = "c" }, "4111", "123");
+
+            var result = new ImportResult { Backup = await svc.ExportBackupAsync() };
+
+            Assert.Equal(3, result.EntryCount);
+            Assert.Equal(1, result.ServiceCount);
+            Assert.Equal(1, result.NoteCount);
+            Assert.Equal(1, result.CardCount);
         }
 
         // ─── The Key field type ──────────────────────────────────────────────

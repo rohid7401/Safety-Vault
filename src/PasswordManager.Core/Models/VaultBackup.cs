@@ -14,12 +14,20 @@ namespace PasswordManager.Core.Models
     /// protection is therefore the PGP envelope wrapped around the whole thing on export,
     /// which is why an unencrypted backup carries an explicit warning in the UI.</para>
     ///
-    /// <para>Secure notes and cards are out of scope by design; this covers passwords only.</para>
+    /// <para>Version 2 adds secure notes, cards and application settings, so the file now holds
+    /// everything the app knows rather than passwords alone. Version 1 files still read: they
+    /// simply carry no notes or cards.</para>
     /// </summary>
     public sealed class VaultBackup
     {
-        /// <summary>Bumped when the shape changes incompatibly; readers reject what they don't know.</summary>
-        public const int CurrentVersion = 1;
+        /// <summary>
+        /// Bumped when the shape changes incompatibly; readers reject what they don't know.
+        /// <list type="bullet">
+        /// <item>1 — passwords only.</item>
+        /// <item>2 — adds notes, cards and settings, and the reference scheme below.</item>
+        /// </list>
+        /// </summary>
+        public const int CurrentVersion = 2;
 
         /// <summary>Marker used to tell this file apart from any other JSON offered for import.</summary>
         public const string ApplicationName = "SafetyVault";
@@ -29,12 +37,35 @@ namespace PasswordManager.Core.Models
         public DateTime ExportedAt { get; set; } = DateTime.UtcNow;
 
         public List<BackupServiceEntry> Services { get; set; } = new();
+        public List<BackupNote> Notes { get; set; } = new();
+        public List<BackupCard> Cards { get; set; } = new();
+
+        /// <summary>
+        /// Application preferences, as free-form name/value pairs rather than a fixed shape.
+        ///
+        /// <para>Deliberately untyped: settings are still being designed, and a reader that meets
+        /// a key it does not recognise should ignore it rather than refuse the whole file. Keeping
+        /// this open means adding a preference later needs no format version bump.</para>
+        /// </summary>
+        public Dictionary<string, string> Settings { get; set; } = new();
     }
 
-    /// <summary><see cref="ServiceEntry"/> in transit. Ids are deliberately absent — an import
-    /// always creates fresh entries rather than risking a collision with what's already there.</summary>
+    /// <summary>
+    /// <see cref="ServiceEntry"/> in transit. Ids are deliberately absent — an import always
+    /// creates fresh entries rather than risking a collision with what's already there.
+    /// </summary>
     public sealed class BackupServiceEntry
     {
+        /// <summary>
+        /// Identifies this entry *within this file only*, so a card can say which account it
+        /// belongs to without either of them carrying a real id.
+        ///
+        /// <para>The link could not survive otherwise: ids are regenerated on import, so a card
+        /// holding the old account's <c>Guid</c> would come back pointing at nothing — and would
+        /// do it silently, which is the worst way for a reference to break.</para>
+        /// </summary>
+        public int Ref { get; set; }
+
         public string Site { get; set; } = string.Empty;
         public List<string> Tags { get; set; } = new();
         public bool Grouped { get; set; } = true;
@@ -80,5 +111,41 @@ namespace PasswordManager.Core.Models
         public int Interval { get; set; } = 90;
         public RotationUnit Unit { get; set; } = RotationUnit.Days;
         public DateTime LastChanged { get; set; } = DateTime.UtcNow;
+    }
+
+    /// <summary><see cref="SecureNote"/> in transit; the body travels as plaintext, for the same
+    /// reason the fields above do.</summary>
+    public sealed class BackupNote
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+        public List<string> Tags { get; set; } = new();
+        public bool IsCritical { get; set; }
+        public DateTime CreationTime { get; set; } = DateTime.UtcNow;
+        public DateTime LastUpdateTime { get; set; } = DateTime.UtcNow;
+    }
+
+    /// <summary><see cref="CardEntry"/> in transit.</summary>
+    public sealed class BackupCard
+    {
+        public string CardholderName { get; set; } = string.Empty;
+        public string CardNumber { get; set; } = string.Empty;
+        public string Cvv { get; set; } = string.Empty;
+
+        /// <summary>Null when the card has no PIN, keeping "not set" distinct from "empty".</summary>
+        public string? Pin { get; set; }
+
+        public int ExpiryMonth { get; set; }
+        public int ExpiryYear { get; set; }
+
+        /// <summary>
+        /// The <see cref="BackupServiceEntry.Ref"/> of the account this card belongs to, or null.
+        /// Resolved back to a real id on import; a value that matches no entry in the file is
+        /// dropped rather than restored as a link to nowhere.
+        /// </summary>
+        public int? LinkedRef { get; set; }
+
+        public DateTime CreationTime { get; set; } = DateTime.UtcNow;
+        public DateTime LastUpdateTime { get; set; } = DateTime.UtcNow;
     }
 }

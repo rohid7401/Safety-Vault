@@ -510,10 +510,17 @@ namespace PasswordManager.Core.Services
 
             var backup = new VaultBackup { ExportedAt = DateTime.UtcNow };
 
+            // Maps each account to the number cards will use to point at it. Local to the file:
+            // real ids are regenerated on import, so carrying them across would only break.
+            var refs = new Dictionary<Guid, int>();
+            var nextRef = 1;
+
             foreach (var svc in services)
             {
+                refs[svc.Id] = nextRef;
                 var entry = new BackupServiceEntry
                 {
+                    Ref = nextRef++,
                     Site = svc.Site,
                     Tags = new List<string>(svc.Tags),
                     Grouped = svc.Grouped,
@@ -557,6 +564,37 @@ namespace PasswordManager.Core.Services
                 backup.Services.Add(entry);
             }
 
+            foreach (var note in await GetEntriesAsync<SecureNote>())
+            {
+                backup.Notes.Add(new BackupNote
+                {
+                    Title = note.Title,
+                    Content = DecryptField(note.Content),
+                    Tags = new List<string>(note.Tags),
+                    IsCritical = note.IsCritical,
+                    CreationTime = note.CreationTime,
+                    LastUpdateTime = note.LastUpdateTime,
+                });
+            }
+
+            foreach (var card in await GetEntriesAsync<CardEntry>())
+            {
+                backup.Cards.Add(new BackupCard
+                {
+                    CardholderName = card.CardholderName,
+                    CardNumber = DecryptField(card.CardNumber),
+                    Cvv = DecryptField(card.Cvv),
+                    Pin = card.Pin is null ? null : DecryptField(card.Pin),
+                    ExpiryMonth = card.ExpiryMonth,
+                    ExpiryYear = card.ExpiryYear,
+                    // Only if the account travels in this same file; a link to something left
+                    // behind would arrive pointing at nothing.
+                    LinkedRef = card.LinkedEntryId is Guid id && refs.TryGetValue(id, out var r) ? r : null,
+                    CreationTime = card.CreationTime,
+                    LastUpdateTime = card.LastUpdateTime,
+                });
+            }
+
             return backup;
         }
 
@@ -570,6 +608,10 @@ namespace PasswordManager.Core.Services
         {
             ThrowIfDisposed();
             var vault = await _repository.LoadAsync();
+
+            // File-local reference → the id this import assigns. Built while the accounts are
+            // created, then used to reconnect the cards that pointed at them.
+            var newIds = new Dictionary<int, Guid>();
 
             foreach (var source in backup.Services)
             {
@@ -617,10 +659,45 @@ namespace PasswordManager.Core.Services
                 }
 
                 vault.Entries.Add(entry);
+                // What the file called this account, against the id it has just been given.
+                if (source.Ref != 0) newIds[source.Ref] = entry.Id;
+            }
+
+            foreach (var note in backup.Notes)
+            {
+                vault.Entries.Add(new SecureNote
+                {
+                    Title = note.Title,
+                    Content = EncryptField(note.Content),
+                    Tags = new List<string>(note.Tags),
+                    IsCritical = note.IsCritical,
+                    CreationTime = note.CreationTime,
+                    LastUpdateTime = DateTime.UtcNow,
+                });
+            }
+
+            foreach (var card in backup.Cards)
+            {
+                vault.Entries.Add(new CardEntry
+                {
+                    CardholderName = card.CardholderName,
+                    CardNumber = EncryptField(card.CardNumber),
+                    Cvv = EncryptField(card.Cvv),
+                    Pin = string.IsNullOrWhiteSpace(card.Pin) ? null : EncryptField(card.Pin),
+                    ExpiryMonth = card.ExpiryMonth,
+                    ExpiryYear = card.ExpiryYear,
+                    // A reference naming no account in this file is dropped: a link pointing at
+                    // nothing is worse than none, because the card would claim a bank it has lost.
+                    LinkedEntryId = card.LinkedRef is int r && newIds.TryGetValue(r, out var id)
+                        ? id
+                        : null,
+                    CreationTime = card.CreationTime,
+                    LastUpdateTime = DateTime.UtcNow,
+                });
             }
 
             await _repository.SaveAsync(vault);
-            return backup.Services.Count;
+            return backup.Services.Count + backup.Notes.Count + backup.Cards.Count;
         }
 
         // ─── Export (interop rows) ────────────────────────────────────────────

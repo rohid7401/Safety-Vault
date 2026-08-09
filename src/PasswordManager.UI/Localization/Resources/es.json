@@ -331,7 +331,7 @@
   "io.target.generic": "CSV genérico",
   "io.target.bitwarden": "CSV para Bitwarden",
   "io.target.chrome": "CSV para Chrome / Google",
-  "io.target.nativeHint": "Se importa tal cual en otro dispositivo: conserva cuentas múltiples, etiquetas de credencial, PIN, teléfonos, rotación y 2FA. Úsalo para pasar de móvil a PC.",
+  "io.target.nativeHint": "Se importa tal cual en otro dispositivo: conserva contraseñas con sus cuentas múltiples, notas y tarjetas, con PIN, rotación y 2FA. Úsalo para pasar de móvil a PC.",
   "io.target.genericHint": "Una fila por cuenta, con nombres de columna legibles. Se abre en Excel y esta app lo vuelve a importar sin problema.",
   "io.target.bitwardenHint": "Columnas exactas que espera el importador de Bitwarden.",
   "io.target.chromeHint": "Columnas que aceptan Chrome, Edge y el gestor de contraseñas de Google.",
@@ -647,5 +647,6 @@
   "keys.move.localPassphrase": "Tu frase en este dispositivo",
   "keys.move.localHint": "Con esta queda protegida la llave de ahora en adelante.",
   "keys.move.adopt": "Adoptar identidad",
-  "keys.move.imported": "Identidad importada. Tu llave es la misma de antes."
+  "keys.move.imported": "Identidad importada. Tu llave es la misma de antes.",
+  "io.confirmBreakdown": "{0} contraseñas · {1} notas · {2} tarjetas"
 }

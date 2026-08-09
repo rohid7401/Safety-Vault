@@ -28,8 +28,23 @@ namespace PasswordManager.Core.Models
         /// <summary>True when this came from a SafetyVault backup rather than a flat file.</summary>
         public bool IsNativeBackup => Backup is not null;
 
-        /// <summary>Entries that will be added, whichever shape the source had.</summary>
-        public int EntryCount => Backup?.Services.Count ?? Entries.Count;
+        /// <summary>
+        /// Entries that will be added, whichever shape the source had — notes and cards included.
+        /// Counting only the accounts would understate what the user is agreeing to, and this
+        /// number is the whole basis of that agreement.
+        /// </summary>
+        public int EntryCount => Backup is null
+            ? Entries.Count
+            : Backup.Services.Count + Backup.Notes.Count + Backup.Cards.Count;
+
+        /// <summary>Notes carried by a native backup; zero for a flat file.</summary>
+        public int NoteCount => Backup?.Notes.Count ?? 0;
+
+        /// <summary>Cards carried by a native backup; zero for a flat file.</summary>
+        public int CardCount => Backup?.Cards.Count ?? 0;
+
+        /// <summary>Accounts carried by a native backup, or rows from a flat file.</summary>
+        public int ServiceCount => Backup?.Services.Count ?? Entries.Count;
 
         /// <summary>
         /// First few entries as "site · account" labels, for the confirmation sheet — enough
