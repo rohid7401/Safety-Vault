@@ -5,7 +5,7 @@
 @if (Visible)
 {
     <div class="sheet-backdrop @(Centered ? "centered" : "")" @onclick="HandleBackdrop">
-        <div class="sheet" @onclick:stopPropagation="true">
+        <div class="sheet @(Tall ? "tall" : "")" @onclick:stopPropagation="true">
             <div class="sheet-grip" @onclick="HandleBackdrop" role="button" aria-label="Close">
                 <div class="sheet-handle"></div>
             </div>
@@ -46,6 +46,13 @@
     [Parameter] public bool Visible { get; set; }
     [Parameter] public string? Title { get; set; }
     [Parameter] public bool Centered { get; set; }
+
+    /// <summary>
+    /// Opens near the top of the screen no matter how little content it has yet. For forms:
+    /// sized to its content, a one-field form left a dropdown taller than the sheet itself with
+    /// nowhere to open, and the sheet resized under the thumb as fields were added.
+    /// </summary>
+    [Parameter] public bool Tall { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? FooterContent { get; set; }

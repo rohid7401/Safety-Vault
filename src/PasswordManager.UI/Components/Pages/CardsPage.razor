@@ -216,7 +216,7 @@ else
     .mini-plastic-exp { font-size: 11px; color: var(--a-300); }
 </style>
 
-<SheetModal Visible="@(_showAdd || _editCard is not null)"
+<SheetModal Visible="@(_showAdd || _editCard is not null)" Tall="true"
             Title="@(_editCard is not null ? L["cards.editTitle"] : L["cards.addTitle"])"
             ConfirmClose="@FormDirty" OnClose="CloseModal">
     <ChildContent>

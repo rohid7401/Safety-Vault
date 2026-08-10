@@ -149,7 +149,7 @@ else
     .note-content.masked { color: var(--n-600); letter-spacing: 2px; }
 </style>
 
-<SheetModal Visible="@(_showAdd || _editNote is not null)"
+<SheetModal Visible="@(_showAdd || _editNote is not null)" Tall="true"
             Title="@(_editNote is not null ? L["notes.editTitle"] : L["notes.addTitle"])"
             ConfirmClose="@FormDirty"
             OnClose="CloseModal">

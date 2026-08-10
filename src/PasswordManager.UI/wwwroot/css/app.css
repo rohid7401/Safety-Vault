@@ -1106,6 +1106,12 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
     position: relative;
     width: 100%;
     max-height: 92%;
+    /* Sheets carrying a form open tall regardless of how little is in them yet. Sized to their
+       content, a one-field form produced a short sheet with a nine-item type menu that had
+       nowhere to go: it opened upward, over the page behind, and the first entries were cut off
+       at the top of the screen. Opening tall from the start also stops the sheet resizing under
+       the thumb as fields are added. */
+    min-height: var(--sheet-min-height, auto);
     overflow-y: auto;
     background: var(--color-surface);
     border: none;
@@ -1766,4 +1772,20 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
 @media (prefers-reduced-motion: reduce) {
     .busy-spinner { animation: none; border-top-color: var(--color-accent); opacity: .8; }
     .busy { animation: none; }
+}
+
+/* Form sheets open near the top of the screen from the moment they appear — see .sheet. */
+.sheet.tall { --sheet-min-height: 86%; }
+
+/* Groups inside the field-type menu: details, secrets, then the catch-all. */
+.type-menu-rule {
+    height: 1px;
+    margin: 5px 8px;
+    background: var(--color-divider);
+}
+
+@media (min-width: 900px) {
+    /* Centred dialogs are not anchored to the bottom, so the tall minimum would only make a
+       short form float in an oversized box. */
+    .sheet.tall { --sheet-min-height: auto; }
 }

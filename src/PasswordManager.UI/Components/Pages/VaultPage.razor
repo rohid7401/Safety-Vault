@@ -321,7 +321,7 @@ else
 </SheetModal>
 
 @* ───── Add / Edit sheet (dynamic credential drafts) ───── *@
-<SheetModal Visible="@(_showAdd || _editEntry is not null)"
+<SheetModal Visible="@(_showAdd || _editEntry is not null)" Tall="true"
             Title="@(_editEntry is not null ? L["vault.editTitle"] : L["vault.addTitle"])"
             ConfirmClose="@FormDirty" OnClose="CloseModal">
     <ChildContent>
@@ -366,6 +366,10 @@ else
                                 <div class="type-menu">
                                     @foreach (var t in FieldTypes)
                                     {
+                                        @if (StartsSecrets(t) || StartsOther(t))
+                                        {
+                                            <div class="type-menu-rule"></div>
+                                        }
                                         <button type="button" class="type-menu-item @(t == f.Type ? "sel" : "")"
                                                 @onclick="() => SelectType(f, t)">
                                             <Icon Name="@FieldIcon(t)" Size="15" />
@@ -685,12 +689,28 @@ else
             : raw;
     }
 
+    /// <summary>
+    /// Menu order: the things that identify an account, then the things that open it, then the
+    /// catch-all. It used to interleave them — password and PIN sat between username and website
+    /// — so picking a type meant reading the whole list every time instead of jumping to the half
+    /// you wanted. Display order only; the enum's own order is the storage format and must not
+    /// move (see <see cref="CredentialFieldType"/>).
+    /// </summary>
     private static readonly CredentialFieldType[] FieldTypes =
     {
-        CredentialFieldType.Email, CredentialFieldType.Username, CredentialFieldType.Password,
-        CredentialFieldType.Pin, CredentialFieldType.Web, CredentialFieldType.Phone,
-        CredentialFieldType.TwoFactor, CredentialFieldType.Key, CredentialFieldType.Text,
+        // Details
+        CredentialFieldType.Email, CredentialFieldType.Username,
+        CredentialFieldType.Web, CredentialFieldType.Phone,
+        // Secrets
+        CredentialFieldType.Password, CredentialFieldType.Pin,
+        CredentialFieldType.TwoFactor, CredentialFieldType.Key,
+        // Anything else
+        CredentialFieldType.Text,
     };
+
+    /// <summary>Where a rule is drawn in the menu, so the two groups read as two groups.</summary>
+    private static bool StartsSecrets(CredentialFieldType t) => t == CredentialFieldType.Password;
+    private static bool StartsOther(CredentialFieldType t) => t == CredentialFieldType.Text;
 
     private string TypeName(CredentialFieldType t) => t switch
     {
