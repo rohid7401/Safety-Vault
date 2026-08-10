@@ -379,7 +379,7 @@ else
                                 </div>
                             }
                         </div>
-                        <div class="secret-bar @(f.IsSecret ? "is-secret" : "")">
+                        <div class="field-value @(f.IsSecret ? "is-secret" : "")">
                             <input type="@(f.IsSecret && !f.Reveal ? "password" : "text")" class="input"
                                    style="@(f.IsSecret ? "font-family:var(--font-mono);" : "")"
                                    inputmode="@InputMode(f.Type)"
@@ -394,19 +394,21 @@ else
                                 </button>
                             }
                         </div>
+                        @* Generate and Remove act *on* the field, so they carry no frame of their
+                           own — a bordered box beside a bordered box reads as two fields. *@
                         @if (f.Type is CredentialFieldType.Password)
                         {
-                            <button class="btn-icon" type="button" aria-label="@L["vault.generate"]" title="@L["vault.generate"]"
+                            <button class="field-act" type="button" aria-label="@L["vault.generate"]" title="@L["vault.generate"]"
                                     @onclick="() => f.Value = SafeGenerate()">
-                                <Icon Name="refresh" Size="16" />
+                                <Icon Name="refresh" Size="19" />
                             </button>
                         }
                         @* Hidden on the last field rather than shown disabled: an entry has to keep
                            something, and offering a control that can never work only invites the tap. *@
                         @if (cred.Fields.Count > 1)
                         {
-                            <button class="btn-icon" type="button" aria-label="@L["vault.removeField"]" @onclick="() => RemoveField(cred, f)">
-                                <Icon Name="x" Size="15" />
+                            <button class="field-act danger" type="button" aria-label="@L["vault.removeField"]" @onclick="() => RemoveField(cred, f)">
+                                <Icon Name="x" Size="18" />
                             </button>
                         }
                     </div>
@@ -571,11 +573,13 @@ else
     .hint { color: var(--n-500); font-size: 12px; display: block; margin-top: 4px; }
     .draft-cred { border: 1px solid var(--color-divider); border-radius: var(--radius-md); padding: 10px; margin-top: 10px; }
     .draft-cred-head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
-    .draft-field { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+    .draft-field { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 
-    /* Compact type selector: an icon button that opens an icon + name menu. */
+    /* Compact type selector: an icon button that opens an icon + name menu. Keeps its frame
+       where the two action buttons lose theirs — this one is a control with a state to show. */
     .type-picker { position: relative; flex: 0 0 auto; }
-    .type-btn { display: inline-flex; align-items: center; gap: 1px; height: 40px; padding: 0 7px;
+    .type-btn { display: inline-flex; align-items: center; justify-content: center; gap: 1px;
+        width: 46px; height: 46px; padding: 0;
         background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: var(--radius-md);
         color: var(--color-text); cursor: pointer; }
     .type-btn:hover { border-color: var(--color-accent); }
@@ -591,14 +595,29 @@ else
     /* Opens upward instead when there is no room below — the script in index.html decides. */
     .type-menu.up { top: auto; bottom: calc(100% + 4px); }
 
-    /* Value bar: the eye lives inside, pinned to the right edge. */
-    .secret-bar { position: relative; flex: 1; min-width: 0; }
-    .secret-bar > .input { width: 100%; }
-    .secret-bar.is-secret > .input { padding-right: 40px; }
-    .bar-eye { position: absolute; top: 50%; right: 4px; transform: translateY(-50%);
-        display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
-        background: transparent; border: none; border-radius: 6px; color: var(--n-400); cursor: pointer; }
+    /* Value box in the form: one frame, the input's own, with the eye inside it.
+       This used to be called .secret-bar too — the same name as the read-only row above, which
+       draws its own border, background and 7px/10px of padding. The form inherited all of it, so
+       every field was a bordered box inside a bordered box and lost 22px of width to a frame
+       that did nothing. Different job, different name. */
+    .field-value { position: relative; flex: 1; min-width: 0; }
+    .field-value > .input { width: 100%; height: 46px; min-height: 46px; }
+    /* Clears the eye's 44px target plus its 3px inset, so a long value never runs under it. */
+    .field-value.is-secret > .input { padding-right: 47px; }
+    .bar-eye { position: absolute; top: 50%; right: 3px; transform: translateY(-50%);
+        display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px;
+        background: transparent; border: none; border-radius: 8px; color: var(--n-400); cursor: pointer; }
     .bar-eye:hover { color: var(--color-text); }
+
+    /* Actions on the field rather than fields themselves: no frame, but still the 44px Android
+       asks for — the target keeps its size, only the box around it goes. */
+    .field-act { width: 44px; height: 44px; padding: 0; flex: none;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: transparent; border: 0; border-radius: 8px; color: var(--n-400);
+        cursor: pointer; -webkit-tap-highlight-color: transparent;
+        transition: background .15s, color .15s; }
+    .field-act:hover { color: var(--a-400); background: var(--a-900); }
+    .field-act.danger:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
     .draft-rot { margin: 5px 0 2px 2px; }
     .add-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--a-400);
                background: transparent; border: 1px dashed var(--a-900); border-radius: 8px; padding: 7px 12px; margin-top: 10px; cursor: pointer; }
