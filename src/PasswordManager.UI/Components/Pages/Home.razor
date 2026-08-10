@@ -11,7 +11,7 @@
 
 @* Argon2id runs off the UI thread, so the screen stays live and looks idle while it works.
    On a low-end phone that gap is long enough to tap the button again. *@
-<BusyOverlay Visible="_loading"
+<BusyOverlay Visible="_loading" Icon="lock"
              Label="@(_tab == Tab.Login ? L["home.signingIn"] : L["home.creating"])"
              Note="@(_tab == Tab.Register ? L["busy.firstUnlock"] : string.Empty)" />
 

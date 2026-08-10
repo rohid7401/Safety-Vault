@@ -14,12 +14,17 @@
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
 @* The longest wait in the app: an RSA-2048 prime search runs for seconds and varies wildly by
-   handset, so the note explains why nothing is moving. Without it people force-quit partway
-   through and are left with a half-written identity. *@
-<BusyOverlay Visible="_generatingIdentity"
+   handset, so the staged list names what's actually happening instead of leaving the person
+   staring at one static line. No cancel button — see the field comment on ElapsedAfterSeconds
+   in BusyOverlay for why interrupting an in-flight key search isn't something this can offer
+   honestly. *@
+<BusyOverlay Visible="_generatingIdentity" Icon="keypair"
              Label="@L["keys.noIdentity.generating"]"
-             Note="@L["busy.keygen"]" />
-<BusyOverlay Visible="_movingIdentity" Label="@L["busy.identity"]" />
+             Note="@L["busy.keygen"]"
+             Steps="@GenerationSteps"
+             ActiveStepIndex="_genStep"
+             ElapsedLabel="@(s => L.Format("keys.noIdentity.elapsed", s))" />
+<BusyOverlay Visible="_movingIdentity" Icon="key" Label="@L["busy.identity"]" />
 
 
 @if (HasOwnPgpIdentity)
@@ -86,7 +91,11 @@
             <div class="input-group">
                 <input type="email" class="input" @bind="_searchEmail" inputmode="email" autocomplete="email" maxlength="@FieldLimits.Email"
                        placeholder="alice@example.com" />
+                @* Stays a control on the same screen, not a full-screen block — the rest of the
+                   panel is still usable while a keyserver answers, so this gets the in-place
+                   spinner (pattern 3) rather than BusyOverlay. *@
                 <button class="btn btn-primary" @onclick="SearchKeyserver" disabled="@_searching">
+                    @if (_searching) { <span class="btn-spin" aria-hidden="true"></span> }
                     @(_searching ? L["keys.searching"] : L["keys.search"])
                 </button>
             </div>
@@ -257,6 +266,7 @@
         <FooterContent>
             <button class="btn btn-secondary" @onclick="CloseImportModal">@L["common.cancel"]</button>
             <button class="btn btn-primary" @onclick="ImportKey" disabled="@_importing">
+                @if (_importing) { <span class="btn-spin" aria-hidden="true"></span> }
                 @(_importing ? L["io.importing"] : L["io.import"])
             </button>
         </FooterContent>
@@ -290,6 +300,7 @@
             @if (_publishResult is null)
             {
                 <button class="btn btn-primary" @onclick="PublishToServer" disabled="@_publishing">
+                    @if (_publishing) { <span class="btn-spin" aria-hidden="true"></span> }
                     @(_publishing ? L["keys.uploading"] : L["keys.uploadKey"])
                 </button>
             }
@@ -317,7 +328,11 @@ else
         <div class="card" style="gap:12px;">
             <div class="card-title">@L["keys.noIdentity.title"]</div>
 
-            @if (!string.IsNullOrEmpty(_identityError))
+            @* A quick validation problem (empty field, wrong passphrase) stays a small inline
+               message — it's known before any work starts. Only a failure that happened *during*
+               the RSA search gets the full blocking screen below, since that's the wait with
+               nothing else on screen to explain what just stopped. *@
+            @if (!_identityFailed && !string.IsNullOrEmpty(_identityError))
             {
                 <div class="alert alert-danger" style="margin-bottom:0;">@_identityError</div>
             }
@@ -331,6 +346,15 @@ else
                 @(_generatingIdentity ? L["keys.noIdentity.generating"] : L["keys.noIdentity.button"])
             </button>
         </div>
+
+        @* No Retry button: the passphrase that triggered this run is wiped from memory the
+           moment the attempt ends (see the finally block below), on purpose — it should never
+           linger longer than the one call that needed it. A one-tap retry would mean keeping it
+           around for a second use, which trades away that guarantee for convenience. Back
+           returns to the form so the person re-enters it themselves. *@
+        <BlockingFailure Visible="_identityFailed" Title="@L["keys.noIdentity.failedTitle"]"
+                          Description="@_identityError" BackLabel="@L["common.back"]"
+                          OnBack="() => _identityFailed = false" />
 
         @* Offered next to creating one, because the choice matters and is irreversible in one
            direction: generating a fresh pair here makes anything already encrypted to the old
@@ -439,6 +463,53 @@ else
     private bool _generatingIdentity;
     private string _identityPassphrase = string.Empty;
     private string _identityError = string.Empty;
+    private bool _identityFailed;
+
+    // Staged progress for the RSA-2048 search: not real instrumentation from GenerateKeyPair
+    // (it's a single opaque BouncyCastle call), just elapsed-time thresholds that mirror where
+    // that call actually spends its time. Honest in that it never claims a percentage — only
+    // which of three known phases is likely running.
+    private int _genStep;
+    private CancellationTokenSource? _genStepCts;
+    private string[] GenerationSteps => new[]
+    {
+        L["keys.noIdentity.step1"], L["keys.noIdentity.step2"], L["keys.noIdentity.step3"],
+    };
+
+    private void StartGenerationSteps()
+    {
+        _genStep = 0;
+        var cts = new CancellationTokenSource();
+        _genStepCts = cts;
+        _ = TickGenerationStepsAsync(cts);
+    }
+
+    private void StopGenerationSteps()
+    {
+        _genStepCts?.Cancel();
+        _genStepCts?.Dispose();
+        _genStepCts = null;
+    }
+
+    private async Task TickGenerationStepsAsync(CancellationTokenSource cts)
+    {
+        try
+        {
+            var elapsed = 0;
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync(cts.Token))
+            {
+                elapsed++;
+                var step = elapsed >= 12 ? 2 : elapsed >= 2 ? 1 : 0;
+                if (step != _genStep)
+                {
+                    _genStep = step;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* generation finished or the panel navigated away */ }
+    }
 
     private string OwnPublicKeyPath =>
         AppState.Account is null ? "" : Path.Combine(AppState.Account.VaultPath, "public_key.asc");
@@ -583,7 +654,9 @@ else
         { _identityError = L["home.err.passphraseRequired"]; return; }
 
         _identityError = string.Empty;
+        _identityFailed = false;
         _generatingIdentity = true;
+        StartGenerationSteps();
         StateHasChanged();
         try
         {
@@ -603,13 +676,19 @@ else
         }
         catch (Exception ex)
         {
+            // Reached only after the RSA search actually ran and failed — the wrong-passphrase
+            // and empty-field checks above return before this point. This is the wait that had
+            // nothing else on screen explaining what stopped, so it gets the full blocking
+            // failure screen instead of the small inline banner the earlier checks use.
             _identityError = UserError.Describe(L, ex);
+            _identityFailed = true;
         }
         finally
         {
             // Never linger in memory longer than the one call that needed it.
             _identityPassphrase = string.Empty;
             _generatingIdentity = false;
+            StopGenerationSteps();
             StateHasChanged();
         }
     }
@@ -621,7 +700,11 @@ else
             await Reload();
     }
 
-    public void Dispose() => L.OnChanged -= StateHasChanged;
+    public void Dispose()
+    {
+        L.OnChanged -= StateHasChanged;
+        StopGenerationSteps();
+    }
 
     private async Task Reload()
     {

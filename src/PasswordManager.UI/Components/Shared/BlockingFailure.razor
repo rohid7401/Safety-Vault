@@ -1,0 +1,38 @@
+@* The state a blocking wait is missing today: what happens when it fails.
+   A caught exception used to just leave the overlay's spinner spinning until Visible flips
+   back to false and the form reappears with a small inline banner — the worst state a wait
+   can be in, because nothing on screen ever said it stopped. This renders in the exact box
+   and position BusyOverlay used a moment ago, so it reads as the same wait finishing badly,
+   not a new dialog interrupting something else. Pair one of these with every BusyOverlay
+   whose wait is long enough to have earned a Steps list. *@
+
+@if (Visible)
+{
+    <div class="busy" role="alert">
+        <div class="busy-box">
+            <span class="busy-fail-icon"><Icon Name="alert" Size="19" StrokeWidth="1.9" /></span>
+            <div class="busy-label">@Title</div>
+            @if (!string.IsNullOrEmpty(Description))
+            {
+                <div class="busy-note">@Description</div>
+            }
+            <div class="busy-fail-actions">
+                @if (OnRetry.HasDelegate)
+                {
+                    <button type="button" class="btn btn-primary btn-block" @onclick="OnRetry">@RetryLabel</button>
+                }
+                <button type="button" class="btn btn-secondary btn-block" @onclick="OnBack">@BackLabel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string Description { get; set; } = string.Empty;
+    [Parameter] public string RetryLabel { get; set; } = "Retry";
+    [Parameter] public string BackLabel { get; set; } = "Back";
+    [Parameter] public EventCallback OnRetry { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+}

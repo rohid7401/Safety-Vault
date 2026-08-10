@@ -222,7 +222,7 @@ else
                                         @(revealed ? AppState.Service!.DecryptSecret(f) : "••••••••••")
                                     </span>
                                     <button class="btn-icon" type="button" aria-label="Reveal" @onclick="() => ToggleReveal(f.Id)">
-                                        <Icon Name="@(revealed ? "eye-off" : "eye")" Size="16" StrokeWidth="1.8" />
+                                        <EyeIcon Revealed="revealed" Size="16" />
                                     </button>
                                     <button class="btn-icon" type="button" aria-label="Copy" @onclick="() => CopySecret(f)">
                                         <Icon Name="copy" Size="16" StrokeWidth="1.8" />
@@ -295,7 +295,7 @@ else
                         {
                             <button class="btn-icon" type="button" aria-label="@L["cards.reveal"]"
                                     @onclick="() => TogglePinReveal(card.Id)">
-                                <Icon Name="@(revealed ? "eye-off" : "eye")" Size="16" StrokeWidth="1.8" />
+                                <EyeIcon Revealed="revealed" Size="16" />
                             </button>
                             <button class="btn-icon" type="button" aria-label="@L["common.copy"]"
                                     @onclick="() => CopyPlain(AppState.Service!.DecryptField(card.Pin))">
@@ -390,7 +390,7 @@ else
                             @if (f.IsSecret)
                             {
                                 <button class="bar-eye" type="button" aria-label="Reveal" @onclick="() => f.Reveal = !f.Reveal">
-                                    <Icon Name="@(f.Reveal ? "eye-off" : "eye")" Size="16" />
+                                    <EyeIcon Revealed="f.Reveal" Size="16" />
                                 </button>
                             }
                         </div>
@@ -513,7 +513,7 @@ else
                        inputmode="@InputMode(_rotateType)" maxlength="@MaxLength(_rotateType)"
                        value="@_rotateNew" @oninput="OnRotateInput" placeholder="@L["vault.field.passwordPlaceholder"]" />
                 <button class="btn btn-secondary" type="button" @onclick="() => _rotatePwVisible = !_rotatePwVisible">
-                    <Icon Name="@(_rotatePwVisible ? "eye-off" : "eye")" Size="16" />
+                    <EyeIcon Revealed="_rotatePwVisible" Size="16" />
                 </button>
                 @if (_rotateType != CredentialFieldType.Pin)
                 {

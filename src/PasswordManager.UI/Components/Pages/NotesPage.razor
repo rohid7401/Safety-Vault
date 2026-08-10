@@ -98,7 +98,7 @@ else
                             aria-label="@(_detailRevealed ? L["common.hide"] : L["common.show"])"
                             title="@(_detailRevealed ? L["common.hide"] : L["common.show"])"
                             @onclick="() => _detailRevealed = !_detailRevealed">
-                        <Icon Name="@(_detailRevealed ? "eye-off" : "eye")" Size="16" StrokeWidth="1.8" />
+                        <EyeIcon Revealed="_detailRevealed" Size="16" />
                     </button>
                     <button class="btn-icon" type="button" aria-label="@L["common.copy"]"
                             title="@L["common.copy"]" @onclick="() => CopyContent(det)">

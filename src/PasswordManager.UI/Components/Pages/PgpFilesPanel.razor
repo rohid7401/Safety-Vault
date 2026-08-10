@@ -9,6 +9,12 @@
 
 @if (AppState.Account is null) { Nav.NavigateTo("/"); return; }
 
+@* Indeterminate rather than a byte counter: the encrypt/decrypt call below hands the whole
+   file to BouncyCastle in one shot and gets ciphertext back in one shot, with no chunk boundary
+   in between to hook a real progress callback into. A bar that moved would have to invent the
+   numbers it showed — this says what's true instead: it's working, not how far along. *@
+<BusyOverlay Visible="_running" Icon="blocks"
+             Label="@(_mode == Mode.Encrypt ? L["encFile.locking"] : L["encFile.unlocking"])" />
 
 <div class="seg" style="margin-bottom:16px;">
     <button class="seg-opt @(_mode == Mode.Encrypt ? "active" : "")" type="button" @onclick="() => SwitchMode(Mode.Encrypt)">

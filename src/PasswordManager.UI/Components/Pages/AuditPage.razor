@@ -10,17 +10,40 @@
 
 @if (_report is null)
 {
-    <div class="empty-state">
-        <div class="icon-circle"><Icon Name="shield" Size="30" StrokeWidth="1.8" /></div>
-        <h3>@L["audit.emptyTitle"]</h3>
-        @* Trimmed: the long explanation of what an audit is belongs in the tutorial, not in the
-           way of the button that runs it. *@
-        <p>@L["audit.emptyShort"]</p>
-        <button class="btn btn-primary btn-block btn-lg" style="max-width:320px;"
-                @onclick="RunAudit" disabled="@_loading">
-            @(_loading ? L["audit.analyzing"] : L["audit.run"])
-        </button>
-    </div>
+    @if (_loading)
+    {
+        @* First run: the shape of the list that's about to arrive, drawn in grey — not the
+           spinner-then-jump the empty state used to give way to. Five rows, not the real count,
+           since promising a full screen of results before the scan even starts overstates what's
+           known. *@
+        <div class="pw-list" aria-busy="true" aria-live="polite">
+            @for (var i = 0; i < 5; i++)
+            {
+                <div class="skel-row">
+                    <span class="skel-avatar"></span>
+                    <span class="skel-lines">
+                        <span class="skel-line" style="width:@(SkelWidths[i])%;"></span>
+                        <span class="skel-line short" style="width:@(SkelWidths[i] - 22)%;"></span>
+                    </span>
+                    <span class="skel-badge"></span>
+                </div>
+            }
+        </div>
+        <div class="skel-caption">@L["audit.analyzing"]</div>
+    }
+    else
+    {
+        <div class="empty-state">
+            <div class="icon-circle"><Icon Name="shield" Size="30" StrokeWidth="1.8" /></div>
+            <h3>@L["audit.emptyTitle"]</h3>
+            @* Trimmed: the long explanation of what an audit is belongs in the tutorial, not in
+               the way of the button that runs it. *@
+            <p>@L["audit.emptyShort"]</p>
+            <button class="btn btn-primary btn-block btn-lg" style="max-width:320px;" @onclick="RunAudit">
+                @L["audit.run"]
+            </button>
+        </div>
+    }
 }
 else
 {
@@ -94,11 +117,18 @@ else
         else
         {
             @* One grouped list with separators instead of a card per finding: a vault with
-               twenty issues was twenty floating boxes, and the severity was hard to scan. *@
-            <div class="pw-list">
+               twenty issues was twenty floating boxes, and the severity was hard to scan.
+               A re-run dims these rows instead of replacing them with a skeleton: the numbers on
+               screen are still correct until the new report lands, and throwing them away for
+               five grey placeholders would take back information that hadn't gone stale yet. *@
+            <div class="pw-list @(_loading ? "is-reloading" : "")" aria-busy="@_loading">
+                @if (_loading)
+                {
+                    <div class="reload-bar" aria-hidden="true"></div>
+                }
                 @foreach (var issue in shown)
                 {
-                    <button class="pw-row" type="button" @onclick="() => GoToEntry(issue)">
+                    <button class="pw-row" type="button" @onclick="() => GoToEntry(issue)" disabled="@_loading">
                         <span class="pw-row-text">
                             <span class="pw-title">@issue.EntryLabel</span>
                             <span class="pw-sub">@Describe(issue)</span>
@@ -111,8 +141,9 @@ else
         }
     }
 
-    <button class="btn btn-secondary btn-block" style="margin-top:16px; height:42px;" @onclick="RunAudit">
-        @L["audit.rerun"]
+    <button class="btn btn-secondary btn-block" style="margin-top:16px; height:42px;"
+            @onclick="RunAudit" disabled="@_loading">
+        @(_loading ? L["audit.analyzing"] : L["audit.rerun"])
     </button>
 }
 
@@ -120,6 +151,9 @@ else
     private AuditReport? _report;
     private bool _loading;
     private DateTime _ranAt;
+
+    // Varied widths so the skeleton doesn't read as a table of identical bars.
+    private static readonly int[] SkelWidths = { 72, 58, 66, 51, 63 };
 
     private readonly HashSet<AuditIssueType> _types = new();
 

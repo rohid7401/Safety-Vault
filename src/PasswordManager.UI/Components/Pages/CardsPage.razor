@@ -90,7 +90,7 @@ else
             <div style="display:flex; gap:8px; margin-bottom:12px;">
                 <button class="btn btn-primary" style="flex:1; height:40px;"
                         @onclick="() => _detailRevealed = !_detailRevealed">
-                    <Icon Name="@(_detailRevealed ? "eye-off" : "eye")" Size="16" StrokeWidth="1.8" />
+                    <EyeIcon Revealed="_detailRevealed" Size="16" />
                     @(_detailRevealed ? L["common.hide"] : L["cards.reveal"])
                 </button>
                 <button class="btn btn-secondary" style="flex:1; height:40px;"
@@ -124,7 +124,7 @@ else
                 </span>
                 <button class="btn-icon" type="button" aria-label="Reveal"
                         @onclick="() => _cvvRevealed = !_cvvRevealed">
-                    <Icon Name="@(_cvvRevealed ? "eye-off" : "eye")" Size="15" StrokeWidth="1.8" />
+                    <EyeIcon Revealed="_cvvRevealed" Size="15" />
                 </button>
                 <button class="btn-icon" type="button" aria-label="@L["common.copy"]"
                         @onclick="() => CopyField(det.Cvv)">
@@ -141,7 +141,7 @@ else
                     </span>
                     <button class="btn-icon" type="button" aria-label="@L["cards.reveal"]"
                             @onclick="() => _pinRevealed = !_pinRevealed">
-                        <Icon Name="@(_pinRevealed ? "eye-off" : "eye")" Size="15" StrokeWidth="1.8" />
+                        <EyeIcon Revealed="_pinRevealed" Size="15" />
                     </button>
                     <button class="btn-icon" type="button" aria-label="@L["common.copy"]"
                             @onclick="() => CopyField(det.Pin)">

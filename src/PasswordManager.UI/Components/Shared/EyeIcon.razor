@@ -1,0 +1,18 @@
+@* The reveal glyph as one shape that morphs, not two icons swapped in and out on every tap —
+   see the .eye-pupil / .eye-slash transition rules in app.css. Used wherever a secret has its
+   own reveal toggle outside PasswordField (which draws the same shape inline for its own
+   button): the vault detail sheet, a linked card's PIN, the rotate-password sheet. *@
+<svg class="eye-icon" width="@Size" height="@Size" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+     stroke-width="@StrokeWidth" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"></path>
+    <circle class="eye-pupil @(Revealed ? "is-closed" : "")" cx="12" cy="12" r="3"></circle>
+    <path class="eye-slash @(Revealed ? "is-closed" : "")" d="M4.5 19.5L19.5 4.5"></path>
+</svg>
+
+@code {
+    /// <summary>True when the secret is currently shown as plain text — the eye draws itself
+    /// closed in that state, matching the app's existing "eye-off means tap to hide" reading.</summary>
+    [Parameter] public bool Revealed { get; set; }
+    [Parameter] public int Size { get; set; } = 16;
+    [Parameter] public double StrokeWidth { get; set; } = 1.8;
+}

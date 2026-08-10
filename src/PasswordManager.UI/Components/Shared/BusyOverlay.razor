@@ -23,6 +23,21 @@
 {
     <div class="busy" role="status" aria-live="polite" aria-busy="true">
         <div class="busy-box">
+            @if (!string.IsNullOrEmpty(Icon))
+            {
+                @* A named icon reads as "this specific thing is happening" instead of the generic
+                   ring's "something is happening" — see the icon partials below. Skipped when a
+                   determinate bar is showing; the bar is already the indicator there. *@
+                @if (Progress is null)
+                {
+                    @IconMarkup(Icon)
+                }
+            }
+            else if (Progress is null)
+            {
+                <div class="busy-spinner" aria-hidden="true"></div>
+            }
+
             @if (Progress is { } value)
             {
                 @* Determinate only where the fraction is genuinely known — bytes encrypted,
@@ -32,17 +47,53 @@
                     <div class="busy-bar-fill" style="width:@((int)(Math.Clamp(value, 0, 1) * 100))%"></div>
                 </div>
             }
-            else
-            {
-                <div class="busy-spinner" aria-hidden="true"></div>
-            }
 
             <div class="busy-label">@Label</div>
+
+            @if (Steps is { Count: > 0 })
+            {
+                @* Named milestones instead of an invented percentage — see the CSS comment on
+                   .busy-steps. Which one is "now" is driven by ActiveStepIndex, set by the caller
+                   from whatever real signal it has (elapsed time is the honest fallback). *@
+                <div class="busy-steps">
+                    @for (var i = 0; i < Steps.Count; i++)
+                    {
+                        var idx = i;
+                        var state = idx < ActiveStepIndex ? "done" : idx == ActiveStepIndex ? "now" : "next";
+                        <div class="busy-step @state">
+                            <span class="busy-step-mark">
+                                @if (state == "done")
+                                {
+                                    <Icon Name="check" Size="13" StrokeWidth="3" Style="color:var(--color-accent);" />
+                                }
+                                else if (state == "now")
+                                {
+                                    <span class="ring" aria-hidden="true"></span>
+                                }
+                                else
+                                {
+                                    <span class="dot" aria-hidden="true"></span>
+                                }
+                            </span>
+                            <span class="busy-step-label">@Steps[idx]</span>
+                        </div>
+                    }
+                </div>
+            }
 
             @if (!string.IsNullOrEmpty(Note))
             {
                 @* For the waits long enough that silence starts to look like a crash. *@
                 <div class="busy-note">@Note</div>
+            }
+
+            @if (_elapsedSeconds >= ElapsedAfterSeconds)
+            {
+                @* Only past the point where silence starts to read as a hang — see the field
+                   comment on ElapsedAfterSeconds. No cancel button: the work behind this overlay
+                   (an RSA-2048 prime search, today) can't be safely interrupted mid-computation,
+                   so offering one would be a control that lies about what it does. *@
+                <div class="busy-elapsed">@ElapsedLabel(_elapsedSeconds)</div>
             }
         </div>
     </div>
@@ -65,8 +116,31 @@
     /// <summary>How long an operation has to run before it is worth interrupting the screen for.</summary>
     [Parameter] public double DelaySeconds { get; set; } = 0.25;
 
+    /// <summary>Named icon in place of the generic ring — "lock", "key", "keypair", "search",
+    /// "globe", "shield" or "blocks". See the CSS comment on .busy-icon for what each means.
+    /// Ignored while <see cref="Progress"/> is set, since the bar is already the indicator there.</summary>
+    [Parameter] public string Icon { get; set; } = string.Empty;
+
+    /// <summary>Named milestones for a wait long enough that a single label starts to feel like
+    /// silence — see the CSS comment on .busy-steps. Null skips the staged layout entirely.</summary>
+    [Parameter] public IReadOnlyList<string>? Steps { get; set; }
+
+    /// <summary>Index into <see cref="Steps"/> of the phase currently running; everything before
+    /// it renders as done, everything after as not yet started.</summary>
+    [Parameter] public int ActiveStepIndex { get; set; }
+
+    /// <summary>Seconds of continuous display before the elapsed-time line appears. Before this,
+    /// a counter would just add pressure to a wait nobody has started doubting yet.</summary>
+    [Parameter] public int ElapsedAfterSeconds { get; set; } = 8;
+
+    /// <summary>Formats the elapsed-seconds line, so its wording follows the caller's own
+    /// localization. Called only once <see cref="ElapsedAfterSeconds"/> has passed.</summary>
+    [Parameter] public Func<int, string> ElapsedLabel { get; set; } = s => $"{s}s";
+
     private bool _shown;
     private CancellationTokenSource? _pending;
+    private CancellationTokenSource? _ticking;
+    private int _elapsedSeconds;
 
     protected override void OnParametersSet()
     {
@@ -79,6 +153,7 @@
         {
             // Hidden immediately: a lingering overlay blocks a screen that is already usable.
             _shown = false;
+            StopElapsedTicker();
             return;
         }
 
@@ -103,12 +178,95 @@
         if (cts.IsCancellationRequested) return;
 
         _shown = true;
+        StartElapsedTicker();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void StartElapsedTicker()
+    {
+        _elapsedSeconds = 0;
+        var cts = new CancellationTokenSource();
+        _ticking = cts;
+        _ = TickAsync(cts);
+    }
+
+    private void StopElapsedTicker()
+    {
+        _ticking?.Cancel();
+        _ticking?.Dispose();
+        _ticking = null;
+        _elapsedSeconds = 0;
+    }
+
+    private async Task TickAsync(CancellationTokenSource cts)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync(cts.Token))
+            {
+                _elapsedSeconds++;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { /* overlay hidden or disposed */ }
     }
 
     public void Dispose()
     {
         _pending?.Cancel();
         _pending?.Dispose();
+        _ticking?.Cancel();
+        _ticking?.Dispose();
     }
+
+    // ── Icons ──
+    // Bespoke rather than the shared stroke-icon dictionary: each of these carries its own
+    // per-part animation (a shackle that lifts, two keys that separate), which a single static
+    // <path> set can't express. See the .busy-icon rules in app.css for the keyframes.
+    private RenderFragment IconMarkup(string name) => name switch
+    {
+        "lock" => @<span class="busy-icon" data-anim>
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <g class="anim-shackle"><path d="M17 23v-6a7 7 0 0 1 14 0v3"></path></g>
+                <rect x="11" y="23" width="26" height="16" rx="4"></rect><path d="M24 29v4"></path>
+            </svg></span>,
+        "key" => @<span class="busy-icon" data-anim>
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <g class="anim-key"><circle cx="15" cy="24" r="5.5" stroke-width="3.2"></circle><path d="M20.5 24H39"></path><path d="M32 24v5.5M37 24v4.5"></path></g>
+            </svg></span>,
+        "keypair" => @<span class="busy-icon" data-anim>
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <g class="anim-pair-l"><circle cx="18" cy="15" r="4.5"></circle><path d="M18 19.5V34"></path><path d="M18 26h4M18 30h3"></path></g>
+                <g class="anim-pair-r"><circle cx="30" cy="15" r="4.5"></circle><path d="M30 19.5V34"></path><path d="M30 26h-4M30 30h-3"></path></g>
+            </svg></span>,
+        "search" => @<span class="busy-icon" data-anim>
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <g class="anim-loupe"><circle cx="21" cy="21" r="9"></circle><path d="M27.5 27.5L37 37"></path></g>
+            </svg></span>,
+        "globe" => @<span class="busy-icon" data-anim>
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="24" cy="24" r="15"></circle><path d="M9 24h30"></path><path d="M12.2 15h23.6M12.2 33h23.6"></path>
+                <ellipse cx="24" cy="24" rx="7.5" ry="15" class="anim-meridian"></ellipse>
+                <ellipse cx="24" cy="24" rx="13" ry="15" class="anim-meridian2"></ellipse>
+            </svg></span>,
+        "shield" => @<span class="busy-icon" data-anim>
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <defs><clipPath id="@_clipId"><path d="M24 8l13 5v10c0 8.6-5.6 16-13 18.5C16.6 39 11 31.6 11 23V13z"></path></clipPath></defs>
+                <path d="M24 8l13 5v10c0 8.6-5.6 16-13 18.5C16.6 39 11 31.6 11 23V13z"></path>
+                <g clip-path="url(#@_clipId)"><path d="M11 24h26" class="anim-sweep"></path></g>
+            </svg></span>,
+        "blocks" => @<span class="busy-icon" data-anim>
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="10" y="10" width="12" height="12" rx="2.5" class="anim-block"></rect>
+                <rect x="26" y="10" width="12" height="12" rx="2.5" class="anim-block"></rect>
+                <rect x="10" y="26" width="12" height="12" rx="2.5" class="anim-block"></rect>
+                <rect x="26" y="26" width="12" height="12" rx="2.5" class="anim-block"></rect>
+            </svg></span>,
+        _ => @<div class="busy-spinner" aria-hidden="true"></div>,
+    };
+
+    // Two shields on the same screen (e.g. a preview alongside the live one) would otherwise
+    // fight over one clip-path id and clip nothing.
+    private readonly string _clipId = $"busyShieldClip{Guid.NewGuid():N}";
 }
