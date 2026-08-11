@@ -13,6 +13,17 @@
     <p style="text-align:center; color:var(--n-300); font-size:14px; line-height:1.55; margin:0;">
         @L[Current.BodyKey]
     </p>
+    @* Left-aligned under centred prose on purpose: a centred list has no common left edge, so
+       the eye has to find the start of every line. *@
+    @if (Current.BulletKeys is { Length: > 0 } bullets)
+    {
+        <ul class="tip-list">
+            @foreach (var key in bullets)
+            {
+                <li>@((MarkupString)L[key])</li>
+            }
+        </ul>
+    }
 </div>
 
 <div class="tour-dots">

@@ -1,34 +1,122 @@
 @inject Loc L
 @implements IDisposable
 
-@* The reference explanation for the whole module. It reuses the same strings as the first-run
-   PGP walkthrough (TourContent.PgpSteps) so the wording someone reads while creating their key
-   is the wording they find again later — two descriptions of the same thing would drift. *@
+@* The one explanation of the PGP module, and the only one.
 
-@foreach (var step in TourContent.PgpSteps)
-{
-    <div class="card" style="gap:10px; margin-bottom:12px;">
-        <div style="display:flex; align-items:center; gap:10px;">
-            <div class="entry-icon"><Icon Name="@step.Icon" Size="15" StrokeWidth="1.8" /></div>
-            <div class="card-title">@L[step.TitleKey]</div>
-        </div>
-        <p style="margin:0; font-size:13px; color:var(--n-300); line-height:1.55;">
-            @L[step.BodyKey]
-        </p>
+   It used to be told three times: a four-step stepper you had to click through before the
+   create form would appear, this component behind the (i) rendering those same steps, and a
+   separate "Tutorial" page under Learn with its own wording for the same ideas. Three copies
+   of one explanation drift, and the stepper made an optional feature feel like a gate.
+
+   Now it is one scroll, shown inline where there is no identity yet and behind the (i) once
+   there is. Nothing here is a step you have to get past — it is read or scrolled by. *@
+
+<div class="card" style="gap:10px;">
+    <div style="display:flex; align-items:center; gap:10px;">
+        <div class="entry-icon"><Icon Name="key" Size="15" StrokeWidth="1.8" /></div>
+        <div class="card-title">@L["pgp.exp.pair.title"]</div>
     </div>
-}
+    <p class="exp-body">@L["pgp.exp.pair.body"]</p>
+    <div class="key-pair">
+        <div class="key-card public">
+            <h3><span class="pill pill-public">@L["pgp.exp.public"]</span></h3>
+            <p>@((MarkupString)L["pgp.exp.publicDesc"])</p>
+        </div>
+        <div class="key-card private">
+            <h3><span class="pill pill-private">@L["pgp.exp.private"]</span></h3>
+            <p>@((MarkupString)L["pgp.exp.privateDesc"])</p>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="gap:10px; margin-top:12px;">
+    <div style="display:flex; align-items:center; gap:10px;">
+        <div class="entry-icon"><Icon Name="lock-keyhole" Size="15" StrokeWidth="1.8" /></div>
+        <div class="card-title">@L["pgp.exp.passphrase.title"]</div>
+    </div>
+    <p class="exp-body">@L["pgp.exp.passphrase.body"]</p>
+    <div class="flow-diagram">
+        <span class="flow-box">@L["pgp.exp.flow.passphrase"]</span>
+        <span class="arrow">+</span>
+        <span class="flow-box">@L["pgp.exp.flow.encPrivKey"]</span>
+        <span class="arrow">=</span>
+        <span class="flow-box highlight">@L["pgp.exp.flow.unlockedKey"]</span>
+    </div>
+</div>
+
+<div class="card" style="gap:10px; margin-top:12px;">
+    <div style="display:flex; align-items:center; gap:10px;">
+        <div class="entry-icon"><Icon Name="shield-check" Size="15" StrokeWidth="1.8" /></div>
+        <div class="card-title">@L["pgp.exp.locking.title"]</div>
+    </div>
+    <p class="exp-body">@((MarkupString)L["pgp.exp.locking.body"])</p>
+    <div class="flow-diagram vertical">
+        <div class="flow-row">
+            <span class="flow-box">@L["pgp.exp.flow.plainFile"]</span>
+            <span class="arrow">&#10148;</span>
+            <span class="flow-box accent">@L["pgp.exp.flow.yourPubKey"]</span>
+            <span class="arrow">&#10148;</span>
+            <span class="flow-box dark">@L["pgp.exp.flow.encPgp"]</span>
+        </div>
+        <div class="flow-row">
+            <span class="flow-box dark">@L["pgp.exp.flow.encPgp"]</span>
+            <span class="arrow">&#10148;</span>
+            <span class="flow-box accent">@L["pgp.exp.flow.privKeyPass"]</span>
+            <span class="arrow">&#10148;</span>
+            <span class="flow-box">@L["pgp.exp.flow.plainFile"]</span>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="gap:10px; margin-top:12px;">
+    <div style="display:flex; align-items:center; gap:10px;">
+        <div class="entry-icon"><Icon Name="users" Size="15" StrokeWidth="1.8" /></div>
+        <div class="card-title">@L["pgp.exp.directory.title"]</div>
+    </div>
+    <p class="exp-body">@((MarkupString)L["pgp.exp.directory.body"])</p>
+</div>
 
 <div class="dash-group-title" style="margin:22px 2px 8px;">@L["keys.what.title"]</div>
 
 <div class="card" style="gap:10px;">
-    <p style="margin:0; font-size:13px; color:var(--n-300); line-height:1.55;">@L["keys.what.1"]</p>
-    <p style="margin:0; font-size:13px; color:var(--n-300); line-height:1.55;">@L["keys.what.2"]</p>
+    <p class="exp-body">@L["keys.what.1"]</p>
+    <p class="exp-body">@L["keys.what.2"]</p>
+</div>
+
+@* The one piece of passphrase advice that is PGP's and not the vault's: the rest moved to the
+   first-run intro, where it arrives before the passphrase is chosen rather than after. *@
+<div class="hint-row" style="margin-top:12px;">
+    <Icon Name="info" Size="15" />
+    <span>@((MarkupString)L["pgp.exp.backup"])</span>
 </div>
 
 <div class="hint-row">
     <Icon Name="info" Size="15" />
     <span>@((MarkupString)L["keys.hint"])</span>
 </div>
+
+<style>
+    .exp-body { margin: 0; font-size: 13px; color: var(--n-300); line-height: 1.55; }
+
+    .key-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+    .key-card { padding: 12px; border-radius: var(--radius-md); background: var(--color-bg); }
+    .key-card h3 { margin-bottom: 8px; }
+    .key-card p { font-size: 12.5px; color: var(--n-300); line-height: 1.5; margin: 0; }
+
+    .flow-diagram { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+    .flow-diagram.vertical { flex-direction: column; align-items: stretch; gap: 12px; }
+    .flow-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .flow-box { background: var(--color-bg); border-radius: var(--radius-sm); padding: 5px 11px;
+                font-size: 12px; color: var(--color-text); }
+    .flow-box.highlight { background: var(--a-800); color: var(--a-100); }
+    .flow-box.accent { background: var(--a-900); color: var(--a-200); }
+    .flow-box.dark { background: var(--n-900); color: var(--n-300); }
+    .arrow { color: var(--n-500); font-size: 12px; }
+
+    @@media (max-width: 600px) {
+        .key-pair { grid-template-columns: 1fr; }
+    }
+</style>
 
 @code {
     protected override void OnInitialized() => L.OnChanged += StateHasChanged;

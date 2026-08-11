@@ -1,7 +1,7 @@
 @* First-run guided tour. Shows once ever on this device (persisted via ITutorialStore),
    right after the vault is first unlocked. Skippable at any step — mandatory-feeling but
-   never a dead end — and always reachable again from the "Tutorial" nav entry, which
-   renders the same TourSteps content on its own page instead of this overlay. *@
+   never a dead end — and always replayable from Settings, which renders the same TourSteps
+   content on its own page instead of this overlay. *@
 @inject ITutorialStore Store
 @inject Loc L
 
@@ -19,7 +19,7 @@
 
     protected override void OnInitialized()
     {
-        _visible = !Store.HasSeenTutorial();
+        _visible = !Store.HasSeen(OnboardingFlags.Tour);
     }
 
     /// <summary>Backdrop tap / grip tap do nothing — leaving is only via Skip or Done inside TourSteps.</summary>
@@ -27,7 +27,7 @@
 
     private void Finish()
     {
-        Store.MarkTutorialSeen();
+        Store.MarkSeen(OnboardingFlags.Tour);
         _visible = false;
     }
 }

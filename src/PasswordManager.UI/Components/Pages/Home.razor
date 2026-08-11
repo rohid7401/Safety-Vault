@@ -15,6 +15,9 @@
              Label="@(_tab == Tab.Login ? L["home.signingIn"] : L["home.creating"])"
              Note="@(_tab == Tab.Register ? L["busy.firstUnlock"] : string.Empty)" />
 
+@* Covers this screen on the very first launch. Shows itself or not; nothing here decides. *@
+<WelcomeIntro />
+
 <div class="unlock-container">
     <div class="unlock-card">
         @* The language switch moves out of the tab row. It was competing with the two things
@@ -100,10 +103,21 @@
                 </div>
             </div>
 
+            @* The tips are the same ones the first-run intro shows, but this is the moment they
+               are actually needed: the intro is read before the field exists, and by the time
+               someone is typing here it is 40 seconds in the past. *@
             <div class="field" style="margin-bottom:8px;">
                 <div class="label-row">
                     <span>@L["home.masterPassphrase"]</span>
-                    <InfoTooltip Label="@L["home.masterPassphrase"]">@L["home.whatIsCreate"]</InfoTooltip>
+                    <InfoTooltip Label="@L["home.masterPassphrase"]">
+                        <p>@L["home.whatIsCreate"]</p>
+                        <ul class="tip-list">
+                            @foreach (var tip in TourContent.PassphraseTipKeys)
+                            {
+                                <li>@((MarkupString)L[tip])</li>
+                            }
+                        </ul>
+                    </InfoTooltip>
                 </div>
                 <PasswordField @bind-Value="_regPassphrase"
                                Icon="lock"

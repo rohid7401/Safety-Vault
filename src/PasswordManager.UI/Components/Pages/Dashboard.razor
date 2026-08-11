@@ -104,11 +104,8 @@
             new Item("nav.importExport", "nav.short.importExport", "dash.desc.importExport", "/import-export", "swap"),
             new Item("nav.data", "nav.short.data", "dash.desc.data", "/data", "trash"),
         ]),
-        new("nav.group.learn",
-        [
-            new Item("nav.walkthrough", "nav.short.walkthrough", "dash.desc.walkthrough", "/walkthrough", "info"),
-            new Item("nav.tutorial", "nav.short.tutorial", "dash.desc.tutorial", "/tutorial", "book"),
-        ]),
+        // "Learn" is gone from here too: the tutorial folded into PGP and the walkthrough moved to
+        // Settings. The dashboard is for things you came to do, and re-reading the tour is not one.
     ];
 
     private int _passwords, _notes, _cards;

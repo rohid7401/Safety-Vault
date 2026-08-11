@@ -43,11 +43,11 @@
             <span class="badge badge-success">@L["keys.active"]</span>
         </div>
         <div class="key-row">
-            <span class="pill pill-public">@L["tl.public"]</span>
+            <span class="pill pill-public">@L["pgp.exp.public"]</span>
             <span class="key-name">@OwnPublicKeyPath</span>
         </div>
         <div class="key-row">
-            <span class="pill pill-private">@L["tl.private"]</span>
+            <span class="pill pill-private">@L["pgp.exp.private"]</span>
             <span class="key-name">@OwnPrivateKeyPath · @L["keys.keptSecret"]</span>
         </div>
         <button class="btn btn-primary btn-block" @onclick="ExportOwnPublicKey">
@@ -313,62 +313,59 @@
 }
 else
 {
-    @* No PGP identity yet: a tutorial, then the create form — PgpPage hides every other tab
-       while this is showing, so a tester never lands on a bare "create identity" button with no
-       idea what it means or why. Skipping the tutorial goes straight to the create form; it
-       never skips past creating the identity itself. *@
-    @if (_showPgpTutorial)
-    {
-        <div class="card" style="gap:12px;">
-            <TourSteps Steps="TourContent.PgpSteps" OnDone="DismissTutorial" />
-        </div>
-    }
-    else
-    {
-        <div class="card" style="gap:12px;">
-            <div class="card-title">@L["keys.noIdentity.title"]</div>
+    @* No PGP identity yet. The explanation comes first so nobody lands on a bare "create
+       identity" button with no idea what it means — but as something you scroll past, not a
+       stepper you have to click through. PgpPage hides every other tab while this shows, so this
+       one scroll is the whole module until an identity exists. *@
+    <PgpHowItWorks />
 
-            @* A quick validation problem (empty field, wrong passphrase) stays a small inline
-               message — it's known before any work starts. Only a failure that happened *during*
-               the RSA search gets the full blocking screen below, since that's the wait with
-               nothing else on screen to explain what just stopped. *@
-            @if (!_identityFailed && !string.IsNullOrEmpty(_identityError))
-            {
-                <div class="alert alert-danger" style="margin-bottom:0;">@_identityError</div>
-            }
+    <div class="dash-group-title ruled" style="margin:22px 2px 8px;">@L["keys.noIdentity.title"]</div>
 
-            <div class="field" style="margin-bottom:0;">
-                <label>@L["home.masterPassphrase"]</label>
-                <PasswordField @bind-Value="_identityPassphrase" Placeholder="@L["home.placeholder.passphrase"]" />
-            </div>
+    <div class="card" style="gap:12px;">
+        <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.55;">
+            @L["keys.noIdentity.body"]
+        </p>
 
-            <button class="btn btn-primary btn-block" @onclick="GenerateIdentity" disabled="@_generatingIdentity">
-                @(_generatingIdentity ? L["keys.noIdentity.generating"] : L["keys.noIdentity.button"])
-            </button>
+        @* A quick validation problem (empty field, wrong passphrase) stays a small inline
+           message — it's known before any work starts. Only a failure that happened *during*
+           the RSA search gets the full blocking screen below, since that's the wait with
+           nothing else on screen to explain what just stopped. *@
+        @if (!_identityFailed && !string.IsNullOrEmpty(_identityError))
+        {
+            <div class="alert alert-danger" style="margin-bottom:0;">@_identityError</div>
+        }
+
+        <div class="field" style="margin-bottom:0;">
+            <label>@L["home.masterPassphrase"]</label>
+            <PasswordField @bind-Value="_identityPassphrase" Placeholder="@L["home.placeholder.passphrase"]" />
         </div>
 
-        @* No Retry button: the passphrase that triggered this run is wiped from memory the
-           moment the attempt ends (see the finally block below), on purpose — it should never
-           linger longer than the one call that needed it. A one-tap retry would mean keeping it
-           around for a second use, which trades away that guarantee for convenience. Back
-           returns to the form so the person re-enters it themselves. *@
-        <BlockingFailure Visible="_identityFailed" Title="@L["keys.noIdentity.failedTitle"]"
-                          Description="@_identityError" BackLabel="@L["common.back"]"
-                          OnBack="() => _identityFailed = false" />
+        <button class="btn btn-primary btn-block" @onclick="GenerateIdentity" disabled="@_generatingIdentity">
+            @(_generatingIdentity ? L["keys.noIdentity.generating"] : L["keys.noIdentity.button"])
+        </button>
+    </div>
 
-        @* Offered next to creating one, because the choice matters and is irreversible in one
-           direction: generating a fresh pair here makes anything already encrypted to the old
-           identity unreadable on this device. *@
-        <div class="card" style="gap:10px; margin-top:12px;">
-            <div class="card-title">@L["keys.move.importTitle"]</div>
-            <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.55;">
-                @L["keys.move.importBody"]
-            </p>
-            <button class="btn btn-secondary btn-block" @onclick="PickIdentityFile" disabled="@_movingIdentity">
-                <Icon Name="upload" Size="15" StrokeWidth="1.8" />@L["keys.move.import"]
-            </button>
-        </div>
-    }
+    @* No Retry button: the passphrase that triggered this run is wiped from memory the
+       moment the attempt ends (see the finally block below), on purpose — it should never
+       linger longer than the one call that needed it. A one-tap retry would mean keeping it
+       around for a second use, which trades away that guarantee for convenience. Back
+       returns to the form so the person re-enters it themselves. *@
+    <BlockingFailure Visible="_identityFailed" Title="@L["keys.noIdentity.failedTitle"]"
+                      Description="@_identityError" BackLabel="@L["common.back"]"
+                      OnBack="() => _identityFailed = false" />
+
+    @* Offered next to creating one, because the choice matters and is irreversible in one
+       direction: generating a fresh pair here makes anything already encrypted to the old
+       identity unreadable on this device. *@
+    <div class="card" style="gap:10px; margin-top:12px;">
+        <div class="card-title">@L["keys.move.importTitle"]</div>
+        <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.55;">
+            @L["keys.move.importBody"]
+        </p>
+        <button class="btn btn-secondary btn-block" @onclick="PickIdentityFile" disabled="@_movingIdentity">
+            <Icon Name="upload" Size="15" StrokeWidth="1.8" />@L["keys.move.import"]
+        </button>
+    </div>
 }
 
 @* ─── Export: choose a transfer passphrase ─── *@
@@ -459,7 +456,6 @@ else
     private KeyServerService.UploadResult? _publishResult;
 
     // Own identity (deferred generation)
-    private bool _showPgpTutorial = true;
     private bool _generatingIdentity;
     private string _identityPassphrase = string.Empty;
     private string _identityError = string.Empty;
@@ -519,8 +515,6 @@ else
 
     /// <summary>Lets PgpPage reveal the rest of the module once an identity exists.</summary>
     [Parameter] public EventCallback OnIdentityCreated { get; set; }
-
-    private void DismissTutorial() => _showPgpTutorial = false;
 
     // ─── Carrying the identity between the user's own devices ────────────
 

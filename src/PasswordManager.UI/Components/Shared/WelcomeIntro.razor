@@ -1,0 +1,71 @@
+@* What someone needs to know *before* they have an account: what a vault is, what the master
+   passphrase does, that losing it is final, and how to pick one that survives.
+
+   It runs on the sign-in screen, ahead of the card, because every one of those facts changes a
+   decision that is about to be made and cannot be revisited. The same advice used to sit at step
+   5 of a page reachable only from the menu — that is, only after the passphrase had already been
+   chosen, which is exactly too late to be useful. *@
+@inject ITutorialStore Store
+@inject Loc L
+
+@if (_visible)
+{
+    <div class="intro-scrim">
+        <div class="intro-card">
+            <div class="intro-brand">
+                <div class="unlock-hero-icon"><Icon Name="lock-keyhole" Size="24" StrokeWidth="1.7" /></div>
+                <span>Safety<span class="intro-brand-accent">Vault</span></span>
+            </div>
+            <TourSteps Steps="TourContent.IntroSteps" OnDone="Finish" />
+        </div>
+    </div>
+}
+
+<style>
+    .intro-scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 120;
+        background: var(--color-bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+        /* Opaque and full-screen rather than a sheet over the login card: there is nothing behind
+           this worth showing through, and a sheet would invite a tap-outside that skips it. */
+        overflow-y: auto;
+    }
+    .intro-card {
+        width: 100%;
+        max-width: 420px;
+        background: var(--color-surface);
+        border: 1px solid var(--color-divider);
+        border-radius: var(--radius-lg);
+        padding: 20px 18px 18px;
+    }
+    .intro-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: -.01em;
+        color: var(--color-text);
+        margin-bottom: 14px;
+    }
+    .intro-brand-accent { color: var(--color-accent); }
+</style>
+
+@code {
+    private bool _visible;
+
+    protected override void OnInitialized() => _visible = !Store.HasSeen(OnboardingFlags.Intro);
+
+    /// <summary>Nothing to tell the screen behind: Home already opens on Create account when the
+    /// device has no accounts, which is every device this runs on.</summary>
+    private void Finish()
+    {
+        Store.MarkSeen(OnboardingFlags.Intro);
+        _visible = false;
+    }
+}

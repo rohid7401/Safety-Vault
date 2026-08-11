@@ -155,11 +155,9 @@ else
             new NavItem("nav.importExport", "import-export", "swap"),
             new NavItem("nav.data", "data", "trash"),
         ]),
-        new("nav.group.learn",
-        [
-            new NavItem("nav.walkthrough", "walkthrough", "info"),
-            new NavItem("nav.tutorial", "tutorial", "book"),
-        ]),
+        // No "Learn" group any more. Tutorial folded into the PGP module, which is what it was
+        // explaining, and the walkthrough became a button in Settings — a group of one reads as
+        // a category, and there was no category left.
     ];
 
     // Route → translation key for the app-bar title. Dashboard/root show the brand instead.
@@ -175,7 +173,6 @@ else
         ["settings"] = "title.settings",
         ["walkthrough"] = "title.walkthrough",
         ["pgp"] = "title.pgp",
-        ["tutorial"] = "title.tutorial",
     };
 
     private string CurrentRoute => Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].TrimEnd('/');

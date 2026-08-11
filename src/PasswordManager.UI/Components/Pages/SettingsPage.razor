@@ -114,6 +114,20 @@
     </div>
 </div>
 
+<div class="dash-group-title ruled" style="margin:22px 2px 8px;">@L["settings.group.help"]</div>
+
+@* The walkthrough used to be its own nav entry under a "Learn" group. It is not somewhere you
+   go, it is something you replay — so it lives here as an action, not a destination. *@
+<div class="card" style="gap:12px;">
+    <div class="field" style="margin-bottom:0;">
+        <label>@L["settings.walkthrough"]</label>
+        <div class="field-hint" style="margin-bottom:10px;">@L["settings.walkthrough.hint"]</div>
+        <button class="btn btn-secondary btn-block" @onclick='() => Nav.NavigateTo("walkthrough")'>
+            <Icon Name="info" Size="15" StrokeWidth="1.8" />@L["settings.walkthrough.action"]
+        </button>
+    </div>
+</div>
+
 <div class="hint-row" style="margin-top:16px;">
     <Icon Name="info" Size="15" />
     <span>@L["settings.scopeNote"]</span>
