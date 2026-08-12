@@ -1981,3 +1981,153 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
        short form float in an oversized box. */
     .sheet.tall { --sheet-min-height: auto; }
 }
+
+/* ═══ Guided tour: the spotlight ═══════════════════════════════════
+   The veil closes over the screen and the element being explained is cut out of it. The cutout
+   is one absolutely-positioned box: its own border is the ring, and a 9999px spread shadow of
+   the veil colour paints everything outside it. One element, so position, size and radius all
+   interpolate together when the tour moves to the next stop. */
+.tour {
+    position: absolute;
+    inset: 0;
+    /* Above the drawer (40) and its overlay: the last stop opens the drawer and keeps pointing
+       into it. Below .busy (150), because a wait that starts during the tour still owns the
+       screen. */
+    z-index: 120;
+    animation: svFade .15s ease;
+}
+
+/* 88%, where the blocking waits use 82%, and no blur.
+   At 82% the neighbouring tiles stay readable and compete with the one being pointed at — which
+   a two-second wait can afford and a five-stop tour cannot. The blur goes because a cutout has
+   an edge: blurring up to it smears the edge, and it forces the WebView to repaint the whole
+   layer every time the rectangle moves. */
+.tour-veil,
+.tour-hole {
+    --tour-veil: color-mix(in srgb, var(--color-bg) 88%, transparent);
+}
+.tour-veil {
+    position: absolute;
+    inset: 0;
+    /* Nothing is cut out, so nothing needs to stand against it: back to the waits' 82%. */
+    background: color-mix(in srgb, var(--color-bg) 82%, transparent);
+}
+
+.tour-hole {
+    position: absolute;
+    box-sizing: border-box;
+    pointer-events: none;
+    /* Full brightness inside a darkened field, on its own, reads as "the others are disabled".
+       The ring is the positive mark that makes it read as "this one", and the halo keeps the
+       ring from looking like a border the element always had. */
+    border: 2px solid var(--color-accent);
+    box-shadow:
+        0 0 0 4px color-mix(in srgb, var(--color-accent) 22%, transparent),
+        0 0 0 9999px var(--tour-veil);
+    transition: left .28s cubic-bezier(.4, 0, .2, 1), top .28s cubic-bezier(.4, 0, .2, 1),
+                width .28s cubic-bezier(.4, 0, .2, 1), height .28s cubic-bezier(.4, 0, .2, 1),
+                border-radius .28s ease;
+}
+
+/* One shot on arrival, never a loop: a ring that keeps pulsing reads as "working on it". */
+.tour-pulse {
+    position: absolute;
+    box-sizing: border-box;
+    pointer-events: none;
+    border: 2px solid var(--a-400);
+    opacity: 0;
+    animation: tourPulse 1.5s ease-out;
+}
+@keyframes tourPulse {
+    from { transform: scale(1); opacity: .7; }
+    to   { transform: scale(1.07); opacity: 0; }
+}
+
+.tour-bubble {
+    position: absolute;
+    left: 16px;
+    box-sizing: border-box;
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 0 0 1px var(--n-800), var(--shadow-lg);
+    padding: 14px 16px 15px;
+    transition: top .28s cubic-bezier(.4, 0, .2, 1);
+}
+/* It only moves up and down. Floating it beside the target as well would put the text in a
+   different place at every stop, and there is no width to spare on a phone anyway. */
+.tour-arrow {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: var(--color-surface);
+    transform: rotate(45deg);
+}
+.tour-bubble-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+.tour-bubble-body { font-size: 13px; line-height: 1.5; color: var(--n-400); margin-top: 5px; }
+.tour-miss-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.tour-miss-icon {
+    width: 30px;
+    height: 30px;
+    flex: none;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+    color: var(--danger);
+}
+
+/* Always in the same place, whichever end it is at. */
+.tour-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px;
+    box-sizing: border-box;
+    background: linear-gradient(to top, var(--color-bg) 55%, transparent);
+}
+/* Sent to the top when the target is fixed chrome the page cannot scroll clear of — the drawer's
+   footer. Up there it lies over a surface, so it is painted solid rather than faded. */
+.tour-bar.top {
+    top: 0;
+    bottom: auto;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-divider);
+    align-items: flex-end;
+    padding-bottom: 10px;
+}
+.tour-skip {
+    height: 44px;
+    min-width: 44px;
+    padding: 0 12px;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-md);
+    color: var(--n-500);
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.tour-progress { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.tour-ticks { display: flex; gap: 4px; }
+.tour-tick { width: 16px; height: 3px; border-radius: 2px; background: var(--n-800); }
+.tour-tick.on { background: var(--color-accent); }
+.tour-count { font-size: 11.5px; color: var(--n-500); }
+.tour-next { height: 44px; padding: 0 18px; }
+
+/* Extra room at the foot of the page while the tour is open, so the bar can never cover the last
+   tile. Added to .page's own padding rather than replacing it — that padding carries the iOS
+   safe-area inset. */
+.page.tour-room { padding-bottom: calc(40px + env(safe-area-inset-bottom) + 66px); }
+
+@media (prefers-reduced-motion: reduce) {
+    /* The cutout does not travel and the page does not glide: both jump. What replaces the
+       movement is the veil closing whole for an instant, so the eye cannot mistake the old
+       position for the new one — a change of opacity, not of place. */
+    .tour, .tour-hole, .tour-bubble { transition: none; animation: none; }
+    .tour-pulse { display: none; }
+}

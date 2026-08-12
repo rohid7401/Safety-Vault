@@ -1,0 +1,322 @@
+@* The guided tour, as a spotlight rather than a carousel.
+
+   Five stops over the dashboard: the veil closes over the screen, the element being talked about
+   is cut out of it, and a bubble beside it says what it is. The previous tour was nine centred
+   cards describing modules without pointing at any of them — read once, forgotten, and nobody
+   could say afterwards where the thing they were told about actually lived.
+
+   Nothing here moves or copies the highlighted element. The rectangle is measured from the real
+   DOM through safetyVaultTour and the cutout is painted over it, in place. *@
+@inject IJSRuntime JS
+@inject Loc L
+@implements IAsyncDisposable
+
+@if (_open)
+{
+    <div class="tour @(_reduced ? "is-reduced" : "")" @onclick="OnTapped">
+        @* No cutout means nothing to point at, so the veil goes flat — and lightens, since there
+           is no longer anything it needs to be darker than. *@
+        @if (!_hasBox)
+        {
+            <div class="tour-veil"></div>
+        }
+        else
+        {
+            <div class="tour-hole" style="@HoleStyle"></div>
+            @if (!_reduced)
+            {
+                @* One shot on arrival, keyed so a repeat visit to the same stop replays it. The
+                   ring says "this is what I mean"; a looping pulse would say "still loading". *@
+                <div class="tour-pulse" style="@HoleStyle" @key="_pulse"></div>
+            }
+        }
+
+        <div class="tour-bubble" style="top:@(_by)px; width:@(_bw)px;">
+            @if (_arrow)
+            {
+                <div class="tour-arrow" style="left:@(_ax)px; top:@(_ay)px;"></div>
+            }
+            @* Between stops the cutout is closed but nothing has failed — the bubble keeps
+               showing the new stop's text while the veil is whole. Only a measurement that has
+               run out of retries switches it to the other ending. *@
+            @if (!_missing)
+            {
+                <div class="tour-bubble-title">@L[Current.TitleKey]</div>
+                <div class="tour-bubble-body">@L[Current.BodyKey]</div>
+            }
+            else
+            {
+                @* Same box, same width, same place — the step just ends its story differently,
+                   the way a blocking wait reports a failure without opening a new dialog. *@
+                <div class="tour-miss-head">
+                    <span class="tour-miss-icon"><Icon Name="alert" Size="17" StrokeWidth="1.9" /></span>
+                    <span class="tour-bubble-title">@L[Current.MissKey]</span>
+                </div>
+                <div class="tour-bubble-body">@L["tour.miss.body"]</div>
+            }
+        </div>
+
+        @* Fixed, so Skip and Next are in the same place at every stop. Inside the bubble they
+           would move with it, and on the first stop they would sit in the top third, out of
+           reach of the thumb. *@
+        <div class="tour-bar @(_barTop ? "top" : "")" style="height:@(_barH)px;">
+            <button class="tour-skip" type="button" @onclick="Close" @onclick:stopPropagation="true">
+                @L["tour.skip"]
+            </button>
+            <div class="tour-progress">
+                <div class="tour-ticks">
+                    @for (var i = 0; i < TourContent.Stops.Length; i++)
+                    {
+                        <span class="tour-tick @(i <= _index ? "on" : "")"></span>
+                    }
+                </div>
+                <span class="tour-count">@L.Format("tour.count", _index + 1, TourContent.Stops.Length)</span>
+            </div>
+            <button class="btn btn-primary tour-next" type="button" @onclick="Next" @onclick:stopPropagation="true">
+                @(IsLastBeat ? L["common.done"] : L["tour.next"])
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Raised when the tour ends, however it ends — finished, skipped or given up on.</summary>
+    [Parameter] public EventCallback OnDone { get; set; }
+
+    /// <summary>Opens the navigation drawer for the last stop's second beat, and closes it after.
+    /// The drawer belongs to the layout, so the tour asks rather than reaches.</summary>
+    [Parameter] public EventCallback<bool> DrawerRequested { get; set; }
+
+    private bool _open;
+    private int _index;
+    private bool _beat;          // second beat of the last stop
+    private bool _reduced;
+    private int _pulse;
+
+    // Geometry, all of it from JS.
+    private bool _hasBox;      // a cutout is drawn
+    private bool _missing;     // measured, retried, and still not there
+    private int _x, _y, _w, _h, _r;
+    private int _by, _bw = 320, _ax, _ay, _barH = 66;
+    private bool _arrow = true, _barTop;
+
+    private string _key = string.Empty;   // the step this layout belongs to
+    private string _laidOut = string.Empty;
+    private int _tries;
+    private CancellationTokenSource? _retry;
+
+    private TourStop Current => _beat ? TourContent.MenuBeat : TourContent.Stops[_index];
+    private bool IsLastBeat => _index == TourContent.Stops.Length - 1 && _beat;
+    private bool HasBeat => _index == TourContent.Stops.Length - 1;
+
+    private string HoleStyle =>
+        $"left:{_x}px; top:{_y}px; width:{_w}px; height:{_h}px; border-radius:{_r}px;";
+
+    /// <summary>Starts (or restarts) the tour at the first stop.</summary>
+    public async Task StartAsync()
+    {
+        _open = true;
+        _index = 0;
+        _beat = false;
+        _hasBox = false;
+        _missing = false;
+        _misses = 0;
+        _tries = 0;
+        _laidOut = string.Empty;
+        _key = StepKey;
+        _reduced = await SafeInvoke<bool>("safetyVaultTour.reducedMotion");
+        await SafeInvokeVoid("safetyVaultTour.pad", true);
+        StateHasChanged();
+    }
+
+    private string StepKey => $"{_index}|{(_beat ? 1 : 0)}";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_open || _laidOut == _key) return;
+        _laidOut = _key;
+        await LayOutAsync(scroll: true);
+    }
+
+    /// <summary>
+    /// Scroll first, measure second — never both at once. A cutout crossing the screen while the
+    /// content slides underneath reads as searching rather than pointing, and a rectangle read
+    /// mid-scroll arrives already wrong.
+    /// </summary>
+    private async Task LayOutAsync(bool scroll)
+    {
+        var stop = Current;
+
+        if (scroll && !stop.OpensDrawer)
+        {
+            var moved = await SafeInvoke<bool>("safetyVaultTour.scrollFor", stop.Targets, _bh + 90, _reduced);
+            // A smooth scroll has to finish before its destination is worth measuring; a drawer
+            // has to finish sliding in for the same reason.
+            if (moved) await Task.Delay(320);
+        }
+        else if (stop.OpensDrawer)
+        {
+            await Task.Delay(320);
+        }
+
+        await MeasureAsync();
+    }
+
+    private int _bh = 118;
+
+    private async Task MeasureAsync()
+    {
+        var stop = Current;
+        var layout = await SafeInvoke<Layout?>(
+            "safetyVaultTour.layout", stop.Targets, stop.Pad, stop.Radius);
+
+        if (layout is null) { Fail(); return; }
+
+        _bw = layout.Bw > 0 ? layout.Bw : _bw;
+        _bh = layout.Bh > 0 ? layout.Bh : _bh;
+        _by = layout.By;
+        _barTop = layout.BarTop;
+        _barH = layout.BarH > 0 ? layout.BarH : 66;
+
+        if (!layout.Found) { Fail(); return; }
+
+        _tries = 0;
+        _misses = 0;
+        CancelRetry();
+        _hasBox = true;
+        _missing = false;
+        (_x, _y, _w, _h, _r) = (layout.X, layout.Y, layout.W, layout.H, layout.R);
+        (_ax, _ay, _arrow) = (layout.Ax, layout.Ay, layout.Arrow);
+        _pulse++;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// An empty measurement is not given up on first time. A tile that has not painted yet, a
+    /// drawer mid-slide, a font that landed late — all of them resolve within a few hundred
+    /// milliseconds, so it re-measures on a widening delay before it says so out loud.
+    /// </summary>
+    private void Fail()
+    {
+        _hasBox = false;
+        StateHasChanged();
+
+        if (++_tries > 6) { _missing = true; _misses++; StateHasChanged(); GiveUpIfStuck(); return; }
+        CancelRetry();
+        _retry = new CancellationTokenSource();
+        var token = _retry.Token;
+        var mine = _key;
+        _ = Task.Run(async () =>
+        {
+            try { await Task.Delay(_tries * 90, token); } catch (TaskCanceledException) { return; }
+            if (token.IsCancellationRequested) return;
+            await InvokeAsync(async () => { if (_open && _key == mine) await MeasureAsync(); });
+        });
+    }
+
+    private int _misses;
+
+    /// <summary>A tour that apologises twice is worse than no tour.</summary>
+    private void GiveUpIfStuck()
+    {
+        if (_misses >= 2) _ = Close();
+    }
+
+    private async Task Next()
+    {
+        if (HasBeat && !_beat)
+        {
+            _beat = true;
+            await DrawerRequested.InvokeAsync(true);
+        }
+        else if (_index < TourContent.Stops.Length - 1)
+        {
+            _index++;
+            _beat = false;
+        }
+        else
+        {
+            await Close();
+            return;
+        }
+
+        _tries = 0;
+        CancelRetry();
+        _key = StepKey;
+        // The old cutout closes before the new one opens. That gap is also what stands in for
+        // movement when the cutout is not allowed to travel: the veil goes whole for a moment,
+        // and when the light comes back it is somewhere else.
+        _hasBox = false;
+        _missing = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// A tap on the highlighted element does not navigate. The tour is a sequence: opening
+    /// Passwords at stop 2 abandons the other three with no way back. The ring acknowledges the
+    /// tap and nothing else. A tap outside does nothing at all — only Skip closes.
+    /// </summary>
+    private void OnTapped(MouseEventArgs e)
+    {
+        if (_hasBox) _pulse++;
+    }
+
+    private async Task Close()
+    {
+        _open = false;
+        CancelRetry();
+        await SafeInvokeVoid("safetyVaultTour.pad", false);
+        await DrawerRequested.InvokeAsync(false);
+        await OnDone.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private void CancelRetry()
+    {
+        _retry?.Cancel();
+        _retry?.Dispose();
+        _retry = null;
+    }
+
+    /// <summary>JS interop throws while the WebView tears down, and a tour is never worth an
+    /// error screen — a failed call just leaves the step showing its "not found" ending.</summary>
+    private async Task<T?> SafeInvoke<T>(string identifier, params object?[] args)
+    {
+        try { return await JS.InvokeAsync<T>(identifier, args); }
+        catch (JSException) { return default; }
+        catch (InvalidOperationException) { return default; }
+        catch (TaskCanceledException) { return default; }
+    }
+
+    private async Task SafeInvokeVoid(string identifier, params object?[] args)
+    {
+        try { await JS.InvokeVoidAsync(identifier, args); }
+        catch (JSException) { }
+        catch (InvalidOperationException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        CancelRetry();
+        if (_open) await SafeInvokeVoid("safetyVaultTour.pad", false);
+    }
+
+    private sealed class Layout
+    {
+        public bool Found { get; set; }
+        public int X { get; set; }
+        public int Y { get; set; }
+        public int W { get; set; }
+        public int H { get; set; }
+        public int R { get; set; }
+        public int By { get; set; }
+        public int Bw { get; set; }
+        public int Bh { get; set; }
+        public int Ax { get; set; }
+        public int Ay { get; set; }
+        public bool Arrow { get; set; }
+        public bool BarTop { get; set; }
+        public int BarH { get; set; }
+    }
+}

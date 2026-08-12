@@ -1,7 +1,9 @@
-@* Step content + navigation for the guided tour. Used both inside the first-run overlay
-   (OnboardingTour, wrapped in a centered SheetModal) and standalone on the revisit page
-   (WalkthroughPage, wrapped in normal page chrome) — this component only renders the
-   step itself and the Back/Next/Skip row, never its own backdrop. *@
+@* A stepped sequence of cards: icon, title, body, optional bullets, and the Back/Next/Skip row.
+   Never its own backdrop — whoever shows it decides where it sits.
+
+   Used by the pre-account intro. The tour of the modules is no longer one of these: it became a
+   spotlight over the real dashboard, because a centred card describing a module cannot say where
+   that module is. *@
 @inject Loc L
 @implements IDisposable
 
@@ -70,12 +72,11 @@
 @code {
     [Parameter] public EventCallback OnDone { get; set; }
 
-    /// <summary>False on the revisit page: there's nothing to "skip" when you opened it on purpose.</summary>
+    /// <summary>Off where the sequence was opened on purpose: there is nothing to "skip" then.</summary>
     [Parameter] public bool ShowSkip { get; set; } = true;
 
-    /// <summary>Defaults to the app-wide first-run tour; pass a different script (e.g.
-    /// <see cref="TourContent.PgpSteps"/>) to reuse this same stepper UI elsewhere.</summary>
-    [Parameter] public TourStep[] Steps { get; set; } = TourContent.Steps;
+    /// <summary>The script to walk through, e.g. <see cref="TourContent.IntroSteps"/>.</summary>
+    [Parameter, EditorRequired] public TourStep[] Steps { get; set; } = Array.Empty<TourStep>();
 
     private int _index;
 

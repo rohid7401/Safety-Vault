@@ -5,6 +5,7 @@
 @inject ShellBackNavigation BackNav
 @inject ToastService Toast
 @inject IJSRuntime JS
+@inject ITutorialStore Store
 @inject Loc L
 @implements IDisposable
 
@@ -29,13 +30,11 @@
 }
 else
 {
-    <OnboardingTour />
-
     <div class="app-shell">
         @* The menu button sits on the same edge the drawer slides in from. It used to be on the
            opposite side, so tapping right made a panel appear from the left. *@
         <header class="appbar">
-            <button class="appbar-btn appbar-menu-btn" aria-label="@L["common.menu"]" @onclick="OpenDrawer">
+            <button class="appbar-btn appbar-menu-btn" data-tour="menu" aria-label="@L["common.menu"]" @onclick="OpenDrawer">
                 <Icon Name="menu" Size="24" />
             </button>
             <span class="appbar-title @(ShowBack ? "" : "brand")">@Title</span>
@@ -59,7 +58,7 @@ else
                 <div class="drawer-overlay" @onclick="CloseDrawer"></div>
             }
 
-            <nav class="drawer @(_drawerOpen ? "open" : "")">
+            <nav class="drawer @(_drawerOpen ? "open" : "")" data-tour="drawer">
                 <div class="drawer-account">
                     <div class="drawer-avatar">@Initials</div>
                     <div class="drawer-account-info">
@@ -103,7 +102,7 @@ else
                         <span style="font-size:12px; color:var(--n-500);">@L["lang.title"]</span>
                         <LanguageSelector />
                     </div>
-                    <button class="btn btn-secondary btn-block btn-lock" @onclick="LockVault">
+                    <button class="btn btn-secondary btn-block btn-lock" data-tour="lock" @onclick="LockVault">
                         <Icon Name="lock" Size="16" />
                         @L["common.lockVault"]
                     </button>
@@ -125,6 +124,10 @@ else
                 </div>
             </main>
         </div>
+
+        @* Inside the shell, not outside it: the spotlight is measured against this box and its
+           cutout has to be able to reach the app bar as well as the page. *@
+        <SpotlightTour @ref="_tour" OnDone="OnTourDone" DrawerRequested="SetDrawerForTour" />
     </div>
 }
 
@@ -132,6 +135,8 @@ else
     private bool _drawerOpen;
     private bool _restoreScrollAfterRender;
     private ErrorBoundary? _boundary;
+    private SpotlightTour? _tour;
+    private bool _tourStarted;
 
     private sealed record NavItem(string LabelKey, string Href, string Icon);
     private sealed record NavGroup(string TitleKey, NavItem[] Items);
@@ -171,7 +176,6 @@ else
         ["import-export"] = "title.importExport",
         ["data"] = "title.data",
         ["settings"] = "title.settings",
-        ["walkthrough"] = "title.walkthrough",
         ["pgp"] = "title.pgp",
     };
 
@@ -251,6 +255,9 @@ else
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
         _drawerOpen = false;
+        // Re-armed on every navigation so a replay from Settings can start a second time; what
+        // stops it running unasked is the seen flag, not this.
+        _tourStarted = false;
         // Restoring here would target the outgoing page: the new route has not rendered yet.
         _restoreScrollAfterRender = true;
         StateHasChanged();
@@ -262,9 +269,45 @@ else
         // shell can never read a flag that a drawer toggle or a redirect has already invalidated.
         BackNav.CanHandleBack = AppState.IsUnlocked && (_drawerOpen || ShowBack);
 
+        await MaybeStartTourAsync();
+
         if (!firstRender && !_restoreScrollAfterRender) return;
         _restoreScrollAfterRender = false;
         await InvokeSafely("safetyVaultScroll.restored", CurrentRoute);
+    }
+
+    /// <summary>
+    /// The tour points at the dashboard's own tiles, so it can only run on the dashboard. First
+    /// unlock starts it once; <c>?tour=1</c> replays it, which is how the button in Settings
+    /// works — it navigates here first rather than trying to spotlight a screen it is not on.
+    /// </summary>
+    private async Task MaybeStartTourAsync()
+    {
+        if (_tourStarted || _tour is null || !AppState.IsUnlocked) return;
+        if (CurrentRoute is not ("" or "dashboard")) return;
+
+        var replay = Nav.ToBaseRelativePath(Nav.Uri).Contains("tour=1", StringComparison.Ordinal);
+        if (!replay && Store.HasSeen(OnboardingFlags.Tour)) return;
+
+        _tourStarted = true;
+        await _tour.StartAsync();
+    }
+
+    /// <summary>The drawer belongs to the layout, so the last stop asks for it rather than
+    /// reaching into it. Closed again when the tour ends, however it ends.</summary>
+    private void SetDrawerForTour(bool open)
+    {
+        _drawerOpen = open;
+        StateHasChanged();
+    }
+
+    private void OnTourDone()
+    {
+        Store.MarkSeen(OnboardingFlags.Tour);
+        // A replay leaves ?tour=1 in the URL; without clearing it, going back to the dashboard
+        // from anywhere would start the tour again.
+        if (Nav.ToBaseRelativePath(Nav.Uri).Contains("tour=1", StringComparison.Ordinal))
+            Nav.NavigateTo("dashboard", replace: true);
     }
 
     private void OpenDrawer() => _drawerOpen = true;

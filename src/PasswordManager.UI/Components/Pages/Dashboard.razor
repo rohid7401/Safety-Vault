@@ -23,8 +23,10 @@
         <div class="dash-status-title">@L["dash.statusTitle"]</div>
     </div>
     @* Three figures rather than one run-on sentence: the counts are the thing being read, so
-       they get the size and the labels get the small type. *@
-    <div class="dash-stats">
+       they get the size and the labels get the small type.
+       The tour points at the figures, not at the card around them — the shield is not what that
+       stop is about. *@
+    <div class="dash-stats" data-tour="stats">
         <div class="dash-stat">
             <span class="dash-stat-num">@(_countsReady ? _passwords.ToString() : "–")</span>
             <span class="dash-stat-label">@L["dash.stat.passwords"]</span>
@@ -40,9 +42,13 @@
     </div>
 </div>
 
+@* data-tour marks what the guided tour can point at. It sits on the group wrapper, title
+   included: that title is the word the tour's own text uses, so it belongs inside the cutout.
+   The same attribute serves both view modes — the tour measures whichever element is rendered
+   and never has to know which one that is. *@
 @foreach (var group in _groups)
 {
-    <div class="dash-group">
+    <div class="dash-group" data-tour="@($"group-{group.TourId}")">
         <div class="dash-group-title ruled">@L[group.TitleKey]</div>
 
         @if (Mode == ViewMode.Grid)
@@ -50,7 +56,8 @@
             <div class="dash-grid">
                 @foreach (var item in group.Items)
                 {
-                    <button class="dash-tile" type="button" @onclick="() => Nav.NavigateTo(item.Route)">
+                    <button class="dash-tile" type="button" data-tour="@TourId(item)"
+                            @onclick="() => Nav.NavigateTo(item.Route)">
                         <div class="dash-tile-icon">
                             <Icon Name="@item.Icon" Size="19" StrokeWidth="1.8" />
                         </div>
@@ -66,7 +73,8 @@
             <div class="dash-list">
                 @foreach (var item in group.Items)
                 {
-                    <button class="dash-row" type="button" @onclick="() => Nav.NavigateTo(item.Route)">
+                    <button class="dash-row" type="button" data-tour="@TourId(item)"
+                            @onclick="() => Nav.NavigateTo(item.Route)">
                         <div class="entry-icon lg">
                             <Icon Name="@item.Icon" Size="17" StrokeWidth="1.8" />
                         </div>
@@ -84,20 +92,25 @@
 
 @code {
     private record Item(string LabelKey, string ShortKey, string DescKey, string Route, string Icon);
-    private record Group(string TitleKey, Item[] Items);
+    private record Group(string TitleKey, string TourId, Item[] Items);
+
+    /// <summary>The guided tour's name for a tile, or nothing when the tour never points at it —
+    /// only Audit gets a stop of its own; the rest are covered by their group's cutout.</summary>
+    private static string? TourId(Item item) =>
+        item.Route == "/audit" ? "tile-audit" : null;
 
     // PGP now closes the vault group instead of holding a group of its own: it is one more thing
     // the vault protects, not a category beside it. 4 + 4 + 2 also tiles evenly, with no odd gap.
     private static readonly Group[] _groups =
     [
-        new("nav.group.vault",
+        new("nav.group.vault", "vault",
         [
             new Item("nav.passwords", "nav.short.passwords", "dash.desc.passwords", "/vault", "lock"),
             new Item("nav.notes", "nav.short.notes", "dash.desc.notes", "/vault/notes", "note"),
             new Item("nav.cards", "nav.short.cards", "dash.desc.cards", "/vault/cards", "card"),
             new Item("nav.pgp", "nav.short.pgp", "dash.desc.pgp", "/pgp", "key"),
         ]),
-        new("nav.group.tools",
+        new("nav.group.tools", "tools",
         [
             new Item("nav.generator", "nav.short.generator", "dash.desc.generator", "/generator", "refresh"),
             new Item("nav.audit", "nav.short.audit", "dash.desc.audit", "/audit", "shield"),

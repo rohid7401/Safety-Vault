@@ -118,6 +118,127 @@
             };
         })();
 
+        // ── Geometry for the guided tour's spotlight ──
+        // Blazor owns the sequence and the copy; this only answers "where is it, and where does
+        // the bubble go". Nothing here moves or clones the highlighted element: the cutout is
+        // painted over whatever is already on screen, where it already is.
+        (function () {
+            var SHELL = '.app-shell', PAGE = 'main.page', BUBBLE = '.tour-bubble';
+            var GAP = 12,            // between cutout and bubble
+                SIDE = 16,           // bubble inset from both edges
+                BAR = 66,            // the progress bar at rest
+                BAR_TOP = 92,        // taller when it sits on the app bar's side of the screen
+                CLEAR = 74;          // bar + breathing room, for deciding which end it goes to
+
+            function shell() { return document.querySelector(SHELL); }
+            function page() { return document.querySelector(PAGE); }
+
+            function union(names) {
+                var out = null;
+                for (var i = 0; i < names.length; i++) {
+                    var el = document.querySelector('[data-tour="' + names[i] + '"]');
+                    if (!el) continue;
+                    var r = el.getBoundingClientRect();
+                    if (!r.width && !r.height) continue;
+                    out = out ? {
+                        left: Math.min(out.left, r.left), top: Math.min(out.top, r.top),
+                        right: Math.max(out.right, r.right), bottom: Math.max(out.bottom, r.bottom)
+                    } : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+                }
+                return out;
+            }
+
+            window.safetyVaultTour = {
+                reducedMotion: function () {
+                    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+                },
+
+                // Scrolls the page so the target clears the bubble and the bar. Returns whether it
+                // moved, because the caller has to wait out a smooth scroll before measuring —
+                // a rectangle read mid-scroll is already stale by the time it arrives.
+                scrollFor: function (names, room, instant) {
+                    var pg = page(), u = union(names);
+                    if (!pg || !u) return false;
+                    var pr = pg.getBoundingClientRect();
+                    var top = u.top - pr.top + pg.scrollTop;
+                    var bottom = u.bottom - pr.top + pg.scrollTop;
+                    var view = pg.clientHeight;
+                    var want = pg.scrollTop;
+                    if (bottom + room > want + view) want = Math.min(bottom + room - view, pg.scrollHeight - view);
+                    if (top - 12 < want) want = Math.max(0, top - 12);
+                    want = Math.max(0, Math.round(want));
+                    if (Math.abs(want - pg.scrollTop) <= 1) return false;
+                    if (instant) pg.scrollTop = want;
+                    else pg.scrollTo({ top: want, behavior: 'smooth' });
+                    return true;
+                },
+
+                // The cutout, plus where the bubble and the bar end up. One call: the bubble is
+                // already rendered with this step's text when this runs, so its height is real.
+                layout: function (names, pad, radius) {
+                    var sc = shell();
+                    if (!sc) return { found: false };
+                    var sr = sc.getBoundingClientRect();
+                    var sw = Math.round(sr.width), sh = Math.round(sr.height);
+                    var bubble = document.querySelector(BUBBLE);
+                    var bh = bubble ? Math.round(bubble.offsetHeight) : 118;
+                    var bw = sw - SIDE * 2;
+                    var u = union(names);
+
+                    var missing = { found: false, sw: sw, sh: sh, bh: bh, bw: bw,
+                                    by: Math.round((sh - bh) / 2) - 20, arrow: false, ax: 0, ay: 0,
+                                    barTop: false, barH: BAR };
+                    if (!u) return missing;
+
+                    var x = u.left - sr.left - pad, y = u.top - sr.top - pad;
+                    var w = u.right - sr.left + pad - x, h = u.bottom - sr.top + pad - y;
+                    // Off-screen is not the same as absent, but for a spotlight it ends the same
+                    // way — checked before clamping, so the clamp cannot rescue a target that is
+                    // genuinely outside.
+                    if (w <= 8 || h <= 8 || y + h < 4 || y > sh - 4 || x + w < 4 || x > sw - 4) return missing;
+
+                    // The ring is drawn on the cutout's own edge. Where the target touches the
+                    // screen edge — the menu button does — the cutout gives up 2px so the ring
+                    // does not come out sliced by the bezel.
+                    if (y < 2) { h += y - 2; y = 2; }
+                    if (x < 2) { w += x - 2; x = 2; }
+                    if (x + w > sw - 2) w = sw - 2 - x;
+
+                    // A target the page cannot scroll clear of — fixed chrome like the drawer's
+                    // footer — sends the bar to the other end instead.
+                    var barTop = (y + h) > (sh - CLEAR);
+                    var topRoom = barTop ? BAR_TOP + 8 : 8;
+                    var botRoom = barTop ? 8 : CLEAR;
+
+                    var by, arrow = true, ay;
+                    var below = y + h + GAP;
+                    if (below + bh <= sh - botRoom) { by = below; ay = -6; }
+                    else if (y - GAP - bh >= topRoom) { by = y - GAP - bh; ay = bh - 6; }
+                    else { by = sh - botRoom - bh; arrow = false; ay = 0; }
+
+                    // Points at the target's centre, but stops short of its own rounded corners.
+                    var ax = Math.round(Math.max(18, Math.min(bw - 30, x + w / 2 - SIDE - 6)));
+
+                    return {
+                        found: true, sw: sw, sh: sh, bh: bh, bw: bw,
+                        x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h),
+                        r: radius + pad,
+                        by: Math.round(by), ax: ax, ay: Math.round(ay), arrow: arrow,
+                        barTop: barTop, barH: barTop ? BAR_TOP : BAR
+                    };
+                },
+
+                // Room at the foot of the page so the bar never covers the last tile. Nothing
+                // moves — the scrollable area just gets longer while the tour is open. A class
+                // rather than an inline style, because .page's own padding carries the iOS safe
+                // area and an inline value would drop it.
+                pad: function (on) {
+                    var pg = page();
+                    if (pg) pg.classList.toggle('tour-room', !!on);
+                }
+            };
+        })();
+
         // ── Open the field-type menu upward when it would fall off the screen ──
         // The menu hangs below its button, which is fine for the first field and useless for the
         // last one in a long form: the options ended up past the bottom edge with no way to reach
