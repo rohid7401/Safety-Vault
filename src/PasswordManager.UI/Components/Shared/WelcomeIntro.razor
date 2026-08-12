@@ -12,9 +12,14 @@
 {
     <div class="intro-scrim">
         <div class="intro-card">
-            <div class="intro-brand">
-                <div class="unlock-hero-icon"><Icon Name="lock-keyhole" Size="24" StrokeWidth="1.7" /></div>
-                <span>Safety<span class="intro-brand-accent">Vault</span></span>
+            @* Wordmark only, no lock beside it: every step already draws its own icon in the
+               circle below, and on the first step that icon is the lock — two of them stacked.
+               The language switch lives here because this screen runs *before* the sign-in card
+               that used to hold it, so without it the whole intro is stuck in whichever language
+               the device picked. *@
+            <div class="intro-head">
+                <span class="intro-brand">Safety<span class="intro-brand-accent">Vault</span></span>
+                <LanguageSelector />
             </div>
             <TourSteps Steps="TourContent.IntroSteps" OnDone="Finish" />
         </div>
@@ -43,16 +48,14 @@
         border-radius: var(--radius-lg);
         padding: 20px 18px 18px;
     }
-    .intro-brand {
+    .intro-head {
         display: flex;
         align-items: center;
-        gap: 10px;
-        font-size: 17px;
-        font-weight: 600;
-        letter-spacing: -.01em;
-        color: var(--color-text);
-        margin-bottom: 14px;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
     }
+    .intro-brand { font-size: 17px; font-weight: 600; letter-spacing: -.01em; color: var(--color-text); }
     .intro-brand-accent { color: var(--color-accent); }
 </style>
 

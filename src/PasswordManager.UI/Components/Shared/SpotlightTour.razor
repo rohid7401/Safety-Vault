@@ -149,20 +149,22 @@
 
         if (scroll && !stop.OpensDrawer)
         {
-            var moved = await SafeInvoke<bool>("safetyVaultTour.scrollFor", stop.Targets, _bh + 90, _reduced);
-            // A smooth scroll has to finish before its destination is worth measuring; a drawer
-            // has to finish sliding in for the same reason.
-            if (moved) await Task.Delay(320);
+            // No room figure passed: the bubble is on screen with this step's text already, so
+            // JS measures it there. Anything this side could send would be a step out of date.
+            // The call only comes back once the page has actually arrived, so there is no delay
+            // to guess at — a rectangle read mid-scroll would be wrong by however far it still
+            // had to travel.
+            await SafeInvoke<bool>("safetyVaultTour.scrollFor", stop.Targets, _reduced);
         }
         else if (stop.OpensDrawer)
         {
+            // The drawer's slide-in is a CSS animation the tour does not drive, so this one is
+            // still a wait. The retries cover it if the device takes longer.
             await Task.Delay(320);
         }
 
         await MeasureAsync();
     }
-
-    private int _bh = 118;
 
     private async Task MeasureAsync()
     {
@@ -173,7 +175,6 @@
         if (layout is null) { Fail(); return; }
 
         _bw = layout.Bw > 0 ? layout.Bw : _bw;
-        _bh = layout.Bh > 0 ? layout.Bh : _bh;
         _by = layout.By;
         _barTop = layout.BarTop;
         _barH = layout.BarH > 0 ? layout.BarH : 66;
@@ -312,7 +313,6 @@
         public int R { get; set; }
         public int By { get; set; }
         public int Bw { get; set; }
-        public int Bh { get; set; }
         public int Ax { get; set; }
         public int Ay { get; set; }
         public bool Arrow { get; set; }

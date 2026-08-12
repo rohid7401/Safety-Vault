@@ -156,9 +156,16 @@
                 // Scrolls the page so the target clears the bubble and the bar. Returns whether it
                 // moved, because the caller has to wait out a smooth scroll before measuring —
                 // a rectangle read mid-scroll is already stale by the time it arrives.
-                scrollFor: function (names, room, instant) {
+                //
+                // The room to leave is measured here rather than passed in: the bubble is already
+                // rendered with this step's text, so its height is known, and the caller only has
+                // the *previous* step's height. Passing that in scrolled short on whichever step
+                // had the longest text, dropping its target — and its title — too low.
+                scrollFor: function (names, instant) {
                     var pg = page(), u = union(names);
                     if (!pg || !u) return false;
+                    var bubble = document.querySelector(BUBBLE);
+                    var room = (bubble ? bubble.offsetHeight : 118) + GAP + CLEAR;
                     var pr = pg.getBoundingClientRect();
                     var top = u.top - pr.top + pg.scrollTop;
                     var bottom = u.bottom - pr.top + pg.scrollTop;
@@ -167,10 +174,40 @@
                     if (bottom + room > want + view) want = Math.min(bottom + room - view, pg.scrollHeight - view);
                     if (top - 12 < want) want = Math.max(0, top - 12);
                     want = Math.max(0, Math.round(want));
-                    if (Math.abs(want - pg.scrollTop) <= 1) return false;
-                    if (instant) pg.scrollTop = want;
-                    else pg.scrollTo({ top: want, behavior: 'smooth' });
-                    return true;
+                    if (Math.abs(want - pg.scrollTop) <= 1) return Promise.resolve(false);
+                    if (instant) { pg.scrollTop = want; return Promise.resolve(true); }
+
+                    // Animated by hand rather than with scrollTo({behavior:'smooth'}), which this
+                    // WebView accepts and then ignores — the page stayed exactly where it was
+                    // while the caller waited out a fixed delay and measured a target that had
+                    // never moved. Driving it here also means the promise resolves when the
+                    // scroll has genuinely finished, so nothing downstream has to guess.
+                    var from = pg.scrollTop, delta = want - from, t0 = null, DUR = 280;
+                    return new Promise(function (done) {
+                        var finished = false;
+                        function settle() {
+                            if (finished) return;
+                            finished = true;
+                            clearTimeout(guard);
+                            pg.scrollTop = want;
+                            done(true);
+                        }
+                        // requestAnimationFrame stops firing while the app is in the background,
+                        // so without this the promise would never resolve and the tour would sit
+                        // on a blank veil until the user came back. Snap and carry on instead.
+                        var guard = setTimeout(settle, DUR + 320);
+                        function frame(now) {
+                            if (finished) return;
+                            if (t0 === null) t0 = now;
+                            var k = Math.min(1, (now - t0) / DUR);
+                            // cubic-bezier(.4,0,.2,1) is not expressible here; this is its shape.
+                            var e = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+                            pg.scrollTop = from + delta * e;
+                            if (k < 1) requestAnimationFrame(frame);
+                            else settle();
+                        }
+                        requestAnimationFrame(frame);
+                    });
                 },
 
                 // The cutout, plus where the bubble and the bar end up. One call: the bubble is
@@ -214,7 +251,10 @@
                     var below = y + h + GAP;
                     if (below + bh <= sh - botRoom) { by = below; ay = -6; }
                     else if (y - GAP - bh >= topRoom) { by = y - GAP - bh; ay = bh - 6; }
-                    else { by = sh - botRoom - bh; arrow = false; ay = 0; }
+                    // Fits neither side: it leans on the bar and drops the arrow. Clamped to the
+                    // top so a tall bubble loses its last line rather than its title — the title
+                    // is the part that says which stop this is.
+                    else { by = Math.max(topRoom, sh - botRoom - bh); arrow = false; ay = 0; }
 
                     // Points at the target's centre, but stops short of its own rounded corners.
                     var ax = Math.round(Math.max(18, Math.min(bw - 30, x + w / 2 - SIDE - 6)));
