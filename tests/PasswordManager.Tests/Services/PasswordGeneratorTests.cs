@@ -179,5 +179,220 @@ namespace PasswordManager.Tests.Services
             var password = _generator.Generate(options);
             Assert.Contains("yuki", password);
         }
+
+        // ── Count quotas ─────────────────────────────────────────────
+        // These loop rather than draw once: a constraint that holds by luck on one draw and
+        // fails on the next is exactly the bug that construction replaced rejection sampling to
+        // avoid, and a single-draw test would not have caught it.
+
+        private const string SpecialChars = "!@#$%^&*()-_=+[]{}|;:,.<>?";
+
+        [Fact]
+        public void Generate_DigitQuota_HoldsOnEveryDraw()
+        {
+            var options = new PasswordGeneratorOptions
+            {
+                Length = 16,
+                LimitDigits = true,
+                MinDigits = 3,
+                MaxDigits = 5,
+            };
+
+            for (var i = 0; i < 200; i++)
+            {
+                var password = _generator.Generate(options);
+                Assert.InRange(password.Count(char.IsDigit), 3, 5);
+                Assert.Equal(16, password.Length);
+            }
+        }
+
+        [Fact]
+        public void Generate_ExactSpecialCount_HoldsOnEveryDraw()
+        {
+            var options = new PasswordGeneratorOptions
+            {
+                Length = 20,
+                LimitSpecial = true,
+                MinSpecial = 2,
+                MaxSpecial = 2,
+            };
+
+            for (var i = 0; i < 200; i++)
+                Assert.Equal(2, _generator.Generate(options).Count(c => SpecialChars.Contains(c)));
+        }
+
+        [Fact]
+        public void Generate_ZeroMaximum_ProducesNoneOfThatClass()
+        {
+            // "No symbols at all" has to be sayable through the quota and not only by switching
+            // the class off — someone who caps it at zero means zero.
+            var options = new PasswordGeneratorOptions
+            {
+                Length = 14,
+                LimitSpecial = true,
+                MinSpecial = 0,
+                MaxSpecial = 0,
+            };
+
+            for (var i = 0; i < 100; i++)
+                Assert.DoesNotContain(_generator.Generate(options), c => SpecialChars.Contains(c));
+        }
+
+        [Fact]
+        public void Generate_QuotasFillingTheWholeLength_StillSucceeds()
+        {
+            // Digits and symbols account for every character, leaving no room for letters.
+            var options = new PasswordGeneratorOptions
+            {
+                Length = 10,
+                IncludeUppercase = false,
+                IncludeLowercase = false,
+                LimitDigits = true,
+                MinDigits = 6,
+                MaxDigits = 6,
+                LimitSpecial = true,
+                MinSpecial = 4,
+                MaxSpecial = 4,
+            };
+
+            var password = _generator.Generate(options);
+            Assert.Equal(6, password.Count(char.IsDigit));
+            Assert.Equal(4, password.Count(c => SpecialChars.Contains(c)));
+        }
+
+        [Fact]
+        public void Generate_RequiredCharacters_AreNotLeftAtTheFront()
+        {
+            // The minimums are placed first and then shuffled. Without the shuffle every
+            // password would open with its digits — a pattern worth more to an attacker than
+            // the quota costs them.
+            var options = new PasswordGeneratorOptions
+            {
+                Length = 20,
+                IncludeSpecial = false,
+                LimitDigits = true,
+                MinDigits = 4,
+                MaxDigits = 4,
+            };
+
+            var startsWithDigit = 0;
+            for (var i = 0; i < 200; i++)
+                if (char.IsDigit(_generator.Generate(options)[0])) startsWithDigit++;
+
+            // 4 of 20 positions carry a digit, so roughly a fifth of draws should start with
+            // one. Near 200 would mean the shuffle never ran.
+            Assert.InRange(startsWithDigit, 5, 100);
+        }
+
+        [Fact]
+        public void Generate_ExcludeAmbiguous_DropsLookAlikesAndLeavesTheUserListAlone()
+        {
+            var options = new PasswordGeneratorOptions { Length = 40, ExcludeAmbiguous = true };
+
+            for (var i = 0; i < 50; i++)
+                Assert.DoesNotContain(_generator.Generate(options), c => "0O1lI|".Contains(c));
+
+            // Applied on top of ExcludeChars, never merged into it, so switching it off returns
+            // exactly the characters it removed.
+            Assert.Equal(string.Empty, options.ExcludeChars);
+        }
+
+        [Fact]
+        public void Generate_IncludedWord_CountsTowardTheQuota()
+        {
+            // "r2d2" brings two digits of its own, so a cap of two leaves the filler none.
+            var options = new PasswordGeneratorOptions
+            {
+                Length = 16,
+                IncludeWord = "r2d2",
+                LimitDigits = true,
+                MinDigits = 0,
+                MaxDigits = 2,
+            };
+
+            for (var i = 0; i < 100; i++)
+            {
+                var password = _generator.Generate(options);
+                Assert.Contains("r2d2", password);
+                Assert.Equal(2, password.Count(char.IsDigit));
+            }
+        }
+
+        // ── Conflicts ────────────────────────────────────────────────
+
+        [Fact]
+        public void Validate_InvertedRange_IsReported()
+        {
+            var options = new PasswordGeneratorOptions { LimitDigits = true, MinDigits = 5, MaxDigits = 2 };
+            Assert.Contains(GeneratorConflict.CountRangeInverted, _generator.Validate(options));
+        }
+
+        [Fact]
+        public void Validate_MinimumsBeyondLength_IsReported()
+        {
+            var options = new PasswordGeneratorOptions
+            {
+                Length = 8,
+                LimitDigits = true,
+                MinDigits = 5,
+                MaxDigits = 6,
+                LimitSpecial = true,
+                MinSpecial = 5,
+                MaxSpecial = 6,
+            };
+            Assert.Contains(GeneratorConflict.MinimumsExceedLength, _generator.Validate(options));
+        }
+
+        [Fact]
+        public void Validate_CapsTooLowToFillTheLength_IsReported()
+        {
+            // No letters to fall back on, and the two caps together fall short of 20.
+            var options = new PasswordGeneratorOptions
+            {
+                Length = 20,
+                IncludeUppercase = false,
+                IncludeLowercase = false,
+                LimitDigits = true,
+                MinDigits = 0,
+                MaxDigits = 4,
+                LimitSpecial = true,
+                MinSpecial = 0,
+                MaxSpecial = 4,
+            };
+            Assert.Contains(GeneratorConflict.MaximumsBelowLength, _generator.Validate(options));
+        }
+
+        [Fact]
+        public void Validate_QuotaOnDisabledSet_IsReported()
+        {
+            var options = new PasswordGeneratorOptions { IncludeSpecial = false, LimitSpecial = true };
+            Assert.Contains(GeneratorConflict.LimitOnDisabledSet, _generator.Validate(options));
+        }
+
+        [Fact]
+        public void ResolveConflicts_ClearsEveryConflictAtOnce()
+        {
+            // The awkward ones together: an inverted range, minimums past the length, a quota on
+            // a class that is off, and nothing left to fill with.
+            var options = new PasswordGeneratorOptions
+            {
+                Length = 6,
+                IncludeUppercase = false,
+                IncludeLowercase = false,
+                IncludeSpecial = false,
+                LimitDigits = true,
+                MinDigits = 9,
+                MaxDigits = 2,
+                LimitSpecial = true,
+                MinSpecial = 3,
+                MaxSpecial = 1,
+            };
+
+            _generator.ResolveConflicts(options);
+
+            Assert.Empty(_generator.Validate(options));
+            // And what comes out is actually producible, which is the point of resolving.
+            Assert.Equal(options.Length, _generator.Generate(options).Length);
+        }
     }
 }

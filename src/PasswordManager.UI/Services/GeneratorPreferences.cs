@@ -18,6 +18,18 @@ namespace PasswordManager.UI.Services
             ExcludeChars = string.Empty,
         };
 
+        /// <summary>
+        /// Passphrase settings, kept beside the password ones so switching modes on the generator
+        /// page does not lose either. The default word count is not written here: it comes from
+        /// the wordlist at startup, so a bigger list shortens the phrase instead of leaving the
+        /// default quietly stronger than it needs to be.
+        /// </summary>
+        public PassphraseGeneratorOptions Phrase { get; } = new();
+
+        /// <summary>Guards that one-time seeding, so reopening the page never quietly resets a
+        /// word count the user picked.</summary>
+        public bool PhraseDefaultsApplied { get; set; }
+
         public event Action? OnChanged;
 
         public void Notify() => OnChanged?.Invoke();

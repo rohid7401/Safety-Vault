@@ -27,6 +27,7 @@ namespace PasswordManager.Infrastructure
             services.AddSingleton<IPgpService, PgpService>();
 
             services.AddSingleton<IPasswordGenerator, PasswordGenerator>();
+            services.AddSingleton<IPassphraseGenerator, PassphraseGenerator>();
             services.AddSingleton<ITotpService, TotpService>();
             services.AddSingleton<IImportExportService, ImportExportService>();
             services.AddSingleton<IVaultAuditor, VaultAuditor>();

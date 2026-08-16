@@ -1,11 +1,25 @@
 ﻿@page "/generator"
 @inject IPasswordGenerator Generator
+@inject IPassphraseGenerator Phrases
 @inject GeneratorPreferences Prefs
 @inject ToastService Toast
 @inject SecureClipboardService SecureClipboard
 @inject Loc L
 @implements IDisposable
 
+
+@* Three things worth generating, not one. The passphrase in particular is the app making good
+   on its own advice: the first-run intro tells people four unrelated words beat eight characters
+   with symbols, and until now offered no way to produce any. *@
+<div class="seg" style="margin-bottom:14px;">
+    @foreach (var mode in Modes)
+    {
+        <button class="seg-opt @(_mode == mode.Id ? "active" : "")" type="button"
+                @onclick="() => SwitchMode(mode.Id)">
+            <Icon Name="@mode.Icon" Size="16" StrokeWidth="1.8" />@L[mode.LabelKey]
+        </button>
+    }
+</div>
 
 <div class="card" style="gap:14px;">
     @if (_conflicts.Count > 0)
@@ -29,7 +43,7 @@
     {
         <div class="generated-box">@_password</div>
 
-        @if (!string.IsNullOrEmpty(_password))
+        @if (!string.IsNullOrEmpty(_password) && _mode == Mode.Password)
         {
             var s = Generator.CalculateStrength(_password);
             <div>
@@ -40,6 +54,16 @@
                     <span>@L["gen.strength"]</span>
                     <span style="font-weight:600;">@StrengthLabel(s)</span>
                 </div>
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(_password) && _mode == Mode.Passphrase)
+        {
+            @* A real figure instead of the character-counting heuristic, which reads a phrase of
+               plain lowercase words as weak and would tell people the opposite of the truth.
+               Computed from the size of the wordlist actually loaded, so it cannot overstate. *@
+            <div class="strength-row" style="margin-top:0;">
+                <span>@L.Format("gen.phrase.entropy", (int)EntropyBits)</span>
+                <span style="font-weight:600; color:var(--color-accent);">@EntropyLabel</span>
             </div>
         }
 
@@ -54,6 +78,54 @@
     }
 </div>
 
+@if (_mode == Mode.Passphrase)
+{
+    <div class="card" style="gap:16px; margin-top:14px;">
+        <div>
+            <div class="range-row">
+                <span style="color:var(--n-300);">@L["gen.phrase.words"]</span>
+                <span style="font-weight:600; color:var(--color-accent); font-family:var(--font-heading);">
+                    @Prefs.Phrase.WordCount
+                </span>
+            </div>
+            <input type="range" min="3" max="12" @bind="Prefs.Phrase.WordCount" @bind:event="oninput"
+                   @bind:after="OnPrefsChanged" />
+        </div>
+
+        <div class="field" style="margin-bottom:0;">
+            <label>@L["gen.phrase.separator"]</label>
+            <div class="seg">
+                @foreach (var sep in Separators)
+                {
+                    <button class="seg-opt @(Prefs.Phrase.Separator == sep.Value ? "active" : "")" type="button"
+                            @onclick="() => SetSeparator(sep.Value)">@sep.Label</button>
+                }
+            </div>
+        </div>
+
+        <Toggle Label="@L["gen.phrase.capitalize"]" Hint="Puente-Canela-Nogal"
+                Value="Prefs.Phrase.Capitalize"
+                ValueChanged="@(v => { Prefs.Phrase.Capitalize = v; OnPrefsChanged(); })" />
+
+        <Toggle Label="@L["gen.phrase.number"]" Hint="@L["gen.phrase.number.hint"]"
+                Value="Prefs.Phrase.IncludeNumber"
+                ValueChanged="@(v => { Prefs.Phrase.IncludeNumber = v; OnPrefsChanged(); })" />
+
+        <div class="hint-row" style="margin:0;">
+            <Icon Name="info" Size="15" />
+            <span>@L.Format("gen.phrase.listNote", Phrases.WordCount(L.CurrentLanguage))</span>
+        </div>
+    </div>
+}
+else if (_mode == Mode.Username)
+{
+    <div class="card" style="gap:12px; margin-top:14px;">
+        <div class="card-title">@L["gen.user.title"]</div>
+        <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.55;">@L["gen.user.body"]</p>
+    </div>
+}
+else
+{
 <div class="card" style="gap:16px; margin-top:14px;">
     <div>
         <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px;">
@@ -79,6 +151,42 @@
     <Toggle Label="@L["gen.special"]" Hint="@("! @ # $ %")"
             Value="Prefs.Options.IncludeSpecial"
             ValueChanged="@(v => SetCharSet(o => o.IncludeSpecial = v))" />
+
+    <Toggle Label="@L["gen.ambiguous"]" Hint="0 O 1 l I |"
+            Value="Prefs.Options.ExcludeAmbiguous"
+            ValueChanged="@(v => SetCharSet(o => o.ExcludeAmbiguous = v))" />
+
+    @* Counts stay behind their own switch. Most people never need them, and four number boxes
+       permanently on screen would bury the four that decide what the password is made of. *@
+    <Toggle Label="@L["gen.limitDigits"]" Hint="@L["gen.limitDigits.hint"]"
+            Value="Prefs.Options.LimitDigits"
+            ValueChanged="@(v => SetCharSet(o => o.LimitDigits = v))" />
+    @if (Prefs.Options.LimitDigits)
+    {
+        <div class="count-range">
+            <span>@L["gen.between"]</span>
+            <input type="number" class="input" min="0" max="64" @bind="Prefs.Options.MinDigits"
+                   @bind:event="oninput" @bind:after="OnPrefsChanged" />
+            <span>@L["gen.and"]</span>
+            <input type="number" class="input" min="0" max="64" @bind="Prefs.Options.MaxDigits"
+                   @bind:event="oninput" @bind:after="OnPrefsChanged" />
+        </div>
+    }
+
+    <Toggle Label="@L["gen.limitSpecial"]" Hint="@L["gen.limitSpecial.hint"]"
+            Value="Prefs.Options.LimitSpecial"
+            ValueChanged="@(v => SetCharSet(o => o.LimitSpecial = v))" />
+    @if (Prefs.Options.LimitSpecial)
+    {
+        <div class="count-range">
+            <span>@L["gen.between"]</span>
+            <input type="number" class="input" min="0" max="64" @bind="Prefs.Options.MinSpecial"
+                   @bind:event="oninput" @bind:after="OnPrefsChanged" />
+            <span>@L["gen.and"]</span>
+            <input type="number" class="input" min="0" max="64" @bind="Prefs.Options.MaxSpecial"
+                   @bind:event="oninput" @bind:after="OnPrefsChanged" />
+        </div>
+    }
 
     <div class="field" style="margin-bottom:0;">
         <label style="display:flex; align-items:center; gap:8px;">
@@ -110,6 +218,7 @@
                placeholder="@L["gen.excludeChars.placeholder"]" />
     </div>
 </div>
+}
 
 <style>
     .generated-box {
@@ -125,11 +234,74 @@
         text-align: center;
         min-height: 56px;
     }
+
+    /* Indented under the switch that reveals it, so it reads as that switch's detail rather
+       than as another setting of its own. */
+    .count-range {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: -2px 0 4px 14px;
+        font-size: 13.5px;
+        color: var(--n-400);
+    }
+    .count-range .input { width: 72px; flex: none; text-align: center; }
 </style>
 
 @code {
     private string _password = string.Empty;
     private IReadOnlyList<GeneratorConflict> _conflicts = Array.Empty<GeneratorConflict>();
+
+    private enum Mode { Password, Passphrase, Username }
+
+    private sealed record ModeDef(Mode Id, string LabelKey, string Icon);
+
+    private static readonly ModeDef[] Modes =
+    [
+        new(Mode.Password, "gen.mode.password", "lock"),
+        new(Mode.Passphrase, "gen.mode.passphrase", "book"),
+        new(Mode.Username, "gen.mode.username", "user"),
+    ];
+
+    private sealed record SeparatorDef(string Value, string Label);
+
+    /// <summary>The four that survive being retyped from paper. A space is not among them: it
+    /// gets eaten by forms that trim, and half the sites reject it outright.</summary>
+    private static readonly SeparatorDef[] Separators =
+    [
+        new("-", "a-b"), new(".", "a.b"), new("_", "a_b"), new("", "ab"),
+    ];
+
+    private Mode _mode = Mode.Password;
+
+    private double EntropyBits => Phrases.EntropyBits(L.CurrentLanguage, Prefs.Phrase);
+
+    /// <summary>Deliberately coarse. A phrase either has enough guessing behind it or it does
+    /// not, and a percentage would invite tuning a number that only moves a word at a time.</summary>
+    /// <remarks>Written as ifs rather than a switch on relational patterns: Razor reads the
+    /// leading "&lt;" of <c>&lt; 45 =&gt;</c> as the start of a tag and stops parsing code.</remarks>
+    private string EntropyLabel
+    {
+        get
+        {
+            if (EntropyBits < 45) return L["gen.strength.fair"];
+            if (EntropyBits < 60) return L["gen.strength.good"];
+            return L["gen.strength.strong"];
+        }
+    }
+
+    private void SwitchMode(Mode mode)
+    {
+        _mode = mode;
+        _conflicts = Array.Empty<GeneratorConflict>();
+        Regenerate();
+    }
+
+    private void SetSeparator(string value)
+    {
+        Prefs.Phrase.Separator = value;
+        OnPrefsChanged();
+    }
 
     private string StrengthLabel(int s) => s switch
     {
@@ -138,6 +310,11 @@
         <= 6 => L["gen.strength.good"],
         _ => L["gen.strength.strong"],
     };
+
+    /// <summary>What the minimums add up to, for the message that says they overshoot.</summary>
+    private int MinTotal =>
+        (Prefs.Options.LimitDigits ? Prefs.Options.MinDigits : 0) +
+        (Prefs.Options.LimitSpecial ? Prefs.Options.MinSpecial : 0);
 
     private string ConflictMessage(GeneratorConflict c)
     {
@@ -150,12 +327,32 @@
                 L.Format("gen.conflict.wordExcluded", word),
             GeneratorConflict.NoCharacterSetForFiller =>
                 L["gen.conflict.noCharset"],
+            GeneratorConflict.CountRangeInverted =>
+                L["gen.conflict.rangeInverted"],
+            GeneratorConflict.MinimumsExceedLength =>
+                L.Format("gen.conflict.minsTooBig", MinTotal, Prefs.Options.Length),
+            GeneratorConflict.MaximumsBelowLength =>
+                L.Format("gen.conflict.maxesTooSmall", Prefs.Options.Length),
+            GeneratorConflict.LimitOnDisabledSet =>
+                L["gen.conflict.limitOnDisabled"],
+            GeneratorConflict.WordExceedsCount =>
+                L.Format("gen.conflict.wordCount", word),
             _ => "",
         };
     }
 
     protected override void OnInitialized()
     {
+        // The starting word count comes from the list rather than from a constant: enough words
+        // to clear 60 bits with the list this build actually ships. Grow the list and the
+        // default phrase gets shorter on its own; shrink it and the phrase lengthens to
+        // compensate. Applied once, so it never overrides a count the user chose.
+        if (!Prefs.PhraseDefaultsApplied)
+        {
+            Prefs.Phrase.WordCount = Phrases.WordsForStrength(L.CurrentLanguage, 60);
+            Prefs.PhraseDefaultsApplied = true;
+        }
+
         Prefs.OnChanged += Refresh;
         L.OnChanged += StateHasChanged;
         Refresh();
@@ -181,6 +378,15 @@
     /// <summary>Re-validate the options; regenerate only when there are no conflicts.</summary>
     private void Refresh()
     {
+        // Only the password has options that can contradict each other. A phrase cannot be
+        // asked for something impossible, so validating it would only ever say "fine".
+        if (_mode != Mode.Password)
+        {
+            _conflicts = Array.Empty<GeneratorConflict>();
+            Regenerate();
+            return;
+        }
+
         _conflicts = Generator.Validate(Prefs.Options);
         if (_conflicts.Count == 0)
             Regenerate();
@@ -193,6 +399,17 @@
 
     private void Regenerate()
     {
+        if (_mode == Mode.Passphrase)
+        {
+            _password = Phrases.Generate(L.CurrentLanguage, Prefs.Phrase);
+            return;
+        }
+        if (_mode == Mode.Username)
+        {
+            _password = Phrases.GenerateUsername(L.CurrentLanguage);
+            return;
+        }
+
         try
         {
             _password = Generator.Generate(Prefs.Options);
