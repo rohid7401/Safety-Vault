@@ -2,6 +2,7 @@
 @inject AppState AppState
 @inject NavigationManager Nav
 @inject AppSettings Settings
+@inject IScreenPrivacy Privacy
 @inject Loc L
 @implements IDisposable
 
@@ -61,6 +62,14 @@
     @if (Settings.Get(AppSettingsCatalog.TrashRetentionDays) > 0)
     {
         <div class="alert alert-warning" style="margin-bottom:0;">@L["settings.trash.warning"]</div>
+    }
+
+    @* Device-scoped, unlike everything else on this page — see the note at the foot. The flag
+       has to be in force before any vault is open, so it cannot live inside one. *@
+    @if (Privacy.IsSupported)
+    {
+        <Toggle Label="@L["settings.screenPrivacy"]" Hint="@L["settings.screenPrivacy.hint"]"
+                Value="Privacy.Enabled" ValueChanged="OnScreenPrivacyChanged" />
     }
 </div>
 
@@ -148,6 +157,10 @@
         L.OnChanged -= StateHasChanged;
         Settings.OnChanged -= StateHasChanged;
     }
+
+    /// <summary>Takes effect on the live window at once, not on next launch — someone turning
+    /// this on has a reason to want it on now.</summary>
+    private void OnScreenPrivacyChanged(bool enabled) => Privacy.SetEnabled(enabled);
 
     /// <summary>Reads a select's value as a number, ignoring anything unparseable rather than
     /// throwing — a browser can only send what we rendered, but this runs on the render path.</summary>

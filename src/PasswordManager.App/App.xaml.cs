@@ -8,18 +8,16 @@ public partial class App : Application
 	// eventually close it — see VaultAutoLock for why the decision is taken on return rather
 	// than on a timer while away.
 	private readonly VaultAutoLock _autoLock;
-	private readonly ShellBackNavigation _backNavigation;
 
-	public App(VaultAutoLock autoLock, ShellBackNavigation backNavigation)
+	public App(VaultAutoLock autoLock)
 	{
 		InitializeComponent();
 		_autoLock = autoLock;
-		_backNavigation = backNavigation;
 	}
 
 	protected override Window CreateWindow(IActivationState? activationState)
 	{
-		return new Window(new MainPage(_backNavigation)) { Title = "PasswordManager.App" };
+		return new Window(new MainPage()) { Title = "PasswordManager.App" };
 	}
 
 	protected override void OnSleep()

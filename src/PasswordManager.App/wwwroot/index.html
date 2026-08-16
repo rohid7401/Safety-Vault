@@ -50,18 +50,46 @@
         })();
 
         // ── Keep the focused field visible above the soft keyboard ──
-        // The resize above frees up the space; this scrolls the field into it.
-        document.addEventListener('focusin', function (e) {
-            var el = e.target;
-            if (!el || !el.matches || !el.matches('input, textarea, select')) return;
-            if (el.type === 'checkbox' || el.type === 'range') return;
+        // The resize above frees up the space; this moves the field into it.
+        (function () {
+            var focused = null, timer = null;
 
-            // Wait for the keyboard animation to finish and the viewport to settle,
-            // otherwise we scroll against the pre-resize geometry and undershoot.
-            setTimeout(function () {
-                el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            }, 300);
-        });
+            function reveal() {
+                if (!focused || !focused.isConnected || document.activeElement !== focused) return;
+                var vv = window.visualViewport;
+                var visible = vv ? vv.height : window.innerHeight;
+                var r = focused.getBoundingClientRect();
+                // Comfortably inside the visible box already: scrolling would be a pointless jerk.
+                if (r.top >= 8 && r.bottom <= visible - 8) return;
+                // No behavior:'smooth'. This WebView reports scroll-behavior as supported,
+                // accepts the option, and then does not scroll at all — measured at 0px after
+                // 600ms — which is why the field stayed behind the keyboard however long the
+                // wait below was. Instant is not a downgrade here: it is the only one that runs.
+                focused.scrollIntoView({ block: 'center' });
+            }
+
+            function schedule(ms) {
+                clearTimeout(timer);
+                timer = setTimeout(reveal, ms);
+            }
+
+            document.addEventListener('focusin', function (e) {
+                var el = e.target;
+                if (!el || !el.matches || !el.matches('input, textarea, select')) return;
+                if (el.type === 'checkbox' || el.type === 'range') return;
+                focused = el;
+                // Fallback only: covers a hardware keyboard, and a soft keyboard that was
+                // already open so moving between fields resizes nothing.
+                schedule(320);
+            });
+
+            // The real signal. Waiting a fixed 300ms was a guess at the keyboard animation, and
+            // a slow device or a themed keyboard beat it — this fires when the viewport has
+            // actually shrunk, whenever that happens to be.
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', function () { schedule(60); });
+            }
+        })();
 
         // ── Remember where each page was scrolled to ──
         // Blazor swaps the contents of `.page` on navigation but keeps the element, and the

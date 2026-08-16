@@ -611,7 +611,7 @@
   "settings.rotation.days": "{0} days",
   "settings.seconds": "{0} seconds",
   "settings.minutes": "{0} minutes",
-  "settings.scopeNote": "Language is stored on this device rather than in the account: the sign-in screen has to be readable before any vault is open.",
+  "settings.scopeNote": "Language and screen protection are stored on this device rather than in the account: the first has to be readable, and the second in force, before any vault is open.",
   "settings.trash": "Empty the trash automatically",
   "settings.trash.never": "Never",
   "settings.trash.hint": "Permanently deletes anything that has been in the trash longer than this.",
@@ -694,5 +694,7 @@
   "tour.lock.title": "And this is the way out",
   "tour.lock.body": "\"Lock vault\" ends the session and asks for the master phrase again. It sits at the foot of the menu, always in the same place.",
   "tour.lock.miss": "We could not find the lock button",
-  "tour.back": "Back"
+  "tour.back": "Back",
+  "settings.screenPrivacy": "Protect the screen",
+  "settings.screenPrivacy.hint": "Blanks the preview in the task switcher and blocks screenshots, recording and casting. Kept on this device."
 }

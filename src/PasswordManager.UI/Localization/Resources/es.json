@@ -611,7 +611,7 @@
   "settings.rotation.days": "{0} días",
   "settings.seconds": "{0} segundos",
   "settings.minutes": "{0} minutos",
-  "settings.scopeNote": "El idioma se guarda en este dispositivo, no en la cuenta: la pantalla de inicio de sesión debe poder leerse antes de abrir ninguna bóveda.",
+  "settings.scopeNote": "El idioma y la protección de pantalla se guardan en este dispositivo, no en la cuenta: el primero debe poder leerse y la segunda debe estar activa antes de abrir ninguna bóveda.",
   "settings.trash": "Vaciar la papelera automáticamente",
   "settings.trash.never": "Nunca",
   "settings.trash.hint": "Elimina de forma definitiva lo que lleve más de ese tiempo en la papelera.",
@@ -694,5 +694,7 @@
   "tour.lock.title": "Y por aquí se sale",
   "tour.lock.body": "«Bloquear bóveda» cierra la sesión y vuelve a pedir la frase maestra. Está al final del menú, siempre en el mismo sitio.",
   "tour.lock.miss": "No encontramos el bloqueo",
-  "tour.back": "Atrás"
+  "tour.back": "Atrás",
+  "settings.screenPrivacy": "Proteger la pantalla",
+  "settings.screenPrivacy.hint": "Deja en blanco la vista previa del multitarea e impide capturas, grabación y proyección. Se guarda en este dispositivo."
 }

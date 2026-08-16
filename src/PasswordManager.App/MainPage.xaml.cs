@@ -1,22 +1,19 @@
-using PasswordManager.UI.Services;
-
 namespace PasswordManager.App;
 
+/// <summary>
+/// The single native page hosting the BlazorWebView, so the platform back stack only ever holds
+/// one entry and the router's own history lives inside the WebView.
+///
+/// <para>Bridging the device back button used to happen here, by overriding
+/// <c>OnBackButtonPressed</c>. It does not any more: from API 35 Android enables predictive back
+/// by default and that path never reaches the legacy callback, so the override sat here doing
+/// nothing while every press closed the app. Android claims the press through
+/// <c>OnBackPressedDispatcher</c> in MainActivity instead — see ShellBackCallback there.</para>
+/// </summary>
 public partial class MainPage : ContentPage
 {
-	private readonly ShellBackNavigation _back;
-
-	public MainPage(ShellBackNavigation back)
+	public MainPage()
 	{
 		InitializeComponent();
-		_back = back;
 	}
-
-	/// <summary>
-	/// The whole app is one native page, so without this the device back button always leaves
-	/// the app — even from a detail screen with somewhere to go back to. Returning true keeps
-	/// the press; returning false lets the platform close the app, which is what should happen
-	/// from the home screen.
-	/// </summary>
-	protected override bool OnBackButtonPressed() => _back.TryHandleBack();
 }
