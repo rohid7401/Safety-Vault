@@ -720,5 +720,7 @@
   "gen.phrase.entropy": "{0} bits of randomness",
   "gen.phrase.listNote": "Drawn at random from {0} words, kept free of accents so they type on any keyboard.",
   "gen.user.title": "A different username on every site",
-  "gen.user.body": "Reusing one username lets services link your accounts to each other even when the passwords differ. This is not a security measure: it is about not being recognisable from one site to the next."
+  "gen.user.body": "Reusing one username lets services link your accounts to each other even when the passwords differ. This is not a security measure: it is about not being recognisable from one site to the next.",
+  "fav.add": "Mark as favourite",
+  "fav.remove": "Remove from favourites"
 }

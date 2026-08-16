@@ -35,6 +35,10 @@ else if (Mode == ViewMode.Grid)
                     <span class="mini-plastic-brand">@BrandOf(card)</span>
                     <span class="pw-dot @StatusClass(StatusOf(card))" title="@StatusText(StatusOf(card))"></span>
                 </div>
+                @if (card.IsFavorite)
+                {
+                    <span class="fav-mark on-plastic"><Icon Name="heart" Size="13" Filled="true" /></span>
+                }
                 <div class="mini-plastic-num">···· @(_last4.GetValueOrDefault(card.Id, "••••"))</div>
                 <div class="mini-plastic-exp">@ExpiryText(card)</div>
             </button>
@@ -52,6 +56,10 @@ else
                     <span class="pw-title">@BrandOf(card) ···· @(_last4.GetValueOrDefault(card.Id, "••••"))</span>
                     <span class="pw-sub">@card.CardholderName · @ExpiryText(card)</span>
                 </span>
+                @if (card.IsFavorite)
+                {
+                    <span class="fav-mark"><Icon Name="heart" Size="14" Filled="true" /></span>
+                }
                 <span class="pw-status @StatusClass(StatusOf(card))">@StatusText(StatusOf(card))</span>
                 <span class="pw-chevron"><Icon Name="chevron-right" Size="17" /></span>
             </button>
@@ -176,6 +184,12 @@ else
                beside Reveal at the top of the plastic, a thumb-width apart, which is how a card
                gets lost by mistake. *@
             <div style="display:flex; gap:8px; margin-top:16px;">
+                <button class="btn btn-secondary @(det.IsFavorite ? "fav-on" : "")" style="flex:none;"
+                        aria-pressed="@det.IsFavorite"
+                        aria-label="@L[det.IsFavorite ? "fav.remove" : "fav.add"]"
+                        @onclick="() => ToggleFavorite(det)">
+                    <Icon Name="heart" Size="15" StrokeWidth="1.8" Filled="det.IsFavorite" />
+                </button>
                 <button class="btn btn-secondary" style="flex:1;" @onclick="() => EditFromDetail(det)">
                     <Icon Name="edit" Size="15" StrokeWidth="1.8" />@L["common.edit"]
                 </button>
@@ -372,9 +386,20 @@ else
 
     public void Dispose() => L.OnChanged -= StateHasChanged;
 
+    /// <summary>Flips the star and reloads, so the entry moves to where it now belongs. The
+    /// sheet stays open — the reordering behind it is the whole point.</summary>
+    private async Task ToggleFavorite(CardEntry entry)
+    {
+        entry.IsFavorite = !entry.IsFavorite;
+        await AppState.Service!.SetFavoriteAsync(entry.Id, entry.IsFavorite);
+        await LoadEntries();
+    }
+
     private async Task LoadEntries()
     {
-        _entries = await AppState.Service!.GetEntriesAsync<CardEntry>();
+        _entries = (await AppState.Service!.GetEntriesAsync<CardEntry>())
+            .OrderByDescending(e => e.IsFavorite)
+            .ToList();
         _linkable = await AppState.Service!.GetEntriesAsync<ServiceEntry>();
         _last4.Clear();
         _brand.Clear();

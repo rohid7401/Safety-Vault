@@ -720,5 +720,7 @@
   "gen.phrase.entropy": "{0} bits de aleatoriedad",
   "gen.phrase.listNote": "Se eligen al azar entre {0} palabras, sin acentos para que se puedan teclear en cualquier teclado.",
   "gen.user.title": "Un usuario distinto en cada sitio",
-  "gen.user.body": "Repetir el mismo usuario permite enlazar tus cuentas entre servicios aunque las contraseñas sean distintas. Esto no es una medida de seguridad: es para que no te reconozcan de un sitio a otro."
+  "gen.user.body": "Repetir el mismo usuario permite enlazar tus cuentas entre servicios aunque las contraseñas sean distintas. Esto no es una medida de seguridad: es para que no te reconozcan de un sitio a otro.",
+  "fav.add": "Marcar como favorito",
+  "fav.remove": "Quitar de favoritos"
 }

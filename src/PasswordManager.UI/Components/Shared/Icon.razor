@@ -1,5 +1,5 @@
 @* Stroke SVG icon from the Icons dictionary. Color follows currentColor. *@
-<svg width="@Size" height="@Size" viewBox="0 0 24 24" fill="none"
+<svg width="@Size" height="@Size" viewBox="0 0 24 24" fill="@(Filled ? "currentColor" : "none")"
      stroke="currentColor" stroke-width="@StrokeWidth" stroke-linecap="round" stroke-linejoin="round"
      style="@Style" aria-hidden="true">@_content</svg>
 
@@ -8,6 +8,10 @@
     [Parameter] public int Size { get; set; } = 20;
     [Parameter] public double StrokeWidth { get; set; } = 2;
     [Parameter] public string? Style { get; set; }
+
+    /// <summary>Paints the shape solid instead of leaving it an outline. For the heart, which has
+    /// to read as on or off at a glance: same glyph, same weight, filled or not.</summary>
+    [Parameter] public bool Filled { get; set; }
 
     private MarkupString _content;
 

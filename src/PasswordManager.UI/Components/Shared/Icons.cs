@@ -46,6 +46,10 @@ public static class Icons
         ["globe"] = """<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/>""",
         ["mail"] = """<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6l9-6"/>""",
         ["phone"] = """<path d="M6 3h3l2 5l-2.5 1.5a12 12 0 0 0 5 5L16 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 4 5a2 2 0 0 1 2-2z"/>""",
+        // Drawn as an outline like every other icon here. The filled state comes from the
+        // caller setting fill="currentColor", so starred and not starred are the same shape at
+        // the same weight — only filled in.
+        ["heart"] = """<path d="M12 20.3 4.6 13a5 5 0 0 1 7.4-6.7A5 5 0 0 1 19.4 13z"/>""",
         // Sliders rather than a gear: at the 14px the drawer draws it, a cogwheel's teeth
         // collapse into a fuzzy ring, while three rules and three handles stay readable.
         ["sliders"] = """<path d="M4 7h9M17 7h3"/><path d="M4 12h3M11 12h9"/><path d="M4 17h9M17 17h3"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="17" r="2"/>""",

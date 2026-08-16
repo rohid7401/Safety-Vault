@@ -2131,3 +2131,21 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
     .tour, .tour-hole, .tour-bubble { transition: none; animation: none; }
     .tour-pulse { display: none; }
 }
+
+/* ═══ Favourites ═══════════════════════════════════════════════════
+   A star is an indicator in the lists and a control only in the detail sheet. The rows and tiles
+   are themselves <button>s, and a button inside a button is invalid markup the browser resolves
+   by dropping one of the two — so the lists show the state and the sheet changes it. */
+.fav-mark {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    color: var(--danger);
+}
+/* On a card's coloured plastic the danger red disappears into the artwork. */
+.fav-mark.on-plastic { color: #fff; opacity: .9; }
+
+/* The heart keeps its shape when off — outline, same weight as every other icon — so what
+   changes on tap is the fill and the colour, not the glyph. */
+.btn-icon.fav-on, .btn.fav-on { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.btn-icon.fav-on:hover, .btn.fav-on:hover { color: var(--danger); border-color: var(--danger); }

@@ -303,6 +303,26 @@ namespace PasswordManager.Core.Services
             await _repository.SaveAsync(vault);
         }
 
+        /// <summary>
+        /// Stars or unstars an entry, whatever kind it is.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately not routed through <see cref="UpdateEntryAsync"/>: that stamps
+        /// LastUpdateTime, and starring is not a change to the secret. Letting it move the date
+        /// would make "changed 2 minutes ago" mean "I tapped a heart", which is exactly the
+        /// signal the rotation reminders and the audit read.
+        /// </remarks>
+        public async Task SetFavoriteAsync(Guid id, bool favorite)
+        {
+            ThrowIfDisposed();
+            var vault = await _repository.LoadAsync();
+            var entry = vault.Entries.FirstOrDefault(e => e.Id == id && !e.IsDeleted);
+            if (entry is null || entry.IsFavorite == favorite) return;
+
+            entry.IsFavorite = favorite;
+            await _repository.SaveAsync(vault);
+        }
+
         // ─── Soft delete / Restore / Purge ───────────────────────────────────
 
         public async Task DeleteEntryAsync(Guid id)
@@ -577,6 +597,7 @@ namespace PasswordManager.Core.Services
                     Site = svc.Site,
                     Tags = new List<string>(svc.Tags),
                     Grouped = svc.Grouped,
+                    IsFavorite = svc.IsFavorite,
                     ExpireTime = svc.ExpireTime,
                     CreationTime = svc.CreationTime,
                     LastUpdateTime = svc.LastUpdateTime,
@@ -625,6 +646,7 @@ namespace PasswordManager.Core.Services
                     Content = DecryptField(note.Content),
                     Tags = new List<string>(note.Tags),
                     IsCritical = note.IsCritical,
+                    IsFavorite = note.IsFavorite,
                     CreationTime = note.CreationTime,
                     LastUpdateTime = note.LastUpdateTime,
                 });
@@ -640,6 +662,7 @@ namespace PasswordManager.Core.Services
                     Pin = card.Pin is null ? null : DecryptField(card.Pin),
                     ExpiryMonth = card.ExpiryMonth,
                     ExpiryYear = card.ExpiryYear,
+                    IsFavorite = card.IsFavorite,
                     // Only if the account travels in this same file; a link to something left
                     // behind would arrive pointing at nothing.
                     LinkedRef = card.LinkedEntryId is Guid id && refs.TryGetValue(id, out var r) ? r : null,
@@ -677,6 +700,7 @@ namespace PasswordManager.Core.Services
                     Site = source.Site,
                     Tags = new List<string>(source.Tags),
                     Grouped = source.Grouped,
+                    IsFavorite = source.IsFavorite,
                     ExpireTime = source.ExpireTime,
                     CreationTime = source.CreationTime,
                     LastUpdateTime = DateTime.UtcNow,
@@ -728,6 +752,7 @@ namespace PasswordManager.Core.Services
                     Content = EncryptField(note.Content),
                     Tags = new List<string>(note.Tags),
                     IsCritical = note.IsCritical,
+                    IsFavorite = note.IsFavorite,
                     CreationTime = note.CreationTime,
                     LastUpdateTime = DateTime.UtcNow,
                 });
@@ -743,6 +768,7 @@ namespace PasswordManager.Core.Services
                     Pin = string.IsNullOrWhiteSpace(card.Pin) ? null : EncryptField(card.Pin),
                     ExpiryMonth = card.ExpiryMonth,
                     ExpiryYear = card.ExpiryYear,
+                    IsFavorite = card.IsFavorite,
                     // A reference naming no account in this file is dropped: a link pointing at
                     // nothing is worse than none, because the card would claim a bank it has lost.
                     LinkedEntryId = card.LinkedRef is int r && newIds.TryGetValue(r, out var id)

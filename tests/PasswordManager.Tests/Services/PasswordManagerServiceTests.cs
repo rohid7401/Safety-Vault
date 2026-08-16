@@ -1672,6 +1672,97 @@ namespace PasswordManager.Tests.Services
             await Assert.ThrowsAsync<ObjectDisposedException>(() => svc.GetAllEntriesAsync());
         }
 
+        // ─── Favourites ──────────────────────────────────────────────
+
+        [Fact]
+        public async Task SetFavorite_PersistsAcrossReopen()
+        {
+            await using var svc = await CreateServiceAsync();
+            var entry = await AddPwAsync(svc, "Banco", "rohi", "s3cret");
+
+            await svc.SetFavoriteAsync(entry.Id, true);
+
+            await using var reopened = await CreateServiceAsync();
+            var read = (await reopened.GetEntriesAsync<ServiceEntry>()).Single(e => e.Id == entry.Id);
+            Assert.True(read.IsFavorite);
+        }
+
+        [Fact]
+        public async Task SetFavorite_DoesNotTouchLastUpdateTime()
+        {
+            // The date is what "changed 2 minutes ago", the rotation reminders and the audit all
+            // read. Tapping a heart is not a change to the secret, and must not look like one.
+            await using var svc = await CreateServiceAsync();
+            var entry = await AddPwAsync(svc, "Banco", "rohi", "s3cret");
+            var before = (await svc.GetEntriesAsync<ServiceEntry>()).Single().LastUpdateTime;
+
+            await Task.Delay(10);
+            await svc.SetFavoriteAsync(entry.Id, true);
+
+            var after = (await svc.GetEntriesAsync<ServiceEntry>()).Single().LastUpdateTime;
+            Assert.Equal(before, after);
+        }
+
+        [Fact]
+        public async Task SetFavorite_IgnoresDeletedEntries()
+        {
+            await using var svc = await CreateServiceAsync();
+            var entry = await AddPwAsync(svc, "Banco", "rohi", "s3cret");
+            await svc.DeleteEntryAsync(entry.Id);
+
+            await svc.SetFavoriteAsync(entry.Id, true);
+
+            await svc.RestoreEntryAsync(entry.Id);
+            var read = (await svc.GetEntriesAsync<ServiceEntry>()).Single(e => e.Id == entry.Id);
+            Assert.False(read.IsFavorite);
+        }
+
+        [Fact]
+        public async Task Favorites_SurviveABackupToAnotherDevice()
+        {
+            // The whole point of the field is that it is not just a UI flourish: a vault carried
+            // to a new phone should arrive with the same things starred. All three kinds, since
+            // they each map through the backup separately.
+            await using var source = await CreateServiceAsync();
+            var starred = await AddPwAsync(source, "Banco", "rohi", "s3cret");
+            var plain = await AddPwAsync(source, "Tienda", "rohi", "otra");
+            var note = new SecureNote { Title = "Wifi" };
+            await source.AddSecureNoteAsync(note, "clave");
+            var card = new CardEntry { CardholderName = "Rohi", ExpiryMonth = 5, ExpiryYear = 2030 };
+            await source.AddCardEntryAsync(card, "4111111111111111", "123");
+
+            await source.SetFavoriteAsync(starred.Id, true);
+            await source.SetFavoriteAsync(note.Id, true);
+            await source.SetFavoriteAsync(card.Id, true);
+
+            var backup = await source.ExportBackupAsync();
+
+            await using var target = await CreateOtherDeviceAsync();
+            await target.ImportBackupAsync(backup);
+
+            var services = await target.GetEntriesAsync<ServiceEntry>();
+            Assert.True(services.Single(e => e.Site == "Banco").IsFavorite);
+            Assert.False(services.Single(e => e.Site == "Tienda").IsFavorite);
+            Assert.True((await target.GetEntriesAsync<SecureNote>()).Single().IsFavorite);
+            Assert.True((await target.GetEntriesAsync<CardEntry>()).Single().IsFavorite);
+        }
+
+        [Fact]
+        public async Task Backup_WrittenBeforeFavoritesExisted_ReadsAsNotFavorite()
+        {
+            // Old files carry no such property. Absent has to mean false rather than throw,
+            // which is why this needed no format version bump.
+            await using var source = await CreateServiceAsync();
+            await AddPwAsync(source, "Banco", "rohi", "s3cret");
+            var backup = await source.ExportBackupAsync();
+            foreach (var s in backup.Services) s.IsFavorite = false;
+
+            await using var target = await CreateOtherDeviceAsync();
+            await target.ImportBackupAsync(backup);
+
+            Assert.False((await target.GetEntriesAsync<ServiceEntry>()).Single().IsFavorite);
+        }
+
         public void Dispose()
         {
             try { Directory.Delete(_dataDir, recursive: true); } catch { /* best effort */ }

@@ -38,6 +38,10 @@ else if (Mode == ViewMode.Grid)
                         <span class="pw-dot danger" title="@L["notes.critical"]"></span>
                     }
                 </div>
+                @if (note.IsFavorite)
+                {
+                    <span class="fav-mark"><Icon Name="heart" Size="13" Filled="true" /></span>
+                }
                 <div class="pw-tile-name">@note.Title</div>
                 @* A masked line, never the content: the point of the index is that nothing has
                    to be hidden again after it is read. *@
@@ -57,6 +61,10 @@ else
                     <span class="pw-title">@note.Title</span>
                     <span class="pw-sub">@SummaryFor(note)</span>
                 </span>
+                @if (note.IsFavorite)
+                {
+                    <span class="fav-mark"><Icon Name="heart" Size="14" Filled="true" /></span>
+                }
                 @if (note.Tags.Count > 0)
                 {
                     <span class="pw-status ok">@note.Tags[0]</span>
@@ -79,6 +87,12 @@ else
                     <div class="pw-det-name">@det.Title</div>
                     <div class="pw-det-sub">@SummaryFor(det)</div>
                 </div>
+                <button class="btn-icon lg @(det.IsFavorite ? "fav-on" : "")" type="button"
+                        aria-pressed="@det.IsFavorite"
+                        aria-label="@L[det.IsFavorite ? "fav.remove" : "fav.add"]"
+                        @onclick="() => ToggleFavorite(det)">
+                    <Icon Name="heart" Size="16" StrokeWidth="1.8" Filled="det.IsFavorite" />
+                </button>
                 <button class="btn-icon lg" type="button" aria-label="@L["common.edit"]"
                         @onclick="() => EditFromDetail(det)">
                     <Icon Name="edit" Size="16" StrokeWidth="1.8" />
@@ -215,9 +229,20 @@ else
 
     public void Dispose() => L.OnChanged -= StateHasChanged;
 
+    /// <summary>Flips the star and reloads, so the entry moves to where it now belongs. The
+    /// sheet stays open — the reordering behind it is the whole point.</summary>
+    private async Task ToggleFavorite(SecureNote entry)
+    {
+        entry.IsFavorite = !entry.IsFavorite;
+        await AppState.Service!.SetFavoriteAsync(entry.Id, entry.IsFavorite);
+        await LoadEntries();
+    }
+
     private async Task LoadEntries()
     {
-        _entries = await AppState.Service!.GetEntriesAsync<SecureNote>();
+        _entries = (await AppState.Service!.GetEntriesAsync<SecureNote>())
+            .OrderByDescending(e => e.IsFavorite)
+            .ToList();
 
         // Line counts are computed once here rather than per render, mirroring how the cards
         // index derives its last-four digits: the index needs the shape of each note, and

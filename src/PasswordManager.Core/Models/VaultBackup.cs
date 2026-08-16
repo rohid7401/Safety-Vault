@@ -67,6 +67,10 @@ namespace PasswordManager.Core.Models
         public int Ref { get; set; }
 
         public string Site { get; set; } = string.Empty;
+
+        /// <summary>Travels with the entry. Absent from files written before favourites existed,
+        /// which reads back as false — the right answer, so no version bump is needed.</summary>
+        public bool IsFavorite { get; set; }
         public List<string> Tags { get; set; } = new();
         public bool Grouped { get; set; } = true;
         public DateTime? ExpireTime { get; set; }
@@ -121,6 +125,7 @@ namespace PasswordManager.Core.Models
         public string Content { get; set; } = string.Empty;
         public List<string> Tags { get; set; } = new();
         public bool IsCritical { get; set; }
+        public bool IsFavorite { get; set; }
         public DateTime CreationTime { get; set; } = DateTime.UtcNow;
         public DateTime LastUpdateTime { get; set; } = DateTime.UtcNow;
     }
@@ -137,6 +142,7 @@ namespace PasswordManager.Core.Models
 
         public int ExpiryMonth { get; set; }
         public int ExpiryYear { get; set; }
+        public bool IsFavorite { get; set; }
 
         /// <summary>
         /// The <see cref="BackupServiceEntry.Ref"/> of the account this card belongs to, or null.
