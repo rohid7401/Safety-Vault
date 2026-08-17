@@ -1,15 +1,20 @@
-name: Release Android (Play closed testing)
+name: Release Android (Play)
 
-# Publishes to Google Play's closed testing track (API track id "alpha" —
-# the 12 testers are here). Only runs when a version tag is pushed (e.g.
+# Publishes to Google Play. Only runs when a version tag is pushed (e.g.
 # `git tag v1.0.1 && git push origin v1.0.1`) — ordinary commits to
-# KEK/master only build; they never publish. The tag's own name becomes
-# the app's version name.
+# KEK/master only build; they never publish. The tag's own name (minus any
+# -beta suffix) becomes the app's version name.
 #
-# This used to publish to "internal" only, requiring a manual "Promote
-# release" click in Play Console to reach testers. Publishing straight to
-# alpha skips that step — trade-off is there's no longer an internal,
-# testers-don't-see-it-yet build to sanity-check first.
+# Which track depends on the tag itself, so a build can be tried on real
+# testers without deciding anything by hand:
+#   git tag v1.0.1-beta   → Play's alpha (closed testing) track
+#   git tag v1.0.1        → production, straight to real users
+#
+# There used to be no choice here — every tag went to alpha, back when
+# production was locked behind Google's closed-testing requirement for new
+# developer accounts. That requirement is now satisfied and production is
+# unlocked, so plain tags go straight there; the -beta suffix is what is
+# left of the old path, for when a build is worth a dry run first.
 on:
   push:
     tags:
@@ -65,12 +70,24 @@ jobs:
       # run number restarts from 1, so without it Play rejects the upload with
       # "Version code N has already been used". Raise CODE_OFFSET (never lower it)
       # if a manual upload ever overtakes the CI again.
-      - name: Compute version from tag
+      #
+      # The track comes from the tag too: a trailing -beta sends the build to
+      # alpha instead of production, and is stripped back out of versionName —
+      # Play's testers should see "1.0.1", not "1.0.1-beta", since the tag
+      # suffix is a routing instruction to this workflow, not part of the
+      # version the person installing the app is meant to read.
+      - name: Compute version and track from tag
         id: version
         run: |
           CODE_OFFSET=100
-          TAG="${GITHUB_REF_NAME}"
-          echo "name=${TAG#v}" >> "$GITHUB_OUTPUT"
+          TAG="${GITHUB_REF_NAME#v}"
+          if [[ "$TAG" == *-beta ]]; then
+            echo "name=${TAG%-beta}" >> "$GITHUB_OUTPUT"
+            echo "track=alpha" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=$TAG" >> "$GITHUB_OUTPUT"
+            echo "track=production" >> "$GITHUB_OUTPUT"
+          fi
           echo "code=$((CODE_OFFSET + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
 
       - name: Decode keystore
@@ -94,11 +111,11 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/release.keystore"
 
-      - name: Upload to Play closed testing
+      - name: Upload to Play
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.safetyvault.app
           releaseFiles: ${{ runner.temp }}/publish/*-Signed.aab
-          track: alpha
+          track: ${{ steps.version.outputs.track }}
           status: completed
