@@ -63,7 +63,11 @@
                 <label>@L["home.usernameOrEmail"]</label>
                 <div class="input-field">
                     <span class="input-field-icon"><Icon Name="mail" Size="17" StrokeWidth="1.7" /></span>
-                    <input type="text" class="input has-icon" @bind="_loginIdentity" maxlength="@FieldLimits.Email"
+                    @* Bound on input rather than on change so the quick-unlock button below can
+                       appear the moment the name matches, instead of waiting for a blur that on
+                       a phone only happens when they tap somewhere else. *@
+                    <input type="text" class="input has-icon" @bind="_loginIdentity" @bind:event="oninput"
+                           @bind:after="RefreshQuickTarget" maxlength="@FieldLimits.Email"
                            placeholder="@L["home.placeholder.identity"]" />
                 </div>
             </div>
@@ -169,7 +173,7 @@
                     @foreach (var user in _knownUsers)
                     {
                         var name = user;
-                        <button class="known-chip" type="button" @onclick="() => _loginIdentity = name">
+                        <button class="known-chip" type="button" @onclick="() => SelectKnownUser(name)">
                             <span class="known-chip-avatar">@Initial(name)</span>@name
                         </button>
                     }
@@ -193,6 +197,7 @@
         </p>
         <PasswordField @bind-Value="_quickPin" Icon="lock"
                        Placeholder="@L["quick.pinPlaceholder"]"
+                       DigitsOnly="true" MaxLength="QuickUnlockPin.MaxLength"
                        ShowLabel="@L["common.show"]" HideLabel="@L["common.hide"]"
                        OnEnter="SubmitPin" />
         @if (!string.IsNullOrEmpty(_quickError))
@@ -320,8 +325,10 @@
 
     private List<string> _knownUsers = new();
 
-    // Quick unlock. The account is resolved once at startup rather than on every keystroke:
-    // a slot belongs to a vault folder, and the folder is known before anything is typed.
+    // Quick unlock. Which accounts have a usable slot is settled once at startup — that is a
+    // disk question and does not change while this screen is open. Which of them the button
+    // means is settled on every keystroke, because that is a question about the name typed.
+    private readonly List<PasswordManager.Core.Models.UserAccount> _quickAccounts = new();
     private PasswordManager.Core.Models.UserAccount? _quickAccount;
     private bool _quickIsPin;
     private bool _showPinPrompt;
@@ -363,25 +370,66 @@
 
     // ─── Quick unlock ────────────────────────────────────────────────
 
-    /// <summary>
-    /// Finds the one account with a slot on this device, if any. Only one is offered: several
-    /// buttons that all say "use your fingerprint" would give away how many vaults the phone
-    /// holds, to anyone who picks it up.
-    /// </summary>
+    /// <summary>Collects every account on this device that has a slot which can still be opened.</summary>
     private async Task ResolveQuickUnlockAsync()
     {
+        _quickAccounts.Clear();
         if (QuickUnlock.Capability == QuickUnlockCapability.None) return;
 
         foreach (var username in _knownUsers)
         {
             var account = await AuthService.FindAccountAsync(username);
+            // IsEnrolled also retires a slot whose hardware half is gone, so a vault that can
+            // never be opened by shortcut again stops advertising one.
             if (account is null || !QuickUnlock.IsEnrolled(account.VaultPath)) continue;
-
-            _quickAccount = account;
-            _quickIsPin = QuickUnlock.Method(account.VaultPath) == QuickUnlockMethod.Pin;
-            _quickAttemptsLeft = QuickUnlock.AttemptsLeft(account.VaultPath);
-            return;
+            _quickAccounts.Add(account);
         }
+
+        RefreshQuickTarget();
+    }
+
+    /// <summary>
+    /// Decides which account the quick-unlock button means, from the name that has been typed.
+    ///
+    /// <para>It used to mean whichever enrolled account came first, whatever was typed. With two
+    /// accounts on one phone that is not a cosmetic problem: the button silently pointed at
+    /// someone else's vault, so the second account's PIN was being checked against the first
+    /// account's slot and spending its attempts. Binding it to the identity is what makes the
+    /// button's promise true.</para>
+    ///
+    /// <para>With a single account there is nothing to disambiguate, so it is offered straight
+    /// away — and no more is given away than the known-user chips right below already show.</para>
+    /// </summary>
+    private void RefreshQuickTarget()
+    {
+        var account = _quickAccounts.Count == 1 && _knownUsers.Count == 1
+            ? _quickAccounts[0]
+            : _quickAccounts.FirstOrDefault(a => IdentityMatches(a, _loginIdentity));
+
+        if (ReferenceEquals(account, _quickAccount)) return;
+
+        _quickAccount = account;
+        _quickError = string.Empty;
+
+        if (account is null) return;
+
+        _quickIsPin = QuickUnlock.Method(account.VaultPath) == QuickUnlockMethod.Pin;
+        _quickAttemptsLeft = QuickUnlock.AttemptsLeft(account.VaultPath);
+    }
+
+    private static bool IdentityMatches(PasswordManager.Core.Models.UserAccount account, string typed)
+    {
+        var identity = typed.Trim();
+        if (identity.Length == 0) return false;
+
+        return string.Equals(account.Username, identity, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(account.Email, identity, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SelectKnownUser(string name)
+    {
+        _loginIdentity = name;
+        RefreshQuickTarget();
     }
 
     private async Task HandleQuickUnlock()
@@ -407,6 +455,16 @@
         _showPinPrompt = false;
         _quickPin = string.Empty;
         _quickError = string.Empty;
+    }
+
+    /// <summary>Drops the account whose slot has just died, without disturbing the others.</summary>
+    private void RetireQuickAccount()
+    {
+        if (_quickAccount is null) return;
+
+        _quickAccounts.Remove(_quickAccount);
+        _quickAccount = null;
+        RefreshQuickTarget();
     }
 
     private async Task AttemptQuickUnlockAsync(string? pin)
@@ -441,14 +499,15 @@
                 case QuickUnlockOutcome.Exhausted:
                     // Gone for good. Said plainly on the main screen rather than inside a sheet
                     // that is about to close, because it changes how they get in from now on.
+                    // Only this account's slot died — anyone else on the phone still has theirs.
                     _showPinPrompt = false;
-                    _quickAccount = null;
+                    RetireQuickAccount();
                     _error = L["quick.exhausted"];
                     return;
 
                 case QuickUnlockOutcome.NotEnrolled:
                     _showPinPrompt = false;
-                    _quickAccount = null;
+                    RetireQuickAccount();
                     return;
 
                 default:

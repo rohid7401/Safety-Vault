@@ -160,6 +160,17 @@
                 <Icon Name="shield-check" Size="15" StrokeWidth="1.8" />@L["quick.setup.biometric"]
             </button>
         }
+        else
+        {
+            @* Without this the biometric button is simply absent, and someone whose phone
+               unlocks with their face reads that as the app being broken. It is not: face
+               unlock on most phones is Class 2, which cannot hold a Keystore key, so a prompt
+               backed by it would gate nothing at all. Saying so is the only honest option. *@
+            <div class="hint-row" style="margin:0;">
+                <Icon Name="info" Size="15" />
+                <span>@L[BiometricHintKey]</span>
+            </div>
+        }
         <button class="btn btn-secondary btn-block" @onclick="() => OpenEnroll(QuickUnlockMethod.Pin)">
             <Icon Name="lock-keyhole" Size="15" StrokeWidth="1.8" />@L["quick.setup.pin"]
         </button>
@@ -177,8 +188,19 @@
             <div class="field">
                 <label>@L["quick.newPin"]</label>
                 <PasswordField @bind-Value="_enrollPin" Icon="lock" Placeholder="@L["quick.pinPlaceholder"]"
+                               DigitsOnly="true" MaxLength="QuickUnlockPin.MaxLength"
                                ShowLabel="@L["common.show"]" HideLabel="@L["common.hide"]" />
                 <div class="field-hint">@L["quick.newPin.hint"]</div>
+            </div>
+
+            @* A PIN typed wrong here is not discovered until the next unlock, and the way it is
+               discovered is by spending attempts against a slot that will never open. Typing it
+               twice costs four seconds and removes that entirely. *@
+            <div class="field">
+                <label>@L["quick.confirmPin"]</label>
+                <PasswordField @bind-Value="_enrollPinConfirm" Icon="lock" Placeholder="@L["quick.pinPlaceholder"]"
+                               DigitsOnly="true" MaxLength="QuickUnlockPin.MaxLength"
+                               ShowLabel="@L["common.show"]" HideLabel="@L["common.hide"]" />
             </div>
         }
         <div class="field" style="margin-bottom:0;">
@@ -246,10 +268,19 @@
     private bool _enrolling;
     private QuickUnlockMethod _enrollMethod = QuickUnlockMethod.Biometric;
     private string _enrollPin = string.Empty;
+    private string _enrollPinConfirm = string.Empty;
     private string _enrollPassphrase = string.Empty;
     private string _enrollError = string.Empty;
 
     private string VaultPath => AppState.Account!.VaultPath;
+
+    /// <summary>Which explanation fits the reason biometrics are not on offer here.</summary>
+    private string BiometricHintKey => QuickUnlock.BiometricStatus switch
+    {
+        BiometricAvailability.NoneEnrolled => "quick.bio.noneEnrolled",
+        BiometricAvailability.NoStrongSensor => "quick.bio.noSensor",
+        _ => "quick.bio.unavailable",
+    };
 
     private void RefreshQuickUnlock()
     {
@@ -261,6 +292,7 @@
     {
         _enrollMethod = method;
         _enrollPin = string.Empty;
+        _enrollPinConfirm = string.Empty;
         _enrollPassphrase = string.Empty;
         _enrollError = string.Empty;
         _showEnroll = true;
@@ -270,6 +302,7 @@
     {
         _showEnroll = false;
         _enrollPin = string.Empty;
+        _enrollPinConfirm = string.Empty;
         _enrollPassphrase = string.Empty;
     }
 
@@ -277,11 +310,19 @@
     {
         _enrollError = string.Empty;
 
-        if (_enrollMethod == QuickUnlockMethod.Pin &&
-            (_enrollPin.Length < 4 || _enrollPin.Length > 8 || !_enrollPin.All(char.IsDigit)))
+        if (_enrollMethod == QuickUnlockMethod.Pin)
         {
-            _enrollError = L["quick.pinTooShort"];
-            return;
+            if (!QuickUnlockPin.IsValid(_enrollPin))
+            {
+                _enrollError = L["quick.pinTooShort"];
+                return;
+            }
+
+            if (_enrollPin != _enrollPinConfirm)
+            {
+                _enrollError = L["quick.pinMismatch"];
+                return;
+            }
         }
 
         _enrolling = true;

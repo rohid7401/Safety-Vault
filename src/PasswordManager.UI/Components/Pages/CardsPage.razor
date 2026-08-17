@@ -236,8 +236,16 @@ else
     <ChildContent>
         <div class="field">
             <label>@L["cards.field.holder"]</label>
-            <input type="text" class="input" @bind="_formName" maxlength="@FieldLimits.CardholderName"
-                   placeholder="JANE M DOE" />
+            <div class="name-with-fav">
+                <input type="text" class="input" @bind="_formName" maxlength="@FieldLimits.CardholderName"
+                       placeholder="JANE M DOE" />
+                <button class="btn-icon @(_formFavorite ? "fav-on" : "")" type="button"
+                        aria-pressed="@_formFavorite"
+                        aria-label="@L[_formFavorite ? "fav.remove" : "fav.add"]"
+                        @onclick="() => _formFavorite = !_formFavorite">
+                    <Icon Name="heart" Size="16" StrokeWidth="1.8" Filled="_formFavorite" />
+                </button>
+            </div>
         </div>
 
         <div class="field">
@@ -325,6 +333,7 @@ else
     private string _formCvv = string.Empty;
     private string _formPin = string.Empty;
     private string _formLinkedId = string.Empty;
+    private bool _formFavorite;
     private int _formMonth = DateTime.Today.Month;
     private int _formYear = DateTime.Today.Year;
     private string _formError = string.Empty;
@@ -357,12 +366,13 @@ else
 
     private string _formSnapshot = string.Empty;
     private string CurrentFormSnapshot() =>
-        string.Join("|", _formName, _formNumber, _formCvv, _formPin, _formLinkedId, _formMonth, _formYear);
+        string.Join("|", _formName, _formNumber, _formCvv, _formPin, _formLinkedId, _formMonth, _formYear, _formFavorite);
     private bool FormDirty => _formSnapshot != CurrentFormSnapshot();
 
     private void OpenAddModal()
     {
         _formName = _formNumber = _formCvv = _formPin = _formLinkedId = _formError = string.Empty;
+        _formFavorite = false;
         _formMonth = DateTime.Today.Month;
         _formYear = DateTime.Today.Year;
         _formSnapshot = CurrentFormSnapshot();
@@ -374,6 +384,7 @@ else
         _showAdd = false;
         _editCard = null;
         _formName = _formNumber = _formCvv = _formPin = _formLinkedId = _formError = string.Empty;
+        _formFavorite = false;
         _formMonth = DateTime.Today.Month;
         _formYear = DateTime.Today.Year;
     }
@@ -527,6 +538,7 @@ else
         _formMonth = c.ExpiryMonth;
         _formYear = c.ExpiryYear;
         _formLinkedId = c.LinkedEntryId?.ToString() ?? string.Empty;
+        _formFavorite = c.IsFavorite;
         try
         {
             _formNumber = AppState.Service!.DecryptField(c.CardNumber);
@@ -604,6 +616,12 @@ else
                 await AppState.Service!.UpdateCardEntryAsync(
                     _editCard.Id, _formName, _formMonth, _formYear,
                     _formNumber.Replace(" ", ""), _formCvv, _formPin, linked);
+
+                // Kept out of UpdateCardEntryAsync, whose whole argument list is about re-encrypting
+                // the secrets. Only written when it actually changed, so an ordinary edit does not
+                // touch the flag at all.
+                if (_editCard.IsFavorite != _formFavorite)
+                    await AppState.Service!.SetFavoriteAsync(_editCard.Id, _formFavorite);
             }
             else
             {
@@ -613,6 +631,7 @@ else
                     ExpiryMonth = _formMonth,
                     ExpiryYear = _formYear,
                     LinkedEntryId = linked,
+                    IsFavorite = _formFavorite,
                 };
                 await AppState.Service!.AddCardEntryAsync(
                     card, _formNumber.Replace(" ", ""), _formCvv, _formPin);

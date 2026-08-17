@@ -124,16 +124,19 @@ else
                 <button class="pw-tile" type="button" @onclick="() => OpenDetail(e)">
                     <div class="pw-tile-top">
                         <span class="pw-avatar @AvatarClass(e.Site)">@Initial(e.Site)</span>
-                        @* Grid says status with a dot, list says it with a worded pill — the tile
-                           has no room for a sentence and the dot is enough at a glance. *@
-                        <span class="pw-dot @StatusClass(st)" title="@StatusText(st)"></span>
-                        @if (e.IsFavorite)
-                        {
-                            @* An indicator, not a control. .pw-tile is itself a button and a
-                               button inside a button is invalid markup that browsers resolve by
-                               dropping one of them — starring happens in the detail sheet. *@
-                            <span class="fav-mark"><Icon Name="heart" Size="13" Filled="true" /></span>
-                        }
+                        <span class="pw-tile-marks">
+                            @if (e.IsFavorite)
+                            {
+                                @* An indicator, not a control. .pw-tile is itself a button and a
+                                   button inside a button is invalid markup that browsers resolve by
+                                   dropping one of them — starring happens in the detail sheet. *@
+                                <span class="fav-mark"><Icon Name="heart" Size="13" Filled="true" /></span>
+                            }
+                            @* Grid says status with a dot, list says it with a worded pill — the tile
+                               has no room for a sentence and the dot is enough at a glance. Last in
+                               the row so its position does not shift when a heart appears. *@
+                            <span class="pw-dot @StatusClass(st)" title="@StatusText(st)"></span>
+                        </span>
                     </div>
                     <div class="pw-tile-name">@e.Site</div>
                     <div class="pw-tile-chips">
@@ -342,10 +345,21 @@ else
             Title="@(_editEntry is not null ? L["vault.editTitle"] : L["vault.addTitle"])"
             ConfirmClose="@FormDirty" OnClose="CloseModal">
     <ChildContent>
+        @* The heart sits beside the name rather than in a row of its own: marking a favourite is
+           a thought people have while naming the thing, and it used to be reachable only after
+           saving and reopening the detail sheet. *@
         <div class="field">
             <label>@L["vault.field.site"]</label>
-            <input type="text" class="input" @bind="_fSite" placeholder="github.com"
-                   maxlength="@FieldLimits.Site" />
+            <div class="name-with-fav">
+                <input type="text" class="input" @bind="_fSite" placeholder="github.com"
+                       maxlength="@FieldLimits.Site" />
+                <button class="btn-icon @(_fFavorite ? "fav-on" : "")" type="button"
+                        aria-pressed="@_fFavorite"
+                        aria-label="@L[_fFavorite ? "fav.remove" : "fav.add"]"
+                        @onclick="() => _fFavorite = !_fFavorite">
+                    <Icon Name="heart" Size="16" StrokeWidth="1.8" Filled="_fFavorite" />
+                </button>
+            </div>
         </div>
 
         <Toggle Label="@L["vault.grouped"]" Hint="@L["vault.grouped.hint"]"
@@ -658,6 +672,7 @@ else
     private ServiceEntry? _editEntry;
     private string _fSite = string.Empty;
     private List<string> _fTags = new();
+    private bool _fFavorite;
     private string _fError = string.Empty;
 
     /// <summary>Tags already in use, offered as suggestions so the same idea doesn't end up
@@ -794,7 +809,8 @@ else
     private string CurrentSnapshot()
     {
         var sb = new System.Text.StringBuilder();
-        sb.Append(_fSite).Append('|').Append(string.Join(',', _fTags)).Append('|').Append(_draftGrouped);
+        sb.Append(_fSite).Append('|').Append(string.Join(',', _fTags)).Append('|').Append(_draftGrouped)
+          .Append('|').Append(_fFavorite);
         foreach (var c in _draft)
         {
             sb.Append("//").Append(c.Label);
@@ -1091,6 +1107,7 @@ else
         _editEntry = null;
         _fSite = _fError = string.Empty;
         _fTags = new List<string>();
+        _fFavorite = false;
         _draftGrouped = false;
         // One field only. Opening straight into e-mail *and* password made the sheet look like a
         // long form before the user had typed anything, and hid the fact that the entry is built
@@ -1110,6 +1127,7 @@ else
         _editEntry = entry;
         _fSite = entry.Site;
         _fTags = new List<string>(entry.Tags);
+        _fFavorite = entry.IsFavorite;
         _fError = string.Empty;
         _draftGrouped = entry.Grouped && entry.Credentials.Count > 1;
         _draft = entry.Credentials.Select(c => new CredDraft
@@ -1322,13 +1340,18 @@ else
                     var se = (ServiceEntry)e;
                     se.Site = _fSite;
                     se.Tags = tags;
+                    se.IsFavorite = _fFavorite;
                     se.Grouped = _draftGrouped;
                     se.Credentials = creds;
                 });
             }
             else
             {
-                await svc.AddServiceEntryAsync(new ServiceEntry { Site = _fSite, Tags = tags, Grouped = _draftGrouped, Credentials = creds });
+                await svc.AddServiceEntryAsync(new ServiceEntry
+                {
+                    Site = _fSite, Tags = tags, IsFavorite = _fFavorite,
+                    Grouped = _draftGrouped, Credentials = creds,
+                });
             }
 
             var wasEdit = _editEntry is not null;

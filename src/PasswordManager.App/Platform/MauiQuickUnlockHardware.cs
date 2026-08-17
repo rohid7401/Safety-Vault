@@ -23,46 +23,75 @@ namespace PasswordManager.App.Platform
     /// off the phone therefore yields a ciphertext nobody can open elsewhere — which is the
     /// entire reason a four-digit PIN is safe here and would not be otherwise.</para>
     ///
-    /// <para><b>Not verified on a device.</b> Everything below is written against the documented
-    /// Keystore and BiometricPrompt behaviour; none of it has been run.</para>
+    /// <para>Every alias and preferences key below carries the vault id. An earlier version used
+    /// fixed names, and the result was that enrolling a second account overwrote the first
+    /// account's secret while leaving its slot file in place — a slot that counted attempts
+    /// against a secret that no longer existed, and a <c>Forget</c> that wiped every account at
+    /// once. Scoping is not a nicety here; it is what makes more than one vault possible.</para>
     /// </summary>
     public class MauiQuickUnlockHardware : IQuickUnlockHardware
     {
 #if !ANDROID
         public QuickUnlockCapability Capability => QuickUnlockCapability.None;
 
-        public Task<byte[]?> EnrollAsync(bool biometric) => Task.FromResult<byte[]?>(null);
+        public BiometricAvailability BiometricStatus => BiometricAvailability.NoStrongSensor;
 
-        public Task<byte[]?> RetrieveAsync(bool biometric, string promptTitle, string promptSubtitle, string cancelLabel)
+        public bool HasSecret(string vaultId) => false;
+
+        public Task<byte[]?> EnrollAsync(string vaultId, bool biometric) => Task.FromResult<byte[]?>(null);
+
+        public Task<byte[]?> RetrieveAsync(string vaultId, bool biometric, string promptTitle,
+                                           string promptSubtitle, string cancelLabel)
             => Task.FromResult<byte[]?>(null);
 
-        public void Forget() { }
+        public void Forget(string vaultId) { }
 #else
-        private const string BiometricAlias = "safetyvault.quick.bio";
-        private const string PinAlias = "safetyvault.quick.pin";
         private const string StoreName = "AndroidKeyStore";
         private const int SecretBytes = 32;
         private const int GcmTagBits = 128;
 
+        /// <summary>The Keystore alias for one vault's key. Scoped, never shared.</summary>
+        private static string Alias(string vaultId, bool biometric) =>
+            $"safetyvault.quick.{(biometric ? "bio" : "pin")}.{vaultId}";
+
         /// <summary>Where the wrapped secret lives. Only ever a ciphertext.</summary>
-        private static string BlobKey(bool biometric) => biometric ? "quick_secret_bio" : "quick_secret_pin";
+        private static string BlobKey(string vaultId, bool biometric) =>
+            $"quick_secret_{(biometric ? "bio" : "pin")}_{vaultId}";
 
         public QuickUnlockCapability Capability
         {
             get
             {
-                var context = Android.App.Application.Context;
-                var manager = BiometricManager.From(context);
-
                 // Class 3 ("strong") only. The weak classes cannot gate a Keystore key, so
                 // accepting them would mean a prompt that looks like protection and gates nothing.
-                if (manager.CanAuthenticate(BiometricManager.Authenticators.BiometricStrong)
-                    == BiometricManager.BiometricSuccess)
+                if (BiometricStatus == BiometricAvailability.Available)
                     return QuickUnlockCapability.Biometric;
 
                 // No usable biometric. A PIN slot is still safe as long as the key really lives
                 // in the chip — if it does not, the PIN is ten thousand guesses and we say no.
                 return HasSecureHardware() ? QuickUnlockCapability.PinOnly : QuickUnlockCapability.None;
+            }
+        }
+
+        /// <summary>
+        /// Distinguishes the reasons a strong biometric is not on offer, so the settings screen
+        /// can explain instead of just showing one button fewer. The common case by far is
+        /// <see cref="BiometricAvailability.NoneEnrolled"/> on a phone whose only enrolled
+        /// biometric is a Class 2 face — which the user reasonably reads as "I have face unlock,
+        /// why is this app ignoring it".
+        /// </summary>
+        public BiometricAvailability BiometricStatus
+        {
+            get
+            {
+                var manager = BiometricManager.From(Android.App.Application.Context);
+                return manager.CanAuthenticate(BiometricManager.Authenticators.BiometricStrong) switch
+                {
+                    BiometricManager.BiometricSuccess => BiometricAvailability.Available,
+                    BiometricManager.BiometricErrorNoneEnrolled => BiometricAvailability.NoneEnrolled,
+                    BiometricManager.BiometricErrorNoHardware => BiometricAvailability.NoStrongSensor,
+                    _ => BiometricAvailability.Unavailable,
+                };
             }
         }
 
@@ -108,15 +137,39 @@ namespace PasswordManager.App.Platform
             }
         }
 
-        public async Task<byte[]?> EnrollAsync(bool biometric)
+        /// <summary>
+        /// True only when both halves of the platform secret survive: the wrapped blob and the
+        /// Keystore key that opens it. Either one alone opens nothing, so either one missing means
+        /// the slot it belongs to is finished.
+        /// </summary>
+        public bool HasSecret(string vaultId)
+        {
+            foreach (var biometric in new[] { true, false })
+            {
+                if (string.IsNullOrEmpty(Preferences.Default.Get(BlobKey(vaultId, biometric), string.Empty)))
+                    continue;
+
+                try
+                {
+                    var store = KeyStore.GetInstance(StoreName)!;
+                    store.Load(null);
+                    if (store.ContainsAlias(Alias(vaultId, biometric))) return true;
+                }
+                catch (Exception) { }
+            }
+
+            return false;
+        }
+
+        public async Task<byte[]?> EnrollAsync(string vaultId, bool biometric)
         {
             try
             {
-                CreateKeystoreKey(biometric);
+                CreateKeystoreKey(vaultId, biometric);
 
                 var secret = RandomNumberGenerator.GetBytes(SecretBytes);
                 var cipher = NewCipher();
-                var key = LoadKey(biometric);
+                var key = LoadKey(vaultId, biometric);
                 if (key is null) return null;
 
                 cipher.Init(Javax.Crypto.CipherMode.EncryptMode, key);
@@ -134,7 +187,7 @@ namespace PasswordManager.App.Platform
                 var wrapped = cipher.DoFinal(secret)!;
                 var iv = cipher.GetIV()!;
 
-                Preferences.Default.Set(BlobKey(biometric),
+                Preferences.Default.Set(BlobKey(vaultId, biometric),
                     Convert.ToBase64String(iv) + ":" + Convert.ToBase64String(wrapped));
 
                 return secret;
@@ -145,12 +198,12 @@ namespace PasswordManager.App.Platform
             }
         }
 
-        public async Task<byte[]?> RetrieveAsync(bool biometric, string promptTitle,
+        public async Task<byte[]?> RetrieveAsync(string vaultId, bool biometric, string promptTitle,
                                                  string promptSubtitle, string cancelLabel)
         {
             try
             {
-                var blob = Preferences.Default.Get(BlobKey(biometric), string.Empty);
+                var blob = Preferences.Default.Get(BlobKey(vaultId, biometric), string.Empty);
                 if (string.IsNullOrEmpty(blob)) return null;
 
                 var parts = blob.Split(':');
@@ -158,7 +211,7 @@ namespace PasswordManager.App.Platform
                 var iv = Convert.FromBase64String(parts[0]);
                 var wrapped = Convert.FromBase64String(parts[1]);
 
-                var key = LoadKey(biometric);
+                var key = LoadKey(vaultId, biometric);
                 // Gone means the platform destroyed it — new fingerprints enrolled, most likely.
                 // Failing closed here is the behaviour the design depends on.
                 if (key is null) return null;
@@ -178,7 +231,9 @@ namespace PasswordManager.App.Platform
             catch (KeyPermanentlyInvalidatedException)
             {
                 // Said out loud rather than swallowed with everything else: this is the specific
-                // case of "the fingerprints changed", and the caller destroys the slot for it.
+                // case of "the fingerprints changed". The blob is dropped so the slot is seen as
+                // dead on the next look, rather than lingering as a button that cannot work.
+                Preferences.Default.Remove(BlobKey(vaultId, biometric));
                 return null;
             }
             catch (Exception)
@@ -187,16 +242,16 @@ namespace PasswordManager.App.Platform
             }
         }
 
-        public void Forget()
+        public void Forget(string vaultId)
         {
             foreach (var biometric in new[] { true, false })
             {
-                Preferences.Default.Remove(BlobKey(biometric));
+                Preferences.Default.Remove(BlobKey(vaultId, biometric));
                 try
                 {
                     var store = KeyStore.GetInstance(StoreName)!;
                     store.Load(null);
-                    store.DeleteEntry(biometric ? BiometricAlias : PinAlias);
+                    store.DeleteEntry(Alias(vaultId, biometric));
                 }
                 catch (Exception) { }
             }
@@ -205,20 +260,19 @@ namespace PasswordManager.App.Platform
         private static Cipher NewCipher() => Cipher.GetInstance(
             $"{KeyProperties.KeyAlgorithmAes}/{KeyProperties.BlockModeGcm}/{KeyProperties.EncryptionPaddingNone}")!;
 
-        private static IKey? LoadKey(bool biometric)
+        private static IKey? LoadKey(string vaultId, bool biometric)
         {
             var store = KeyStore.GetInstance(StoreName)!;
             store.Load(null);
-            return store.GetKey(biometric ? BiometricAlias : PinAlias, null);
+            return store.GetKey(Alias(vaultId, biometric), null);
         }
 
-        private static void CreateKeystoreKey(bool biometric)
+        private static void CreateKeystoreKey(string vaultId, bool biometric)
         {
-            var alias = biometric ? BiometricAlias : PinAlias;
             var generator = KeyGenerator.GetInstance(KeyProperties.KeyAlgorithmAes, StoreName)!;
 
             var builder = new KeyGenParameterSpec.Builder(
-                    alias, KeyStorePurpose.Encrypt | KeyStorePurpose.Decrypt)
+                    Alias(vaultId, biometric), KeyStorePurpose.Encrypt | KeyStorePurpose.Decrypt)
                 .SetBlockModes(KeyProperties.BlockModeGcm!)
                 .SetEncryptionPaddings(KeyProperties.EncryptionPaddingNone!)
                 // Every wrap gets a fresh IV from the Keystore itself.
@@ -253,7 +307,7 @@ namespace PasswordManager.App.Platform
                 catch (ProviderException) { }
             }
 
-            generator.Init(builder.Build());
+            generator.Init(builder.SetIsStrongBoxBacked(false)!.Build());
             generator.GenerateKey();
         }
 

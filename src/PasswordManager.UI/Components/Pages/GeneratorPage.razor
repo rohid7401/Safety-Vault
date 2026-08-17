@@ -156,6 +156,13 @@ else
             Value="Prefs.Options.ExcludeAmbiguous"
             ValueChanged="@(v => SetCharSet(o => o.ExcludeAmbiguous = v))" />
 
+    @* Its own switch beside the look-alikes, not folded into them: one is about reading a
+       password back, the other about software that refuses it. Someone who needs one should
+       not pay the entropy for both. *@
+    <Toggle Label="@L["gen.problematic"]" Hint="&amp; $ ; &lt; &gt; |"
+            Value="Prefs.Options.ExcludeProblematic"
+            ValueChanged="@(v => SetCharSet(o => o.ExcludeProblematic = v))" />
+
     @* Counts stay behind their own switch. Most people never need them, and four number boxes
        permanently on screen would bury the four that decide what the password is made of. *@
     <Toggle Label="@L["gen.limitDigits"]" Hint="@L["gen.limitDigits.hint"]"

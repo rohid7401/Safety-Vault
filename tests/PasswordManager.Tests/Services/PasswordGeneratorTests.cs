@@ -298,6 +298,69 @@ namespace PasswordManager.Tests.Services
         }
 
         [Fact]
+        public void Generate_ExcludeProblematic_DropsShellAndMarkupPunctuation()
+        {
+            var options = new PasswordGeneratorOptions { Length = 40, ExcludeProblematic = true };
+
+            for (var i = 0; i < 50; i++)
+                Assert.DoesNotContain(_generator.Generate(options), c => "&$;<>|".Contains(c));
+
+            Assert.Equal(string.Empty, options.ExcludeChars);
+        }
+
+        [Fact]
+        public void Generate_ExcludeProblematic_IsIndependentOfExcludeAmbiguous()
+        {
+            // The two switches answer different questions, so neither may imply the other. The
+            // pipe is the one character both sets claim, and is therefore not evidence either way.
+            var problematicOnly = new PasswordGeneratorOptions { Length = 60, ExcludeProblematic = true };
+            var ambiguousOnly = new PasswordGeneratorOptions { Length = 60, ExcludeAmbiguous = true };
+
+            var withProblematicOff = string.Concat(Enumerable.Range(0, 40).Select(_ => _generator.Generate(ambiguousOnly)));
+            var withAmbiguousOff = string.Concat(Enumerable.Range(0, 40).Select(_ => _generator.Generate(problematicOnly)));
+
+            // Excluding look-alikes must still leave the awkward punctuation in play...
+            Assert.Contains(withProblematicOff, c => "&$;<>".Contains(c));
+            // ...and excluding the punctuation must leave the look-alikes in play.
+            Assert.Contains(withAmbiguousOff, c => "0O1lI".Contains(c));
+        }
+
+        [Fact]
+        public void ResolveConflicts_ExcludeProblematic_YieldsToAWordThatNeedsThoseCharacters()
+        {
+            // Same rule the ambiguous switch follows: a word the user asked for wins over an
+            // exclusion, because a password that silently dropped characters out of their own
+            // word would not be the thing they asked for.
+            var options = new PasswordGeneratorOptions
+            {
+                Length = 20,
+                IncludeWord = "a&b",
+                ExcludeProblematic = true,
+            };
+
+            _generator.ResolveConflicts(options);
+
+            Assert.False(options.ExcludeProblematic);
+            Assert.Contains("a&b", _generator.Generate(options));
+        }
+
+        [Fact]
+        public void ResolveConflicts_ExcludeProblematic_SurvivesAWordThatDoesNotNeedIt()
+        {
+            var options = new PasswordGeneratorOptions
+            {
+                Length = 20,
+                IncludeWord = "yuki",
+                ExcludeProblematic = true,
+            };
+
+            _generator.ResolveConflicts(options);
+
+            Assert.True(options.ExcludeProblematic);
+            Assert.DoesNotContain(_generator.Generate(options), c => "&$;<>|".Contains(c));
+        }
+
+        [Fact]
         public void Generate_IncludedWord_CountsTowardTheQuota()
         {
             // "r2d2" brings two digits of its own, so a cap of two leaves the filler none.

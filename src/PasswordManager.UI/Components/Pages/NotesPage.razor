@@ -170,8 +170,16 @@ else
     <ChildContent>
         <div class="field">
             <label>@L["notes.field.title"]</label>
-            <input type="text" class="input" @bind="_formTitle" maxlength="@FieldLimits.NoteTitle"
-                   placeholder="@L["notes.field.titlePlaceholder"]" />
+            <div class="name-with-fav">
+                <input type="text" class="input" @bind="_formTitle" maxlength="@FieldLimits.NoteTitle"
+                       placeholder="@L["notes.field.titlePlaceholder"]" />
+                <button class="btn-icon @(_formFavorite ? "fav-on" : "")" type="button"
+                        aria-pressed="@_formFavorite"
+                        aria-label="@L[_formFavorite ? "fav.remove" : "fav.add"]"
+                        @onclick="() => _formFavorite = !_formFavorite">
+                    <Icon Name="heart" Size="16" StrokeWidth="1.8" Filled="_formFavorite" />
+                </button>
+            </div>
         </div>
 
         <div class="field">
@@ -218,7 +226,8 @@ else
 
     private string _formSnapshot = string.Empty;
     private bool _formCritical;
-    private string CurrentFormSnapshot() => string.Join("", _formTitle, _formContent, string.Join(',', _formTags), _formCritical);
+    private bool _formFavorite;
+    private string CurrentFormSnapshot() => string.Join("", _formTitle, _formContent, string.Join(',', _formTags), _formCritical, _formFavorite);
     private bool FormDirty => _formSnapshot != CurrentFormSnapshot();
 
     protected override async Task OnInitializedAsync()
@@ -337,6 +346,7 @@ else
         _formTitle = _formContent = _formError = string.Empty;
         _formTags = new List<string>();
         _formCritical = false;
+        _formFavorite = false;
         _formSnapshot = CurrentFormSnapshot();
         _showAdd = true;
     }
@@ -348,6 +358,7 @@ else
         _formContent = AppState.Service!.DecryptField(note.Content);
         _formTags = new List<string>(note.Tags);
         _formCritical = note.IsCritical;
+        _formFavorite = note.IsFavorite;
         _formError = string.Empty;
         _formSnapshot = CurrentFormSnapshot();
     }
@@ -388,11 +399,12 @@ else
                     n.Tags = tags;
                     n.Content = content;
                     n.IsCritical = _formCritical;
+                    n.IsFavorite = _formFavorite;
                 });
             }
             else
             {
-                var note = new SecureNote { Title = _formTitle, Tags = tags, IsCritical = _formCritical };
+                var note = new SecureNote { Title = _formTitle, Tags = tags, IsCritical = _formCritical, IsFavorite = _formFavorite };
                 await AppState.Service!.AddSecureNoteAsync(note, _formContent);
             }
 
@@ -414,5 +426,6 @@ else
         _formTitle = _formContent = _formError = string.Empty;
         _formTags = new List<string>();
         _formCritical = false;
+        _formFavorite = false;
     }
 }

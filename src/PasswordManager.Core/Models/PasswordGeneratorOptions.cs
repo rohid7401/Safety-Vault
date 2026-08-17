@@ -18,6 +18,20 @@ namespace PasswordManager.Core.Models
         public bool ExcludeAmbiguous { get; set; }
 
         /// <summary>
+        /// Drops the punctuation that other software tends to choke on: quotes, the semicolon,
+        /// the backslash, the backtick, and the angle brackets. Not a security measure — the
+        /// vault stores any of them happily — but the characters that get a password rejected by
+        /// a signup form, mangled by a shell, or truncated by an import.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately a second switch rather than more entries in the ambiguous set. The two
+        /// answer different questions — "will I misread this" against "will something else
+        /// refuse this" — and folding them together would make anyone who wants one pay the
+        /// entropy cost of both, with no way to say which they meant.
+        /// </remarks>
+        public bool ExcludeProblematic { get; set; }
+
+        /// <summary>
         /// Bounds the count of digits, for the sites that demand "at least two numbers" and the
         /// ones that refuse more than a couple. Off means the digits fall where chance puts
         /// them, which is what it has always done.

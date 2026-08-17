@@ -1684,7 +1684,11 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
     box-shadow: var(--shadow-sm); color: var(--color-text); font-family: inherit;
 }
 .pw-tile:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
-.pw-tile-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* Avatar left, markers right. This was space-between, which spreads whatever children happen to
+   exist across the full width — so the status dot sat at the far edge on a plain tile and drifted
+   into dead centre the moment a heart joined it. The markers travel together instead. */
+.pw-tile-top { display: flex; align-items: center; gap: 8px; }
+.pw-tile-marks { display: flex; align-items: center; gap: 7px; margin-left: auto; }
 .pw-tile-name { flex: 1; font-size: 13.5px; font-weight: 500; line-height: 1.25;
                 overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pw-tile-chips { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -2136,6 +2140,11 @@ input[type="range"] { width: 100%; accent-color: var(--color-accent); }
    A star is an indicator in the lists and a control only in the detail sheet. The rows and tiles
    are themselves <button>s, and a button inside a button is invalid markup the browser resolves
    by dropping one of the two — so the lists show the state and the sheet changes it. */
+/* Name field and its favourite toggle. The input keeps the room it needs and the heart takes
+   only its own square, so a long service name is not squeezed to make space for a 34px button. */
+.name-with-fav { display: flex; align-items: center; gap: 8px; }
+.name-with-fav > .input { flex: 1; min-width: 0; }
+
 .fav-mark {
     display: inline-flex;
     align-items: center;

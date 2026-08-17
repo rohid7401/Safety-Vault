@@ -698,6 +698,7 @@
   "settings.screenPrivacy": "Proteger la pantalla",
   "settings.screenPrivacy.hint": "Deja en blanco la vista previa del multitarea e impide capturas, grabación y proyección. Se guarda en este dispositivo.",
   "gen.ambiguous": "Quitar caracteres confundibles",
+  "gen.problematic": "Quitar caracteres problemáticos",
   "gen.limitDigits": "Limitar la cantidad de dígitos",
   "gen.limitDigits.hint": "Para los sitios que exigen un mínimo, o que no admiten más de unos pocos.",
   "gen.limitSpecial": "Limitar la cantidad de símbolos",
@@ -743,8 +744,13 @@
   "quick.body": "Se añade a la frase maestra, nunca la sustituye. A los 5 fallos se desactiva solo y vuelve a pedirse la frase.",
   "quick.newPin": "PIN nuevo",
   "quick.newPin.hint": "De 4 a 8 dígitos.",
+  "quick.confirmPin": "Repite el PIN",
+  "quick.pinMismatch": "Los dos PIN no coinciden.",
   "quick.confirmPassphrase": "Confirma tu frase maestra",
   "quick.enrolled": "Desbloqueo rápido activado",
   "quick.enrollFailed": "No se pudo activar. Puede que hayas cancelado la huella o que el dispositivo la rechazara.",
-  "quick.pinTooShort": "El PIN debe tener entre 4 y 8 dígitos."
+  "quick.pinTooShort": "El PIN debe tener entre 4 y 8 dígitos.",
+  "quick.bio.noneEnrolled": "No hay huella registrada en este teléfono. El desbloqueo facial no sirve aquí: es de clase débil y no puede proteger la llave del chip seguro. Registra una huella en los ajustes del sistema y la opción aparecerá.",
+  "quick.bio.noSensor": "Este teléfono no tiene un sensor biométrico de clase fuerte, así que solo se ofrece el PIN.",
+  "quick.bio.unavailable": "La biometría no está disponible ahora mismo. Puede estar bloqueada por demasiados intentos o desactivada por una política del dispositivo."
 }

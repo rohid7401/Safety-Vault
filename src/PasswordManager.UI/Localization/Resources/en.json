@@ -698,6 +698,7 @@
   "settings.screenPrivacy": "Protect the screen",
   "settings.screenPrivacy.hint": "Blanks the preview in the task switcher and blocks screenshots, recording and casting. Kept on this device.",
   "gen.ambiguous": "Remove look-alike characters",
+  "gen.problematic": "Remove problematic characters",
   "gen.limitDigits": "Limit how many digits",
   "gen.limitDigits.hint": "For the sites that demand a minimum, and the ones that refuse more than a few.",
   "gen.limitSpecial": "Limit how many symbols",
@@ -743,8 +744,13 @@
   "quick.body": "It is added to the master phrase and never replaces it. After 5 failures it switches itself off and the phrase is asked for again.",
   "quick.newPin": "New PIN",
   "quick.newPin.hint": "4 to 8 digits.",
+  "quick.confirmPin": "Repeat the PIN",
+  "quick.pinMismatch": "The two PINs do not match.",
   "quick.confirmPassphrase": "Confirm your master phrase",
   "quick.enrolled": "Quick unlock is on",
   "quick.enrollFailed": "Could not turn it on. You may have cancelled the fingerprint, or the device refused it.",
-  "quick.pinTooShort": "The PIN must be 4 to 8 digits."
+  "quick.pinTooShort": "The PIN must be 4 to 8 digits.",
+  "quick.bio.noneEnrolled": "No fingerprint is enrolled on this phone. Face unlock does not count here: it is a weak class and cannot protect the key held in the secure chip. Enrol a fingerprint in the system settings and the option will appear.",
+  "quick.bio.noSensor": "This phone has no strong-class biometric sensor, so only the PIN is offered.",
+  "quick.bio.unavailable": "Biometrics are unavailable right now. They may be locked out after too many attempts, or disabled by a device policy."
 }

@@ -19,6 +19,18 @@ namespace PasswordManager.Infrastructure.Services
         /// </summary>
         private const string Ambiguous = "0O1lI|";
 
+        /// <summary>
+        /// The punctuation other software mishandles: shell metacharacters and the ones that have
+        /// to be escaped in HTML or a query string. A password containing these is not less safe —
+        /// it is the thing that gets refused by a signup form or truncated on the way into a
+        /// config file.
+        ///
+        /// <para>Quotes, the backslash and the backtick are the usual companions of this list and
+        /// are absent from it because <see cref="Special"/> never generates them in the first
+        /// place; adding them here would only suggest a protection that was never needed.</para>
+        /// </summary>
+        private const string Problematic = "&$;<>|";
+
         public string Generate(PasswordGeneratorOptions? options = null)
         {
             options ??= new PasswordGeneratorOptions();
@@ -212,6 +224,8 @@ namespace PasswordManager.Infrastructure.Services
                 options.ExcludeChars = new string(options.ExcludeChars.Where(c => !word.Contains(c)).ToArray());
             if (options.ExcludeAmbiguous && word.Any(c => Ambiguous.Contains(c)))
                 options.ExcludeAmbiguous = false;
+            if (options.ExcludeProblematic && word.Any(c => Problematic.Contains(c)))
+                options.ExcludeProblematic = false;
 
             if (options.LimitDigits && word.Count(char.IsDigit) > options.MaxDigits)
                 options.MaxDigits = word.Count(char.IsDigit);
@@ -256,10 +270,13 @@ namespace PasswordManager.Infrastructure.Services
             return Math.Min(score, 8);
         }
 
-        /// <summary>Everything being kept out: the user's own list plus the look-alikes when
-        /// that switch is on. One place, so validation and generation cannot disagree.</summary>
+        /// <summary>Everything being kept out: the user's own list, plus the look-alikes and the
+        /// awkward punctuation when those switches are on. One place, so validation and
+        /// generation cannot disagree.</summary>
         private static string ExcludedSet(PasswordGeneratorOptions options) =>
-            (options.ExcludeChars ?? string.Empty) + (options.ExcludeAmbiguous ? Ambiguous : string.Empty);
+            (options.ExcludeChars ?? string.Empty)
+            + (options.ExcludeAmbiguous ? Ambiguous : string.Empty)
+            + (options.ExcludeProblematic ? Problematic : string.Empty);
 
         private static string Filter(string set, PasswordGeneratorOptions options)
         {
