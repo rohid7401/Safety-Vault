@@ -117,5 +117,7 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.safetyvault.app
           releaseFiles: ${{ runner.temp }}/publish/*-Signed.aab
-          track: ${{ steps.version.outputs.track }}
+          # Plural form the action wants now; `track` (singular) still works but is slated
+          # for removal and was already warning on every run.
+          tracks: ${{ steps.version.outputs.track }}
           status: completed
