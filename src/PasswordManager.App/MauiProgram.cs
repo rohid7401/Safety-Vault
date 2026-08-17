@@ -62,6 +62,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<IFilePickerService, MauiFilePickerService>();
         builder.Services.AddSingleton<IPlatformInfo, MauiPlatformInfo>();
         builder.Services.AddSingleton<IScreenPrivacy, MauiScreenPrivacy>();
+        builder.Services.AddSingleton<IQuickUnlockHardware, MauiQuickUnlockHardware>();
+        builder.Services.AddSingleton<QuickUnlockService>();
         builder.Services.AddSingleton(sp => new SecureClipboardService(
             sp.GetRequiredService<IClipboardService>(),
             () => TimeSpan.FromSeconds(

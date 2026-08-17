@@ -30,6 +30,13 @@ namespace PasswordManager.Core.Interfaces
         Task<List<string>> ListUsernamesAsync();
 
         /// <summary>
+        /// The stored account for a username, or null. Carries no secret — the vault folder and
+        /// the dates, nothing that unlocks anything — so it needs no passphrase to call. Quick
+        /// unlock uses it to find which vault a hardware slot belongs to before anything is typed.
+        /// </summary>
+        Task<UserAccount?> FindAccountAsync(string usernameOrEmail);
+
+        /// <summary>
         /// Permanently deletes an account and its vault folder — the account entry, the
         /// keyring, and every credential/note/card it held. Re-verifies the passphrase first
         /// (the same check as <see cref="LoginAsync"/>) so this cannot be triggered by anything

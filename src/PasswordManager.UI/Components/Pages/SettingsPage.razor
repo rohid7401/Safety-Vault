@@ -3,6 +3,8 @@
 @inject NavigationManager Nav
 @inject AppSettings Settings
 @inject IScreenPrivacy Privacy
+@inject QuickUnlockService QuickUnlock
+@inject ToastService Toast
 @inject Loc L
 @implements IDisposable
 
@@ -123,6 +125,79 @@
     </div>
 </div>
 
+@* Quick unlock lives with the other security settings, and says plainly what it is: an
+   addition to the master phrase, never a replacement. *@
+<div class="dash-group-title ruled" style="margin:22px 2px 8px;">@L["quick.title"]</div>
+
+<div class="card" style="gap:12px;">
+    @if (QuickUnlock.Capability == QuickUnlockCapability.None)
+    {
+        @* Not an apology. A PIN without hardware backing would be a downgrade wearing the
+           costume of a feature, so this explains rather than offers. *@
+        <div class="hint-row" style="margin:0;">
+            <Icon Name="info" Size="15" />
+            <span>@L["quick.none"]</span>
+        </div>
+    }
+    else if (_quickEnrolled)
+    {
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span class="entry-icon"><Icon Name="shield-check" Size="15" StrokeWidth="1.8" /></span>
+            <span style="flex:1; font-size:14px;">@L[_quickIsPin ? "quick.on.pin" : "quick.on.biometric"]</span>
+        </div>
+        <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.55;">@L["quick.body"]</p>
+        <button class="btn btn-secondary btn-block" style="color:var(--danger);" @onclick="DisableQuickUnlock">
+            @L["quick.disable"]
+        </button>
+    }
+    else
+    {
+        <p style="margin:0; font-size:13px; color:var(--n-400); line-height:1.55;">@L["quick.body"]</p>
+
+        @if (QuickUnlock.Capability == QuickUnlockCapability.Biometric)
+        {
+            <button class="btn btn-secondary btn-block" @onclick="() => OpenEnroll(QuickUnlockMethod.Biometric)">
+                <Icon Name="shield-check" Size="15" StrokeWidth="1.8" />@L["quick.setup.biometric"]
+            </button>
+        }
+        <button class="btn btn-secondary btn-block" @onclick="() => OpenEnroll(QuickUnlockMethod.Pin)">
+            <Icon Name="lock-keyhole" Size="15" StrokeWidth="1.8" />@L["quick.setup.pin"]
+        </button>
+    }
+</div>
+
+@* The passphrase is asked for again even though the vault is already open. Enrolling needs the
+   vault key, and re-deriving it from a freshly typed phrase is the one way to be sure the person
+   setting up a second door is the one who owns the first. *@
+<SheetModal Visible="_showEnroll" Centered="true" Title="@L[_enrollMethod == QuickUnlockMethod.Pin ? "quick.setup.pin" : "quick.setup.biometric"]"
+            OnClose="CloseEnroll">
+    <ChildContent>
+        @if (_enrollMethod == QuickUnlockMethod.Pin)
+        {
+            <div class="field">
+                <label>@L["quick.newPin"]</label>
+                <PasswordField @bind-Value="_enrollPin" Icon="lock" Placeholder="@L["quick.pinPlaceholder"]"
+                               ShowLabel="@L["common.show"]" HideLabel="@L["common.hide"]" />
+                <div class="field-hint">@L["quick.newPin.hint"]</div>
+            </div>
+        }
+        <div class="field" style="margin-bottom:0;">
+            <label>@L["quick.confirmPassphrase"]</label>
+            <PasswordField @bind-Value="_enrollPassphrase" Icon="lock"
+                           Placeholder="@L["home.placeholder.passphrase"]"
+                           ShowLabel="@L["common.show"]" HideLabel="@L["common.hide"]" />
+        </div>
+        @if (!string.IsNullOrEmpty(_enrollError))
+        {
+            <div class="alert alert-danger" style="margin:12px 0 0;">@_enrollError</div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="CloseEnroll">@L["common.cancel"]</button>
+        <button class="btn btn-primary" @onclick="ConfirmEnroll" disabled="@_enrolling">@L["common.save"]</button>
+    </FooterContent>
+</SheetModal>
+
 <div class="dash-group-title ruled" style="margin:22px 2px 8px;">@L["settings.group.help"]</div>
 
 @* The walkthrough used to be its own nav entry under a "Learn" group. It is not somewhere you
@@ -150,6 +225,7 @@
         Settings.OnChanged += StateHasChanged;
         // Normally already loaded at unlock; harmless and correct if this page is reached first.
         await Settings.EnsureLoadedAsync();
+        RefreshQuickUnlock();
     }
 
     public void Dispose()
@@ -161,6 +237,101 @@
     /// <summary>Takes effect on the live window at once, not on next launch — someone turning
     /// this on has a reason to want it on now.</summary>
     private void OnScreenPrivacyChanged(bool enabled) => Privacy.SetEnabled(enabled);
+
+    // ─── Quick unlock ────────────────────────────────────────────────
+
+    private bool _quickEnrolled;
+    private bool _quickIsPin;
+    private bool _showEnroll;
+    private bool _enrolling;
+    private QuickUnlockMethod _enrollMethod = QuickUnlockMethod.Biometric;
+    private string _enrollPin = string.Empty;
+    private string _enrollPassphrase = string.Empty;
+    private string _enrollError = string.Empty;
+
+    private string VaultPath => AppState.Account!.VaultPath;
+
+    private void RefreshQuickUnlock()
+    {
+        _quickEnrolled = AppState.Account is not null && QuickUnlock.IsEnrolled(VaultPath);
+        _quickIsPin = _quickEnrolled && QuickUnlock.Method(VaultPath) == QuickUnlockMethod.Pin;
+    }
+
+    private void OpenEnroll(QuickUnlockMethod method)
+    {
+        _enrollMethod = method;
+        _enrollPin = string.Empty;
+        _enrollPassphrase = string.Empty;
+        _enrollError = string.Empty;
+        _showEnroll = true;
+    }
+
+    private void CloseEnroll()
+    {
+        _showEnroll = false;
+        _enrollPin = string.Empty;
+        _enrollPassphrase = string.Empty;
+    }
+
+    private async Task ConfirmEnroll()
+    {
+        _enrollError = string.Empty;
+
+        if (_enrollMethod == QuickUnlockMethod.Pin &&
+            (_enrollPin.Length < 4 || _enrollPin.Length > 8 || !_enrollPin.All(char.IsDigit)))
+        {
+            _enrollError = L["quick.pinTooShort"];
+            return;
+        }
+
+        _enrolling = true;
+        try
+        {
+            // Argon2id, so off the UI thread like every other derivation in the app. A wrong
+            // phrase fails here and nothing is enrolled.
+            byte[] vaultKey;
+            try
+            {
+                vaultKey = await Task.Run(() =>
+                    PasswordManager.Infrastructure.Encryption.VaultKeyRing.Unlock(VaultPath, _enrollPassphrase));
+            }
+            catch (Exception ex)
+            {
+                _enrollError = UserError.Describe(L, ex);
+                return;
+            }
+
+            try
+            {
+                var ok = await QuickUnlock.EnrollAsync(VaultPath, vaultKey, _enrollMethod,
+                    _enrollMethod == QuickUnlockMethod.Pin ? _enrollPin : null);
+
+                if (!ok)
+                {
+                    _enrollError = L["quick.enrollFailed"];
+                    return;
+                }
+
+                CloseEnroll();
+                RefreshQuickUnlock();
+                Toast.Success(L["quick.enrolled"]);
+            }
+            finally
+            {
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(vaultKey);
+            }
+        }
+        finally
+        {
+            _enrolling = false;
+        }
+    }
+
+    private void DisableQuickUnlock()
+    {
+        QuickUnlock.Disable(VaultPath);
+        RefreshQuickUnlock();
+    }
 
     /// <summary>Reads a select's value as a number, ignoring anything unparseable rather than
     /// throwing — a browser can only send what we rendered, but this runs on the render path.</summary>

@@ -156,6 +156,12 @@ namespace PasswordManager.Infrastructure.Services
             return account;
         }
 
+        public async Task<UserAccount?> FindAccountAsync(string usernameOrEmail)
+        {
+            var all = await LoadAllAsync();
+            return all.FirstOrDefault(a => Matches(a, usernameOrEmail));
+        }
+
         public async Task<UserAccount> LoginAsync(string usernameOrEmail, string passphrase)
         {
             var all = await LoadAllAsync();

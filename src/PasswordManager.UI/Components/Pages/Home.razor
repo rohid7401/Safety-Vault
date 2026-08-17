@@ -7,6 +7,7 @@
 @inject Loc L
 @inject AppSettings Settings
 @inject ViewPreferences ViewPrefs
+@inject QuickUnlockService QuickUnlock
 @implements IDisposable
 
 @* Argon2id runs off the UI thread, so the screen stays live and looks idle while it works.
@@ -85,6 +86,17 @@
                     @onclick="HandleLogin" disabled="@_loading">
                 @(_loading ? L["home.signingIn"] : L["home.signIn"])
             </button>
+
+            @* Offered second, never instead. The passphrase field stays above it and keeps
+               working even when a slot exists — that is the promise the whole design rests on. *@
+            @if (_quickAccount is not null)
+            {
+                <button class="btn btn-secondary btn-block btn-lg" style="margin-top:10px;"
+                        @onclick="HandleQuickUnlock" disabled="@_loading">
+                    <Icon Name="@(_quickIsPin ? "lock-keyhole" : "shield-check")" Size="17" StrokeWidth="1.8" />
+                    @L[_quickIsPin ? "quick.usePin" : "quick.useBiometric"]
+                </button>
+            }
         }
         else
         {
@@ -171,6 +183,28 @@
         </div>
     </div>
 </div>
+
+@* A sheet rather than a field on the card: the PIN belongs to one account, and the card does
+   not know which one is meant until a name is typed. *@
+<SheetModal Visible="_showPinPrompt" Centered="true" Title="@L["quick.pinTitle"]" OnClose="CancelPin">
+    <ChildContent>
+        <p style="margin:0 0 12px; font-size:13px; color:var(--n-400); line-height:1.55;">
+            @L.Format("quick.pinBody", _quickAttemptsLeft)
+        </p>
+        <PasswordField @bind-Value="_quickPin" Icon="lock"
+                       Placeholder="@L["quick.pinPlaceholder"]"
+                       ShowLabel="@L["common.show"]" HideLabel="@L["common.hide"]"
+                       OnEnter="SubmitPin" />
+        @if (!string.IsNullOrEmpty(_quickError))
+        {
+            <div class="alert alert-danger" style="margin:12px 0 0;">@_quickError</div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button class="btn btn-secondary" @onclick="CancelPin">@L["common.cancel"]</button>
+        <button class="btn btn-primary" @onclick="SubmitPin" disabled="@_loading">@L["quick.unlock"]</button>
+    </FooterContent>
+</SheetModal>
 
 <SheetModal Visible="_showRestore" Title="@L["restore.title"]" OnClose="CancelRestore">
     <ChildContent>
@@ -286,6 +320,15 @@
 
     private List<string> _knownUsers = new();
 
+    // Quick unlock. The account is resolved once at startup rather than on every keystroke:
+    // a slot belongs to a vault folder, and the folder is known before anything is typed.
+    private PasswordManager.Core.Models.UserAccount? _quickAccount;
+    private bool _quickIsPin;
+    private bool _showPinPrompt;
+    private string _quickPin = string.Empty;
+    private string _quickError = string.Empty;
+    private int _quickAttemptsLeft;
+
     private static string Initial(string name) =>
         string.IsNullOrWhiteSpace(name) ? "?" : name.Trim()[..1].ToUpperInvariant();
 
@@ -312,8 +355,116 @@
             _knownUsers = await AuthService.ListUsernamesAsync();
             if (_knownUsers.Count == 0)
                 _tab = Tab.Register;
+
+            await ResolveQuickUnlockAsync();
         }
         catch { }
+    }
+
+    // ─── Quick unlock ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Finds the one account with a slot on this device, if any. Only one is offered: several
+    /// buttons that all say "use your fingerprint" would give away how many vaults the phone
+    /// holds, to anyone who picks it up.
+    /// </summary>
+    private async Task ResolveQuickUnlockAsync()
+    {
+        if (QuickUnlock.Capability == QuickUnlockCapability.None) return;
+
+        foreach (var username in _knownUsers)
+        {
+            var account = await AuthService.FindAccountAsync(username);
+            if (account is null || !QuickUnlock.IsEnrolled(account.VaultPath)) continue;
+
+            _quickAccount = account;
+            _quickIsPin = QuickUnlock.Method(account.VaultPath) == QuickUnlockMethod.Pin;
+            _quickAttemptsLeft = QuickUnlock.AttemptsLeft(account.VaultPath);
+            return;
+        }
+    }
+
+    private async Task HandleQuickUnlock()
+    {
+        if (_quickAccount is null) return;
+
+        if (_quickIsPin)
+        {
+            _quickPin = string.Empty;
+            _quickError = string.Empty;
+            _quickAttemptsLeft = QuickUnlock.AttemptsLeft(_quickAccount.VaultPath);
+            _showPinPrompt = true;
+            return;
+        }
+
+        await AttemptQuickUnlockAsync(pin: null);
+    }
+
+    private async Task SubmitPin() => await AttemptQuickUnlockAsync(_quickPin);
+
+    private void CancelPin()
+    {
+        _showPinPrompt = false;
+        _quickPin = string.Empty;
+        _quickError = string.Empty;
+    }
+
+    private async Task AttemptQuickUnlockAsync(string? pin)
+    {
+        if (_quickAccount is null) return;
+
+        _loading = true;
+        _error = string.Empty;
+        StateHasChanged();
+
+        try
+        {
+            var (outcome, vaultKey) = await QuickUnlock.UnlockAsync(
+                _quickAccount.VaultPath, pin,
+                L["quick.promptTitle"], L["quick.promptSubtitle"], L["common.cancel"]);
+
+            switch (outcome)
+            {
+                case QuickUnlockOutcome.Success:
+                    _showPinPrompt = false;
+                    // Same path as a passphrase sign-in, integrity check included.
+                    if (await OpenSessionAsync(_quickAccount, vaultKey))
+                        Nav.NavigateTo("dashboard");
+                    return;
+
+                case QuickUnlockOutcome.Wrong:
+                    _quickAttemptsLeft = QuickUnlock.AttemptsLeft(_quickAccount.VaultPath);
+                    _quickPin = string.Empty;
+                    _quickError = L.Format("quick.wrong", _quickAttemptsLeft);
+                    return;
+
+                case QuickUnlockOutcome.Exhausted:
+                    // Gone for good. Said plainly on the main screen rather than inside a sheet
+                    // that is about to close, because it changes how they get in from now on.
+                    _showPinPrompt = false;
+                    _quickAccount = null;
+                    _error = L["quick.exhausted"];
+                    return;
+
+                case QuickUnlockOutcome.NotEnrolled:
+                    _showPinPrompt = false;
+                    _quickAccount = null;
+                    return;
+
+                default:
+                    // Cancelled: they dismissed the prompt. Nothing to say.
+                    return;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = UserError.Describe(L, ex);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
     }
 
     public void Dispose() => L.OnChanged -= StateHasChanged;
@@ -434,6 +585,17 @@
         var vaultKey = await Task.Run(() =>
             PasswordManager.Infrastructure.Encryption.VaultKeyRing.Unlock(account.VaultPath, passphrase));
 
+        return await OpenSessionAsync(account, vaultKey);
+    }
+
+    /// <summary>
+    /// Everything after the vault key exists, whichever door produced it. Split out so quick
+    /// unlock joins the same path rather than growing a parallel one — a second way in that
+    /// skipped the integrity check would be a second way to open a damaged vault.
+    /// </summary>
+    /// <remarks>Kept next to the quick-unlock handlers below, which are its other caller.</remarks>
+    private async Task<bool> OpenSessionAsync(PasswordManager.Core.Models.UserAccount account, byte[] vaultKey)
+    {
         byte[] blobKey, fieldKey;
         try
         {
